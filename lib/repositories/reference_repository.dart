@@ -17,6 +17,7 @@
 
 import '../models/enums.dart';
 import '../models/reference_item.dart';
+import '../models/reference_query.dart';
 
 /// 레퍼런스를 읽고 쓰는 방법에 대한 약속입니다.
 ///
@@ -30,6 +31,16 @@ abstract class ReferenceRepository {
   ///
   /// 핀 고정된 항목이 항상 맨 위에 오고, 그다음은 최근에 고친 순서입니다.
   Future<List<ReferenceItem>> getAll();
+
+  /// 조건에 맞는 레퍼런스만 가져옵니다.
+  ///
+  /// 검색어·폴더·태그·즐겨찾기 같은 조건과 정렬 방식은 [query]에 담아 넘깁니다.
+  /// 조건을 하나도 안 걸면 getAll()과 같은 결과가 나옵니다.
+  ///
+  /// **거르는 일은 데이터베이스가 합니다.** 전부 가져와서 화면에서 걸러내면
+  /// 레퍼런스가 수천 장이 됐을 때 검색할 때마다 전부 읽어야 해서 느려집니다.
+  /// 나중에 서버용 구현체를 만들 때도 서버에 조건을 넘겨 거르게 해야 합니다.
+  Future<List<ReferenceItem>> search(ReferenceQuery query);
 
   /// id로 레퍼런스 하나를 찾습니다. 없으면 null을 돌려줍니다.
   ///

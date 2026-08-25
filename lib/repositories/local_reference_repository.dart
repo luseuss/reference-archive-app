@@ -10,6 +10,7 @@ import 'package:drift/drift.dart';
 import '../data/app_database.dart';
 import '../models/enums.dart';
 import '../models/reference_item.dart';
+import '../models/reference_query.dart';
 import 'reference_repository.dart';
 
 /// 레퍼런스를 이 기기의 데이터베이스에 저장하는 구현체입니다.
@@ -39,6 +40,129 @@ class LocalReferenceRepository implements ReferenceRepository {
       result.add(await _toModel(row));
     }
     return result;
+  }
+
+  /// 조건에 맞는 레퍼런스만 가져옵니다.
+  ///
+  /// 거르는 일을 전부 데이터베이스에 맡깁니다. 전부 가져와서 Dart에서 걸러내면
+  /// 레퍼런스가 많아졌을 때 검색할 때마다 전부 읽어야 해서 느려집니다.
+  @override
+  Future<List<ReferenceItem>> search(ReferenceQuery query) async {
+    final SimpleSelectStatement<$ReferencesTable, ReferenceRow> statement =
+        _db.select(_db.references);
+
+    // 지운 항목은 언제나 제외합니다.
+    statement.where(($ReferencesTable t) => t.deletedAt.isNull());
+
+    // ── 검색어: 제목이나 메모에 들어있으면 통과 ──
+    final String keyword = query.searchText.trim();
+    if (keyword.isNotEmpty) {
+      statement.where(($ReferencesTable t) {
+        return _containsText(t.title, keyword) | _containsText(t.memo, keyword);
+      });
+    }
+
+    // ── 폴더 / 카테고리 필터 ──
+    final String? folderId = query.folderId;
+    if (folderId != null) {
+      statement.where(($ReferencesTable t) => t.folderId.equals(folderId));
+    }
+
+    final String? categoryId = query.categoryId;
+    if (categoryId != null) {
+      statement.where(($ReferencesTable t) => t.categoryId.equals(categoryId));
+    }
+
+    // ── 즐겨찾기 필터 ──
+    if (query.favoritesOnly) {
+      statement.where(($ReferencesTable t) => t.isFavorite.equals(true));
+    }
+
+    // ── 태그 / 프로젝트 필터 ──
+    // 이 둘은 다른 표(연결 표)에 있어서 위와 같은 방식으로는 못 거릅니다.
+    // "연결 표에 이 레퍼런스와 이 태그를 잇는 살아있는 줄이 있는가"를 묻습니다.
+    final String? tagId = query.tagId;
+    if (tagId != null) {
+      statement.where(($ReferencesTable t) => _hasLink(t, tagId));
+    }
+
+    final String? projectId = query.projectId;
+    if (projectId != null) {
+      statement.where(($ReferencesTable t) => _hasLink(t, projectId));
+    }
+
+    // ── 정렬 ──
+    // 핀 고정을 항상 맨 앞에 두고, 그다음에 사용자가 고른 순서를 적용합니다.
+    // 순서가 반대면 "정렬을 바꾸면 고정이 풀린 것처럼 보이는" 문제가 생깁니다.
+    statement.orderBy(<OrderClauseGenerator<$ReferencesTable>>[
+      ($ReferencesTable t) =>
+          OrderingTerm(expression: t.isPinned, mode: OrderingMode.desc),
+      _orderingFor(query.sortOrder),
+    ]);
+
+    final List<ReferenceRow> rows = await statement.get();
+
+    final List<ReferenceItem> result = <ReferenceItem>[];
+    for (final ReferenceRow row in rows) {
+      result.add(await _toModel(row));
+    }
+    return result;
+  }
+
+  /// [column]의 글자 안에 [needle]이 들어있는지를 묻는 조건을 만듭니다. 대소문자는 무시합니다.
+  ///
+  /// ── LIKE를 쓰지 않는 이유 ──
+  /// 보통 검색은 `LIKE '%검색어%'`로 합니다. 그런데 LIKE에서 `%`는 "아무 글자나
+  /// 몇 개든", `_`는 "아무 글자 한 개"라는 **특수한 뜻**을 가집니다.
+  /// 그래서 사용자가 "50%"나 "IMG_1234"를 검색하면 그 글자들이 와일드카드로
+  /// 해석되어 엉뚱한 결과가 나옵니다.
+  ///
+  /// 막으려면 `\`로 감싸고 `ESCAPE '\'`를 붙여야 하는데, 이걸 빠뜨리면
+  /// 오히려 `\`를 글자 그대로 찾게 되어 더 나빠집니다(실제로 처음에 그렇게 틀렸습니다).
+  ///
+  /// `instr(찾을대상, 검색어)`는 **와일드카드 개념 자체가 없어서** 언제나 글자
+  /// 그대로 찾습니다. 들어있으면 그 위치(1부터), 없으면 0을 돌려줍니다.
+  /// 양쪽 다 lower()로 소문자로 바꿔서 대소문자를 구분하지 않게 합니다.
+  Expression<bool> _containsText(Expression<String> column, String needle) {
+    return FunctionCallExpression<int>('instr', <Expression<Object>>[
+      column.lower(),
+      Variable<String>(needle.toLowerCase()),
+    ]).isBiggerThanValue(0);
+  }
+
+  /// 이 레퍼런스에 [taxonomyItemId]가 붙어 있는지를 묻는 조건을 만듭니다.
+  ///
+  /// 태그와 프로젝트는 같은 연결 표에 들어있고, id 자체가 세상에 하나뿐이라
+  /// 종류를 따로 확인하지 않아도 됩니다.
+  Expression<bool> _hasLink($ReferencesTable t, String taxonomyItemId) {
+    return existsQuery(
+      _db.select(_db.referenceTaxonomyLinks)
+        ..where(($ReferenceTaxonomyLinksTable link) =>
+            link.referenceId.equalsExp(t.id) &
+            link.taxonomyItemId.equals(taxonomyItemId) &
+            link.deletedAt.isNull()),
+    );
+  }
+
+  /// 정렬 방식에 맞는 정렬 조건을 만들어 돌려줍니다.
+  OrderClauseGenerator<$ReferencesTable> _orderingFor(ReferenceSortOrder order) {
+    switch (order) {
+      case ReferenceSortOrder.recentlyUpdated:
+        return ($ReferencesTable t) =>
+            OrderingTerm(expression: t.updatedAt, mode: OrderingMode.desc);
+
+      case ReferenceSortOrder.recentlyAdded:
+        return ($ReferencesTable t) =>
+            OrderingTerm(expression: t.createdAt, mode: OrderingMode.desc);
+
+      case ReferenceSortOrder.oldestAdded:
+        return ($ReferencesTable t) =>
+            OrderingTerm(expression: t.createdAt, mode: OrderingMode.asc);
+
+      case ReferenceSortOrder.titleAscending:
+        return ($ReferencesTable t) =>
+            OrderingTerm(expression: t.title, mode: OrderingMode.asc);
+    }
   }
 
   /// id로 레퍼런스 하나를 찾습니다. 없거나 지워졌으면 null입니다.
