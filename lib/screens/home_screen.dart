@@ -11,16 +11,21 @@
 // 이 파일은 안 고쳐도 됩니다. (CLAUDE.md 설계 원칙 3)
 
 
+import 'dart:async';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import '../models/enums.dart';
 import '../models/reference_item.dart';
+import '../models/reference_query.dart';
+import '../models/taxonomy_item.dart';
 import '../repositories/reference_repository.dart';
 import '../repositories/taxonomy_repository.dart';
 import '../services/image_storage.dart';
 import '../utils/id_generator.dart';
 import '../widgets/reference_card.dart';
+import '../widgets/reference_filter_bar.dart';
 import 'reference_detail_screen.dart';
 
 /// 레퍼런스 목록 화면입니다.
@@ -68,16 +73,96 @@ class _HomeScreenState extends State<HomeScreen> {
   /// 누르면 같은 사진이 여러 장 들어가므로, 진행 중에는 버튼을 잠급니다.
   bool _isAdding = false;
 
+  /// 지금 걸려 있는 검색·필터·정렬 조건입니다.
+  ReferenceQuery _query = const ReferenceQuery();
+
+  /// 검색 입력창을 다루는 도구입니다.
+  final TextEditingController _searchController = TextEditingController();
+
+  /// 검색을 잠시 미뤄두는 타이머입니다. (디바운스)
+  Timer? _searchDebounce;
+
+  /// 고를 수 있는 분류 항목들입니다. 필터 메뉴를 채우는 데 씁니다.
+  Map<TaxonomyKind, List<TaxonomyItem>> _taxonomyOptions =
+      <TaxonomyKind, List<TaxonomyItem>>{};
+
   /// 화면이 처음 만들어질 때 딱 한 번 실행됩니다.
   @override
   void initState() {
     super.initState();
+
+    // 검색창에 글자가 바뀔 때마다 알림을 받습니다.
+    _searchController.addListener(_onSearchTextChanged);
+
+    _loadTaxonomyOptions();
     _loadItems();
   }
 
-  /// 저장된 레퍼런스를 불러와 화면에 반영합니다.
+  /// 화면이 사라질 때 만들어둔 것들을 정리합니다.
+  ///
+  /// 타이머를 안 끄면 화면을 닫은 뒤에 타이머가 깨어나서
+  /// 이미 없어진 화면을 고치려다 오류를 냅니다.
+  @override
+  void dispose() {
+    _searchDebounce?.cancel();
+    _searchController.removeListener(_onSearchTextChanged);
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  /// 검색창의 글자가 바뀌었을 때 실행됩니다.
+  ///
+  /// ── 디바운스: 왜 바로 검색하지 않나 ──
+  /// "노을"을 치면 ㄴ→노→놀→노으→노을 순으로 다섯 번 바뀝니다. 그때마다
+  /// 데이터베이스를 뒤지면 쓸데없는 검색을 네 번 더 하게 되고, 글자가 많아지면
+  /// 입력이 버벅입니다.
+  ///
+  /// 그래서 글자가 바뀌면 바로 검색하지 않고 300밀리초를 기다립니다.
+  /// 그 사이에 또 입력하면 타이머를 취소하고 다시 셉니다.
+  /// 결과적으로 **타이핑을 멈췄을 때 한 번만** 검색합니다.
+  void _onSearchTextChanged() {
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 300), () {
+      final String text = _searchController.text;
+
+      // 글자가 실제로 달라졌을 때만 다시 불러옵니다.
+      if (text == _query.searchText) {
+        return;
+      }
+
+      _applyQuery(_query.copyWith(searchText: text));
+    });
+  }
+
+  /// 조건을 바꾸고 목록을 다시 불러옵니다.
+  void _applyQuery(ReferenceQuery query) {
+    setState(() {
+      _query = query;
+    });
+    _loadItems();
+  }
+
+  /// 필터 메뉴에 쓸 분류 항목 목록을 불러옵니다.
+  Future<void> _loadTaxonomyOptions() async {
+    final Map<TaxonomyKind, List<TaxonomyItem>> loaded =
+        <TaxonomyKind, List<TaxonomyItem>>{};
+
+    for (final TaxonomyKind kind in TaxonomyKind.values) {
+      loaded[kind] = await widget.taxonomyRepository.getAll(kind);
+    }
+
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _taxonomyOptions = loaded;
+    });
+  }
+
+  /// 조건에 맞는 레퍼런스를 불러와 화면에 반영합니다.
   Future<void> _loadItems() async {
-    final List<ReferenceItem> items = await widget.repository.getAll();
+    final List<ReferenceItem> items = await widget.repository.search(_query);
 
     // 각 이미지의 실제 경로를 미리 구해둡니다.
     final Map<String, String> paths = <String, String>{};
@@ -213,6 +298,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
     // 저장 없이 그냥 뒤로 나왔으면 다시 불러올 필요가 없습니다.
     if (changed == true) {
+      // 편집 화면에서 새 폴더나 태그를 만들었을 수 있으므로
+      // 필터 메뉴 목록도 함께 갱신합니다. 안 하면 방금 만든 태그가
+      // 필터 메뉴에 안 보여서 "왜 없지?" 하게 됩니다.
+      await _loadTaxonomyOptions();
       await _loadItems();
     }
   }
@@ -248,7 +337,19 @@ class _HomeScreenState extends State<HomeScreen> {
         title: const Text('레퍼런스 아카이브'),
         backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
       ),
-      body: _buildBody(),
+      // 검색·필터 줄은 항상 위에 붙어 있고, 그 아래 내용만 바뀝니다.
+      // 결과가 없을 때도 검색창이 남아 있어야 조건을 고칠 수 있습니다.
+      body: Column(
+        children: <Widget>[
+          ReferenceFilterBar(
+            query: _query,
+            searchController: _searchController,
+            taxonomyOptions: _taxonomyOptions,
+            onQueryChanged: _applyQuery,
+          ),
+          Expanded(child: _buildBody()),
+        ],
+      ),
       floatingActionButton: FloatingActionButton.extended(
         // 추가하는 중에는 null을 넣어 버튼을 잠급니다.
         // Flutter에서는 onPressed가 null이면 버튼이 자동으로 비활성화됩니다.
@@ -278,10 +379,17 @@ class _HomeScreenState extends State<HomeScreen> {
     return _buildGrid();
   }
 
-  /// 저장된 레퍼런스가 하나도 없을 때 보여줄 안내입니다.
+  /// 보여줄 레퍼런스가 없을 때의 안내입니다.
+  ///
+  /// **"아직 아무것도 없음"과 "조건에 맞는 게 없음"을 구분해서 보여줍니다.**
+  /// 사진이 100장 있는데 "아직 없습니다"라고 하면 사용자가 데이터가 날아간 줄 알고,
+  /// 반대로 하나도 없는데 "조건에 맞는 게 없다"고 하면 있지도 않은 조건을
+  /// 지우려고 헤매게 됩니다.
   Widget _buildEmptyState() {
     final ColorScheme colors = Theme.of(context).colorScheme;
     final TextTheme textStyles = Theme.of(context).textTheme;
+
+    final bool isFiltered = _query.hasAnyFilter;
 
     return Center(
       child: Padding(
@@ -289,19 +397,36 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: <Widget>[
-            Icon(Icons.photo_library_outlined, size: 64, color: colors.primary),
+            Icon(
+              isFiltered ? Icons.search_off : Icons.photo_library_outlined,
+              size: 64,
+              color: colors.primary,
+            ),
             const SizedBox(height: 24),
             Text(
-              '아직 모아둔 레퍼런스가 없습니다',
+              isFiltered ? '조건에 맞는 레퍼런스가 없습니다' : '아직 모아둔 레퍼런스가 없습니다',
               style: textStyles.titleMedium,
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 8),
             Text(
-              '오른쪽 아래 버튼으로 이미지를 추가해보세요.',
+              isFiltered
+                  ? '검색어나 필터를 바꿔보세요.'
+                  : '오른쪽 아래 버튼으로 이미지를 추가해보세요.',
               style: textStyles.bodyMedium?.copyWith(color: colors.onSurfaceVariant),
               textAlign: TextAlign.center,
             ),
+            if (isFiltered) ...<Widget>[
+              const SizedBox(height: 16),
+              FilledButton.tonalIcon(
+                onPressed: () {
+                  _searchController.clear();
+                  _applyQuery(_query.clearAll());
+                },
+                icon: const Icon(Icons.filter_alt_off_outlined),
+                label: const Text('조건 지우기'),
+              ),
+            ],
           ],
         ),
       ),
