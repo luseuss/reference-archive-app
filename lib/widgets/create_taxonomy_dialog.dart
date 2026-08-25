@@ -12,6 +12,7 @@ import 'package:flutter/material.dart';
 import '../models/enums.dart';
 import '../models/taxonomy_item.dart';
 import '../repositories/taxonomy_repository.dart';
+import '../utils/korean_particle.dart';
 import '../utils/id_generator.dart';
 
 /// 새 분류 항목을 만드는 대화상자를 띄웁니다.
@@ -89,8 +90,8 @@ class _CreateTaxonomyDialogState extends State<_CreateTaxonomyDialog> {
     if (alreadyExists) {
       setState(() {
         _isSaving = false;
-        // "태그이(가)"처럼 어색해지지 않도록 조사를 붙이지 않고 끝냅니다.
-        _errorText = '이미 같은 이름의 ${widget.kind.displayName}이 있습니다.';
+        // 조사(이/가)는 앞 글자 받침에 따라 달라지므로 자동으로 고릅니다.
+        _errorText = '같은 이름의 ${withSubjectParticle(widget.kind.displayName)} 이미 있습니다.';
       });
       return;
     }

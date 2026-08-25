@@ -27,6 +27,7 @@ import '../utils/id_generator.dart';
 import '../widgets/reference_card.dart';
 import '../widgets/reference_filter_bar.dart';
 import 'reference_detail_screen.dart';
+import 'taxonomy_manage_screen.dart';
 
 /// 레퍼런스 목록 화면입니다.
 ///
@@ -280,6 +281,31 @@ class _HomeScreenState extends State<HomeScreen> {
     await _loadItems();
   }
 
+  /// 분류 관리 화면을 열고, 돌아오면 목록을 다시 불러옵니다.
+  Future<void> _openTaxonomyManage() async {
+    final bool? changed = await Navigator.of(context).push<bool>(
+      MaterialPageRoute<bool>(
+        builder: (BuildContext context) => TaxonomyManageScreen(
+          repository: widget.taxonomyRepository,
+        ),
+      ),
+    );
+
+    if (changed != true) {
+      return;
+    }
+
+    // 분류를 지웠으면 지금 걸어둔 필터가 없어진 항목을 가리킬 수 있습니다.
+    // 그대로 두면 아무것도 안 나오는데 이유를 알 수 없으므로 조건을 지웁니다.
+    await _loadTaxonomyOptions();
+    if (mounted && _query.hasAnyFilter) {
+      _searchController.clear();
+      _applyQuery(_query.clearAll());
+    } else {
+      await _loadItems();
+    }
+  }
+
   /// 편집 화면을 열고, 돌아오면 목록을 다시 불러옵니다.
   Future<void> _openDetail(ReferenceItem item) async {
     // push는 새 화면을 띄우고, 그 화면이 닫힐 때까지 기다렸다가
@@ -336,6 +362,13 @@ class _HomeScreenState extends State<HomeScreen> {
       appBar: AppBar(
         title: const Text('레퍼런스 아카이브'),
         backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+        actions: <Widget>[
+          IconButton(
+            onPressed: _openTaxonomyManage,
+            icon: const Icon(Icons.folder_special_outlined),
+            tooltip: '분류 관리',
+          ),
+        ],
       ),
       // 검색·필터 줄은 항상 위에 붙어 있고, 그 아래 내용만 바뀝니다.
       // 결과가 없을 때도 검색창이 남아 있어야 조건을 고칠 수 있습니다.

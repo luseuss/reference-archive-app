@@ -128,6 +128,53 @@ class LocalTaxonomyRepository implements TaxonomyRepository {
     return false;
   }
 
+  /// 이 분류 항목을 쓰고 있는 살아있는 레퍼런스가 몇 개인지 세어 돌려줍니다.
+  ///
+  /// 폴더·카테고리로 쓰이는 경우와 태그·프로젝트로 쓰이는 경우를 모두 셉니다.
+  /// 종류를 따로 확인하지 않아도 되는 이유: id 자체가 세상에 하나뿐이라
+  /// 어차피 한쪽에서만 걸립니다.
+  @override
+  Future<int> countReferencesUsing(String id) async {
+    // 폴더나 카테고리로 쓰이는 레퍼런스
+    final int directCount = await _db
+        .references
+        .count(
+          where: ($ReferencesTable t) =>
+              (t.folderId.equals(id) | t.categoryId.equals(id)) &
+              t.deletedAt.isNull(),
+        )
+        .getSingle();
+
+    // 태그나 프로젝트로 붙어있는 레퍼런스
+    //
+    // 연결 표만 세면 안 됩니다. 레퍼런스가 지워졌어도 연결 줄은 남아 있어서,
+    // "이미 지운 사진 3개가 이 태그를 쓴다"는 엉뚱한 안내가 나갑니다.
+    // 그래서 살아있는 레퍼런스와 이어붙여(join) 확인합니다.
+    final JoinedSelectStatement<HasResultSet, dynamic> linkQuery =
+        _db.selectOnly(_db.referenceTaxonomyLinks).join(
+      <Join<HasResultSet, dynamic>>[
+        innerJoin(
+          _db.references,
+          _db.references.id.equalsExp(_db.referenceTaxonomyLinks.referenceId),
+        ),
+      ],
+    );
+
+    final Expression<int> linkCount =
+        _db.referenceTaxonomyLinks.referenceId.count();
+    linkQuery.addColumns(<Expression<Object>>[linkCount]);
+    linkQuery.where(
+      _db.referenceTaxonomyLinks.taxonomyItemId.equals(id) &
+          _db.referenceTaxonomyLinks.deletedAt.isNull() &
+          _db.references.deletedAt.isNull(),
+    );
+
+    final TypedResult linkRow = await linkQuery.getSingle();
+    final int linkedCount = linkRow.read(linkCount) ?? 0;
+
+    return directCount + linkedCount;
+  }
+
   /// 데이터베이스에서 읽은 한 줄을 화면이 쓸 모델로 바꿉니다.
   ///
   /// kind가 모르는 값이면 null을 돌려줍니다. 폴더를 태그로 잘못 취급하는 것보다
