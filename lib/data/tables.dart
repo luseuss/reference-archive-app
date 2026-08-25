@@ -4,7 +4,7 @@
 // 실제 SQL과 Dart 코드를 자동으로 만들어줍니다. 이 파일을 고친 뒤에는 반드시
 // 아래를 실행해야 반영됩니다.
 //
-//   dart run build_runner build --delete-conflicting-outputs
+//   dart run build_runner build
 //
 // 안 하면 "정의는 고쳤는데 앱은 그대로"인 상태가 됩니다.
 //

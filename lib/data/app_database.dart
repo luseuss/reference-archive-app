@@ -4,10 +4,11 @@
 // 실제로 어디에 만들지"를 정합니다.
 //
 // 이 파일을 고친 뒤에는 반드시 아래를 실행해야 반영됩니다.
-//   dart run build_runner build --delete-conflicting-outputs
+//   dart run build_runner build
 
 import 'package:drift/drift.dart';
 import 'package:drift_flutter/drift_flutter.dart';
+import 'package:path_provider/path_provider.dart';
 
 import 'tables.dart';
 
@@ -69,9 +70,23 @@ class AppDatabase extends _$AppDatabase {
 
 /// 데이터베이스 파일을 어디에 만들지 정합니다.
 ///
-/// 경로를 직접 적지 않고 driftDatabase()에 이름만 넘깁니다.
-/// 그러면 Windows·Android·iOS 각각의 "앱 전용 데이터 폴더"를 알아서 찾아줍니다.
-/// 기기마다 그 위치가 다르기 때문에 절대경로를 코드에 적어두면 안 됩니다.
+/// 경로를 직접 적지 않습니다. 기기마다 앱 데이터 폴더 위치가 다르기 때문에
+/// 절대경로를 코드에 적어두면 안 됩니다(설계 원칙 4-4).
+///
+/// ── databaseDirectory를 직접 지정한 이유 ──
+/// 아무것도 지정하지 않으면 drift는 getApplicationDocumentsDirectory()를 씁니다.
+/// 그런데 Windows에서 그곳은 **사용자의 "문서" 폴더**입니다. 그대로 두면
+/// 사용자 문서 폴더 한가운데에 reference_archive.sqlite가 툭 생깁니다.
+///
+/// getApplicationSupportDirectory()는 앱 전용 폴더
+/// (Windows에서는 %APPDATA%\com.luseuss\reference_archive_app)를 알려줍니다.
+/// 사용자 눈에 띄지 않는 곳이고, 앱을 지울 때 함께 정리되는 자리입니다.
+/// 이미지 파일도 같은 곳에 저장합니다(lib/services/local_image_storage.dart).
 QueryExecutor _openConnection() {
-  return driftDatabase(name: 'reference_archive');
+  return driftDatabase(
+    name: 'reference_archive',
+    native: DriftNativeOptions(
+      databaseDirectory: getApplicationSupportDirectory,
+    ),
+  );
 }

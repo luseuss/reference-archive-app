@@ -162,3 +162,119 @@ drift는 기본적으로 시각을 정수 타임스탬프로 저장하고 읽을
   drift에서 표를 나중에 추가하는 것은 `schemaVersion`을 올리고 `migration`에
   `m.createTable(...)` 한 줄을 더하면 되어서 어렵지 않습니다.
 - 검색·일괄 선택·정렬 옵션은 2단계 항목이라 아직 없습니다.
+
+---
+
+## PR #3 — 레퍼런스 추가·목록·삭제 화면 + 이미지 자동 리사이즈
+
+**무엇을 했나**
+
+PR #2에서 만든 저장 계층 위에 **실제로 쓸 수 있는 화면**을 올렸습니다.
+이걸로 1단계(뼈대와 저장)가 완료됩니다.
+
+1. **이미지 추가** — 오른쪽 아래 버튼으로 파일을 고르면(여러 장 동시 가능)
+   크기를 줄여서 앱 폴더에 저장하고 목록에 추가합니다.
+2. **목록** — 격자로 표시. 칸 개수를 고정하지 않고 **칸 너비**를 정해서,
+   창을 넓히면 칸이 늘고 폰처럼 좁은 화면에서는 저절로 줄어듭니다.
+   데스크톱·모바일용 화면을 따로 만들지 않아도 됩니다.
+3. **삭제** — 카드의 휴지통 버튼. 소프트 삭제라 **이미지 파일은 남겨둡니다**
+   (되살렸을 때 그림 없는 빈 껍데기가 되지 않도록).
+4. **이미지 자동 리사이즈** — 긴 변 1600px, JPEG 품질 85 (기존 웹앱과 동일 기준).
+   원본이 1600px보다 작으면 억지로 키우지 않습니다.
+
+**구조**
+
+```
+lib/services/
+  image_resizer.dart        크기 줄이기 계산만 (파일·화면과 무관한 순수 함수)
+  image_storage.dart        파일 저장 "약속"
+  local_image_storage.dart  실제 파일 저장 구현
+lib/widgets/
+  reference_card.dart       카드 한 장의 생김새
+lib/screens/
+  home_screen.dart          목록 화면
+```
+
+**설계하다 막혀서 구조를 바꾼 부분 (중요)**
+
+처음에는 `ImageStorageService` 하나에 전부 넣었는데, 위젯 테스트가
+**`pumpAndSettle timed out`으로 멈춰버렸습니다.**
+
+원인: `getApplicationSupportDirectory()`는 **플러그인**이라 테스트 환경에는
+대답해줄 상대가 없어서 영원히 기다립니다. 화면이 플랫폼 의존 코드에 직접
+묶여 있으면 화면을 테스트할 수 없다는 뜻입니다.
+
+그래서 저장소(repositories/)와 **똑같은 방식**으로 나눴습니다.
+- `ImageStorage` (약속) ← 화면은 이것만 압니다
+- `LocalImageStorage` (실제 구현)
+- `FakeImageStorage` (테스트용, 파일을 안 만들고 즉시 대답)
+
+설계 원칙 4-3이 "나중에 서버 붙이기"뿐 아니라 **지금 당장 테스트를 가능하게
+하는 것**에도 쓰인 사례입니다.
+
+**잡은 버그 2개**
+
+1. **그림이 아닌 파일을 고르면 앱이 터졌음** — `img.decodeImage()`는 문서상
+   "못 읽으면 null"이지만 실제로는 **오류를 내며 터집니다**(내부적으로 여러 형식을
+   하나씩 시험해보다가 데이터 범위를 벗어나 읽음). 사용자가 실수로 텍스트 파일을
+   고르면 앱이 꺼졌을 것입니다. `image_resizer.dart`의 `_tryDecode()`로 감쌌습니다.
+
+2. **데이터베이스와 이미지가 사용자 "문서" 폴더에 저장되고 있었음** — drift와
+   path_provider의 기본값이 `getApplicationDocumentsDirectory()`인데, Windows에서
+   그곳은 사용자의 문서 폴더입니다. 실제로 실행해보니
+   `C:\Users\...\Documents\reference_archive.sqlite`가 생겼고, 이미지는
+   `Documents\images\`에 들어갈 참이었습니다. **사용자가 직접 만든 images 폴더와
+   충돌할 수 있는 위험**입니다. 양쪽 다 `getApplicationSupportDirectory()`
+   (`%APPDATA%\com.luseuss\reference_archive_app`)로 바꿨습니다.
+
+**나중에 이 부분을 고치려면 어디를 보면 되나**
+
+| 고치고 싶은 것 | 봐야 할 곳 |
+|---|---|
+| 리사이즈 기준 (1600px / 품질 85) | `lib/services/image_resizer.dart`의 `maxImageLongEdge`, `jpegQuality` |
+| 저장 형식(JPEG 말고 다른 것) | 같은 파일의 `resizeImageBytes()` 안 `encodeJpg` |
+| 이미지 저장 위치 | `lib/services/local_image_storage.dart`의 `_getImagesDirectory()` |
+| 데이터베이스 파일 위치 | `lib/data/app_database.dart`의 `_openConnection()` |
+| 카드 생김새 (제목·버튼·썸네일) | `lib/widgets/reference_card.dart` |
+| 격자 칸 크기·간격 | `lib/screens/home_screen.dart`의 `_buildGrid()` |
+| 비어 있을 때 안내 문구 | 같은 파일의 `_buildEmptyState()` |
+| 추가 후 뜨는 메시지 | 같은 파일의 `_showResultMessage()` |
+| 새 레퍼런스의 기본 제목 | 같은 파일의 `_saveOneImage()` |
+
+**새로 나온 개념 3가지**
+
+- **StatefulWidget과 setState** — 화면에 보이는 내용이 변하는 화면은
+  StatefulWidget으로 만듭니다. 값을 바꾼 뒤 `setState(...)`를 부르면 Flutter가
+  "바뀌었으니 다시 그려라"를 알아듣습니다. setState 없이 값만 바꾸면 화면은 그대로입니다.
+- **compute (별도 작업 공간)** — 큰 사진의 크기를 줄이는 건 무거운 일이라,
+  그냥 하면 그동안 화면이 얼어붙습니다. `compute()`는 그 일을 옆 작업 공간에서
+  처리해줍니다. 단, 넘기는 함수는 **클래스 밖 최상위 함수**여야 합니다.
+- **가짜(Fake)로 갈아끼우기** — 테스트에서 진짜 파일 저장 대신 가짜를 넣습니다.
+  화면이 구현체가 아니라 약속에 의존하기 때문에 가능한 일입니다.
+
+**어떻게 테스트했나**
+
+- `flutter analyze` — 문제 없음
+- `flutter test` — **50건 전부 통과** (기존 30건 + 새로 20건)
+  - 화면 4건: 빈 목록 안내, 목록에 제목 표시, 제목 없을 때 "(제목 없음)",
+    **휴지통 버튼을 실제로 눌러서** 목록과 데이터베이스 양쪽에서 사라지는지
+  - 리사이즈 8건: 가로/세로/정사각형, 작은 이미지는 안 키움, 정확히 1600px,
+    PNG→JPEG 변환, 픽셀 수 감소, 그림 아닌 파일
+  - 실제 파일 저장 8건: 파일 생성, .jpg 확장자, 저장 후 크기 확인,
+    이름 중복 없음, 그림 아닌 파일은 쓰레기 안 남김, 삭제, 없는 파일 삭제,
+    앱 폴더 안에 저장되는지
+- **실제 앱 실행 확인** — `flutter run -d windows`로 띄워서 데이터베이스가
+  올바른 위치(`%APPDATA%\com.luseuss\reference_archive_app`)에 만들어지고,
+  사용자 문서 폴더는 깨끗한 것까지 확인했습니다.
+
+**한계 / 아직 확인 못 한 것**
+
+- **파일 고르기 창을 눌러보는 것은 자동으로 못 합니다.** 운영체제가 띄우는
+  창이라 테스트에서 조작할 수 없습니다. 다만 창이 닫힌 뒤의 처리(크기 줄이기,
+  파일 저장, 목록 추가)는 전부 테스트로 검증했습니다.
+  **실제로 이미지를 넣어보는 것은 직접 해보셔야 합니다.**
+- **릴리스 exe는 Smart App Control이 막습니다.** 개발 중에는
+  `flutter run -d windows`로 실행하면 됩니다.
+- 지운 이미지 파일은 디스크에 남습니다. 안 쓰는 파일을 정리하는 기능은
+  나중에 따로 만듭니다.
+- 제목 고치기, 검색, 폴더 지정 등은 2단계 항목입니다.
