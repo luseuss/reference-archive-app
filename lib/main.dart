@@ -21,7 +21,9 @@ import 'package:flutter/material.dart';
 
 import 'data/app_database.dart';
 import 'repositories/local_reference_repository.dart';
+import 'repositories/local_taxonomy_repository.dart';
 import 'repositories/reference_repository.dart';
+import 'repositories/taxonomy_repository.dart';
 import 'screens/home_screen.dart';
 import 'services/image_storage.dart';
 import 'services/local_image_storage.dart';
@@ -37,6 +39,7 @@ void main() {
   runApp(
     ReferenceArchiveApp(
       referenceRepository: LocalReferenceRepository(database),
+      taxonomyRepository: LocalTaxonomyRepository(database),
       imageStorage: LocalImageStorage(),
     ),
   );
@@ -47,6 +50,7 @@ class ReferenceArchiveApp extends StatelessWidget {
   const ReferenceArchiveApp({
     super.key,
     required this.referenceRepository,
+    required this.taxonomyRepository,
     required this.imageStorage,
   });
 
@@ -56,6 +60,9 @@ class ReferenceArchiveApp extends StatelessWidget {
   /// 중요합니다. 이렇게 해두면 나중에 서버용 구현체로 바꿀 때 이 파일의 한 줄만
   /// 고치면 되고, 화면 코드는 전혀 안 건드려도 됩니다.
   final ReferenceRepository referenceRepository;
+
+  /// 폴더·카테고리·태그·프로젝트를 읽고 쓰는 통로입니다.
+  final TaxonomyRepository taxonomyRepository;
 
   /// 이미지 파일을 저장하고 경로를 알려주는 도구입니다.
   final ImageStorage imageStorage;
@@ -81,6 +88,7 @@ class ReferenceArchiveApp extends StatelessWidget {
 
       home: HomeScreen(
         repository: referenceRepository,
+        taxonomyRepository: taxonomyRepository,
         imageStorage: imageStorage,
       ),
     );

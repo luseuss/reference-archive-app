@@ -17,6 +17,7 @@ class ReferenceCard extends StatelessWidget {
     required this.item,
     required this.imagePath,
     required this.onDelete,
+    required this.onTap,
   });
 
   /// 보여줄 레퍼런스
@@ -35,6 +36,9 @@ class ReferenceCard extends StatelessWidget {
   /// 카드는 생김새만 책임지게 두는 편이 나중에 고치기 쉽습니다.
   final VoidCallback onDelete;
 
+  /// 카드를 눌렀을 때 실행할 동작입니다. (편집 화면 열기)
+  final VoidCallback onTap;
+
   /// 카드의 생김새를 만들어 돌려줍니다.
   @override
   Widget build(BuildContext context) {
@@ -42,37 +46,54 @@ class ReferenceCard extends StatelessWidget {
 
     return Card(
       clipBehavior: Clip.antiAlias,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: <Widget>[
-          // 카드의 그림 부분입니다. 남는 공간을 전부 차지하도록 Expanded로 감쌉니다.
-          Expanded(child: _buildThumbnail(colors)),
 
-          // 카드 아래쪽 제목과 삭제 버튼입니다.
-          Padding(
-            padding: const EdgeInsets.only(left: 12, right: 4, top: 4, bottom: 4),
-            child: Row(
-              children: <Widget>[
-                Expanded(
-                  child: Text(
-                    item.title.isEmpty ? '(제목 없음)' : item.title,
-                    // 제목이 길면 카드를 밀어내지 않고 ...으로 줄입니다.
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.bodyMedium,
+      // InkWell로 감싸면 누를 수 있게 되고, 누를 때 물결 효과도 함께 나옵니다.
+      // 삭제 버튼은 이 안에 있지만 자기 동작이 따로 있어서 카드 열기와 섞이지 않습니다.
+      child: InkWell(
+        onTap: onTap,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            // 카드의 그림 부분입니다. 남는 공간을 전부 차지하도록 Expanded로 감쌉니다.
+            Expanded(child: _buildThumbnail(colors)),
+
+            // 카드 아래쪽 제목과 표시들, 삭제 버튼입니다.
+            Padding(
+              padding: const EdgeInsets.only(left: 12, right: 4, top: 4, bottom: 4),
+              child: Row(
+                children: <Widget>[
+                  // 고정·즐겨찾기 표시는 켜져 있을 때만 보입니다.
+                  if (item.isPinned)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 4),
+                      child: Icon(Icons.push_pin, size: 14, color: colors.primary),
+                    ),
+                  if (item.isFavorite)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 4),
+                      child: Icon(Icons.star, size: 14, color: colors.primary),
+                    ),
+                  Expanded(
+                    child: Text(
+                      item.title.isEmpty ? '(제목 없음)' : item.title,
+                      // 제목이 길면 카드를 밀어내지 않고 ...으로 줄입니다.
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    ),
                   ),
-                ),
-                IconButton(
-                  onPressed: onDelete,
-                  icon: const Icon(Icons.delete_outline),
-                  tooltip: '삭제',
-                  iconSize: 20,
-                  color: colors.onSurfaceVariant,
-                ),
-              ],
+                  IconButton(
+                    onPressed: onDelete,
+                    icon: const Icon(Icons.delete_outline),
+                    tooltip: '삭제',
+                    iconSize: 20,
+                    color: colors.onSurfaceVariant,
+                  ),
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

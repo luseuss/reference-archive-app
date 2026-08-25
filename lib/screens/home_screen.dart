@@ -17,9 +17,11 @@ import 'package:flutter/material.dart';
 import '../models/enums.dart';
 import '../models/reference_item.dart';
 import '../repositories/reference_repository.dart';
+import '../repositories/taxonomy_repository.dart';
 import '../services/image_storage.dart';
 import '../utils/id_generator.dart';
 import '../widgets/reference_card.dart';
+import 'reference_detail_screen.dart';
 
 /// 레퍼런스 목록 화면입니다.
 ///
@@ -29,11 +31,16 @@ class HomeScreen extends StatefulWidget {
   const HomeScreen({
     super.key,
     required this.repository,
+    required this.taxonomyRepository,
     required this.imageStorage,
   });
 
   /// 레퍼런스를 읽고 쓰는 통로입니다.
   final ReferenceRepository repository;
+
+  /// 폴더·카테고리·태그·프로젝트를 읽고 쓰는 통로입니다.
+  /// 이 화면에서 직접 쓰지는 않고 편집 화면으로 넘겨줍니다.
+  final TaxonomyRepository taxonomyRepository;
 
   /// 이미지 파일을 저장하고 경로를 알려주는 도구입니다.
   final ImageStorage imageStorage;
@@ -188,6 +195,28 @@ class _HomeScreenState extends State<HomeScreen> {
     await _loadItems();
   }
 
+  /// 편집 화면을 열고, 돌아오면 목록을 다시 불러옵니다.
+  Future<void> _openDetail(ReferenceItem item) async {
+    // push는 새 화면을 띄우고, 그 화면이 닫힐 때까지 기다렸다가
+    // 닫으면서 돌려준 값을 받습니다.
+    // 편집 화면은 저장했을 때만 true를 돌려줍니다.
+    final bool? changed = await Navigator.of(context).push<bool>(
+      MaterialPageRoute<bool>(
+        builder: (BuildContext context) => ReferenceDetailScreen(
+          item: item,
+          referenceRepository: widget.repository,
+          taxonomyRepository: widget.taxonomyRepository,
+          imageStorage: widget.imageStorage,
+        ),
+      ),
+    );
+
+    // 저장 없이 그냥 뒤로 나왔으면 다시 불러올 필요가 없습니다.
+    if (changed == true) {
+      await _loadItems();
+    }
+  }
+
   /// 추가 결과를 화면 아래쪽에 잠깐 띄웁니다.
   void _showResultMessage(int savedCount, int failedCount) {
     String message;
@@ -303,6 +332,7 @@ class _HomeScreenState extends State<HomeScreen> {
           item: item,
           imagePath: _imagePaths[item.id],
           onDelete: () => _deleteItem(item),
+          onTap: () => _openDetail(item),
         );
       },
     );
