@@ -69,12 +69,28 @@
 3. **Repository 패턴(원칙 3)과 잘 맞음** — 테이블 정의와 쿼리가 Dart 클래스로 나오기 때문에
    나중에 서버용 구현체로 갈아끼울 때 인터페이스 모양을 맞추기 쉽습니다.
 
-대신 drift는 **코드 생성**을 씁니다. 테이블 정의를 고친 뒤에는 아래를 실행해야
-생성된 파일(`*.g.dart`)이 갱신됩니다. 안 하면 "정의는 고쳤는데 앱은 그대로"인 상태가 됩니다.
+대신 drift는 **코드 생성**을 씁니다. `lib/data/tables.dart`나 `lib/data/app_database.dart`,
+`build.yaml`을 고친 뒤에는 아래를 실행해야 생성된 파일(`lib/data/app_database.g.dart`)이
+갱신됩니다. 안 하면 "정의는 고쳤는데 앱은 그대로"인 상태가 됩니다.
 
 ```
-dart run build_runner build --delete-conflicting-outputs
+dart run build_runner build
 ```
+
+(인터넷에서 흔히 보이는 `--delete-conflicting-outputs` 옵션은 지금 쓰는 build_runner
+버전에서 제거됐습니다. 붙이면 무시된다는 경고만 뜹니다.)
+
+### 데이터베이스 관련해서 반드시 지킬 것
+
+- **`schemaVersion`을 올렸으면 `migration`에 할 일을 반드시 적을 것.**
+  안 적으면 새로 설치한 사람은 멀쩡한데 **기존 사용자의 앱만 안 켜집니다.**
+  놓치기 아주 쉬운 실수입니다. (`lib/data/app_database.dart`)
+- **`build.yaml`의 `store_date_time_values_as_text`는 건드리지 말 것.**
+  저장 형식 자체를 바꾸는 설정이라, 이미 저장된 데이터가 있는 상태에서 바꾸면
+  기존 시각 값을 못 읽습니다.
+- **시각은 언제나 UTC.** drift는 기본적으로 시각을 현지 시각으로 돌려주기 때문에
+  위 설정과 저장소의 `.toUtc()` 두 겹으로 막고 있습니다. 새 저장소 구현체를 만들 때도
+  똑같이 해야 합니다.
 
 ## 반드시 지킬 설계 원칙 (동기화 준비된 로컬 우선)
 
