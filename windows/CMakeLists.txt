@@ -41,6 +41,11 @@ function(APPLY_STANDARD_SETTINGS TARGET)
   target_compile_features(${TARGET} PUBLIC cxx_std_17)
   target_compile_options(${TARGET} PRIVATE /W4 /WX /wd"4100")
   target_compile_options(${TARGET} PRIVATE /EHsc)
+  # 소스 파일을 UTF-8로 읽도록 강제합니다.
+  # 이 옵션이 없으면 MSVC가 시스템 코드페이지(한국어 Windows는 949)로 소스를 읽어서
+  # C++ 코드 안의 한글 문자열이 깨집니다(예: 창 제목). Flutter가 만들어주는 기본
+  # 설정에는 이 옵션이 없어서 직접 추가했습니다.
+  target_compile_options(${TARGET} PRIVATE /utf-8)
   target_compile_definitions(${TARGET} PRIVATE "_HAS_EXCEPTIONS=0")
   target_compile_definitions(${TARGET} PRIVATE "$<$<CONFIG:Debug>:_DEBUG>")
 endfunction()

@@ -19,7 +19,17 @@ PR이 병합될 때마다 여기에 **무엇을 왜 어떻게 고쳤는지, 어�
 2. **기본 카운터 데모를 실제 앱 뼈대로 교체** — `flutter create`가 만들어주는 예제
    카운터 앱은 영어 주석이라 이 프로젝트의 "모든 주석은 한국어" 규칙에 어긋납니다.
    PR #1부터 규칙을 실제로 보여주기 위해 처음부터 다시 썼습니다.
-3. **`CLAUDE.md` / `update.md` 작성** — 다음 세션의 외부 기억 장치.
+3. **Windows 창 제목을 한글로** — 빌드해서 실행해보니 창 제목이
+   `reference_archive_app`으로 떴습니다. Windows 네이티브 창 제목은 Dart 쪽
+   `MaterialApp(title: ...)`이 아니라 C++ 러너(`windows/runner/main.cpp`)에서
+   따로 정해지기 때문입니다. **둘 다 고쳐야 합니다.**
+
+   그런데 한글을 그냥 넣으면 깨집니다. Flutter가 만들어주는 기본 CMake 설정에는
+   `/utf-8` 컴파일 옵션이 없어서, MSVC가 소스를 시스템 코드페이지(한국어 Windows는
+   949)로 읽어버립니다. `windows/CMakeLists.txt`의 `APPLY_STANDARD_SETTINGS`에
+   `/utf-8`을 추가해서 해결했습니다. 앞으로 C++ 쪽에 한글을 더 넣어도 안전합니다.
+
+4. **`CLAUDE.md` / `update.md` 작성** — 다음 세션의 외부 기억 장치.
 
 **나중에 이 부분을 고치려면 어디를 보면 되나**
 
@@ -28,7 +38,9 @@ PR이 병합될 때마다 여기에 **무엇을 왜 어떻게 고쳤는지, 어�
 | 앱 전체 색감 | `lib/main.dart`의 `_seedColor` 상수 하나만 바꾸면 밝은/어두운 테마 양쪽에 반영됩니다 |
 | 밝은/어두운 모드 동작 | `lib/main.dart`의 `_buildLightTheme()` / `_buildDarkTheme()` / `themeMode` |
 | 첫 화면 내용 | `lib/screens/home_screen.dart`의 `build()` 안 `body:` 부분 |
-| 앱 이름(창 제목) | `lib/main.dart`의 `MaterialApp(title: ...)` |
+| 앱 이름(Windows 창 제목) | `windows/runner/main.cpp`의 `window.Create(L"...")` |
+| 앱 이름(Dart 쪽) | `lib/main.dart`의 `MaterialApp(title: ...)` |
+| C++ 코드에 한글 넣기 | `windows/CMakeLists.txt`의 `/utf-8` 옵션이 이미 켜져 있습니다 |
 | 테스트가 기대하는 문구 | `test/widget_test.dart` |
 
 **새로 나온 개념 2가지**
@@ -46,7 +58,10 @@ PR이 병합될 때마다 여기에 **무엇을 왜 어떻게 고쳤는지, 어�
 - `flutter analyze` — 문제 없음 (No issues found)
 - `flutter test` — 위젯 테스트 1건 통과. 홈 화면의 제목·안내 문구·아이콘이 실제로
   그려지는지 확인합니다.
-- `flutter doctor` — Flutter 3.47.1 / Dart 3.13.1 정상, Windows 데스크톱 기기 인식됨
+- `flutter doctor` — Flutter 3.47.1 / Dart 3.13.1 정상, Visual Studio / Windows 기기 모두 인식
+- `flutter build windows` — 릴리스 빌드 성공 (`reference_archive_app.exe`, 25MB)
+- **빌드된 exe를 실제로 실행해서 확인** — 창이 정상적으로 뜨고,
+  제목 표시줄에 "레퍼런스 아카이브"가 깨짐 없이 출력되는 것까지 확인했습니다.
 
 **한계 / 아직 확인 못 한 것**
 

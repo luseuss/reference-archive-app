@@ -27,7 +27,9 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   FlutterWindow window(project);
   Win32Window::Point origin(10, 10);
   Win32Window::Size size(1280, 720);
-  if (!window.Create(L"reference_archive_app", origin, size)) {
+  // 아래 문자열이 실제 Windows 창의 제목 표시줄과 작업 표시줄에 나타나는 이름입니다.
+  // Dart 쪽 MaterialApp(title: ...)과는 별개이므로 둘 다 고쳐야 합니다.
+  if (!window.Create(L"레퍼런스 아카이브", origin, size)) {
     return EXIT_FAILURE;
   }
   window.SetQuitOnClose(true);
