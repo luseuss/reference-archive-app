@@ -129,6 +129,13 @@ class _HomeScreenState extends State<HomeScreen> {
   Map<TaxonomyKind, List<TaxonomyItem>> _taxonomyOptions =
       <TaxonomyKind, List<TaxonomyItem>>{};
 
+  /// 분류 항목 id를 이름으로 바꿔주는 표입니다. (id → 이름)
+  ///
+  /// 카드에는 폴더·카테고리·태그가 **id로만** 들어있어서 그대로는 못 보여줍니다.
+  /// 카드마다 이름을 찾아 데이터베이스를 뒤지면 목록이 버벅이므로,
+  /// 분류 목록을 불러올 때 **한 번만** 만들어두고 모든 카드가 나눠 씁니다.
+  Map<String, String> _taxonomyNames = <String, String>{};
+
   /// 지금 무언가를 창 위로 끌고 있는 중인지 여부입니다.
   /// 켜져 있으면 "여기 놓으세요" 안내를 덧그립니다.
   bool _isDragging = false;
@@ -335,8 +342,19 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
+    // id → 이름 표를 함께 만들어둡니다.
+    // 종류(폴더/카테고리/태그/프로젝트)를 구분하지 않고 한 표에 담습니다.
+    // 분류 항목 id는 세상에 하나뿐이라 섞여도 헷갈릴 일이 없습니다.
+    final Map<String, String> names = <String, String>{};
+    for (final List<TaxonomyItem> items in loaded.values) {
+      for (final TaxonomyItem item in items) {
+        names[item.id] = item.name;
+      }
+    }
+
     setState(() {
       _taxonomyOptions = loaded;
+      _taxonomyNames = names;
     });
   }
 
@@ -1409,6 +1427,7 @@ class _HomeScreenState extends State<HomeScreen> {
               : null,
           isPreviewPlaying: _previewingItemId == item.id,
           previewUrl: _previewUrl,
+          taxonomyNames: _taxonomyNames,
         );
       },
     );
