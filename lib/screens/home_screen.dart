@@ -4,6 +4,7 @@
 //   - 저장된 레퍼런스를 불러와 격자로 보여주기
 //   - 오른쪽 아래 버튼으로 이미지 추가하기
 //   - 카드의 휴지통 버튼으로 삭제하기
+//   - 여러 장을 골라 한꺼번에 폴더 이동 / 태그 추가 / 삭제하기
 //
 // ── 화면이 데이터를 다루는 방식 ──
 // 이 화면은 데이터베이스를 직접 만지지 않습니다. 생성자로 받은 repository
@@ -15,7 +16,6 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:super_clipboard/super_clipboard.dart';
-import 'package:super_native_extensions/raw_clipboard.dart' as raw;
 import 'package:super_drag_and_drop/super_drag_and_drop.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -27,26 +27,16 @@ import '../models/reference_query.dart';
 import '../models/taxonomy_item.dart';
 import '../repositories/reference_repository.dart';
 import '../repositories/taxonomy_repository.dart';
+import '../services/dropped_item_reader.dart';
 import '../services/image_source.dart';
 import '../services/image_storage.dart';
 import '../utils/id_generator.dart';
+import '../widgets/bulk_action_bar.dart';
+import '../widgets/pick_taxonomy_dialog.dart';
 import '../widgets/reference_card.dart';
 import '../widgets/reference_filter_bar.dart';
 import 'reference_detail_screen.dart';
 import 'taxonomy_manage_screen.dart';
-
-/// 끌어다 놓기로 받을 수 있는 이미지 형식들입니다.
-///
-/// 여기 없는 형식은 창에 놓아도 아예 들어오지 않습니다.
-/// 브라우저가 이미지를 건네줄 때 쓰는 흔한 형식들을 담았습니다.
-const List<FileFormat> _droppableImageFormats = <FileFormat>[
-  Formats.png,
-  Formats.jpeg,
-  Formats.gif,
-  Formats.webp,
-  Formats.bmp,
-  Formats.tiff,
-];
 
 /// 레퍼런스 목록 화면입니다.
 ///
@@ -113,6 +103,30 @@ class _HomeScreenState extends State<HomeScreen> {
   /// 지금 무언가를 창 위로 끌고 있는 중인지 여부입니다.
   /// 켜져 있으면 "여기 놓으세요" 안내를 덧그립니다.
   bool _isDragging = false;
+
+  /// 지금 여러 장을 고르는 중인지 여부입니다.
+  ///
+  /// ── 왜 "고른 게 하나라도 있으면 고르기 모드"로 하지 않았나 ──
+  /// 그렇게 하면 마지막 한 장의 선택을 풀었을 때 체크박스와 작업 막대가
+  /// 통째로 사라집니다. 사용자는 잘못 눌러서 모드가 꺼졌다고 느낍니다.
+  /// 그래서 "고르기 모드"와 "무엇을 골랐는지"를 따로 둡니다.
+  bool _isSelecting = false;
+
+  /// 지금 골라둔 레퍼런스들의 id입니다.
+  ///
+  /// List가 아니라 Set인 이유: Set은 같은 값이 두 번 안 들어가고,
+  /// "이게 들어있나?"를 확인하는 것이 목록이 길어져도 빠릅니다.
+  /// 카드를 그릴 때마다 확인하는 값이라 이 차이가 실제로 체감됩니다.
+  final Set<String> _selectedIds = <String>{};
+
+  /// 끌어다 놓은 것을 읽어 이미지 데이터로 만들어주는 도구입니다.
+  ///
+  /// late를 붙인 이유: 이 도구를 만들려면 widget.imageSource가 필요한데,
+  /// 값을 적어두는 시점에는 아직 widget이 준비되기 전이라 쓸 수 없습니다.
+  /// late = "지금 말고 처음 쓸 때 만들어라"라는 뜻입니다.
+  late final DroppedItemReader _droppedItemReader = DroppedItemReader(
+    widget.imageSource,
+  );
 
   /// 화면이 처음 만들어질 때 딱 한 번 실행됩니다.
   @override
@@ -213,7 +227,209 @@ class _HomeScreenState extends State<HomeScreen> {
         ..clear()
         ..addAll(paths);
       _isLoading = false;
+
+      // 화면에 안 보이게 된 것은 골라둔 목록에서도 뺍니다.
+      //
+      // 예를 들어 세 장을 골라둔 채 검색어를 바꾸면 그중 두 장이 목록에서
+      // 사라질 수 있습니다. 그대로 두면 "1장 골랐다"고 보이는데 실제로는
+      // 3장이 지워지는, 사용자가 예상할 수 없는 일이 벌어집니다.
+      _selectedIds.removeWhere((String id) {
+        return !items.any((ReferenceItem item) => item.id == id);
+      });
     });
+  }
+
+  /// 고르기 모드를 켜거나 끕니다.
+  void _toggleSelectionMode() {
+    setState(() {
+      _isSelecting = !_isSelecting;
+
+      // 모드를 끄면 골라둔 것도 함께 비웁니다.
+      // 안 비우면 다음에 모드를 켤 때 예전 선택이 되살아나 놀라게 됩니다.
+      if (!_isSelecting) {
+        _selectedIds.clear();
+      }
+    });
+  }
+
+  /// 고르기 모드를 끝내고 골라둔 것을 모두 비웁니다.
+  void _exitSelectionMode() {
+    setState(() {
+      _isSelecting = false;
+      _selectedIds.clear();
+    });
+  }
+
+  /// 카드 하나를 고르거나 고르기를 취소합니다.
+  ///
+  /// 고르기 모드가 꺼져 있을 때 불리면(카드를 길게 눌렀을 때) 모드를 켭니다.
+  void _toggleSelected(ReferenceItem item) {
+    setState(() {
+      _isSelecting = true;
+
+      if (_selectedIds.contains(item.id)) {
+        _selectedIds.remove(item.id);
+      } else {
+        _selectedIds.add(item.id);
+      }
+    });
+  }
+
+  /// 지금 보이는 것을 전부 고릅니다. 이미 전부 골랐으면 전부 풉니다.
+  void _toggleSelectAll() {
+    setState(() {
+      final bool allSelected = _selectedIds.length == _items.length;
+
+      _selectedIds.clear();
+
+      if (!allSelected) {
+        for (final ReferenceItem item in _items) {
+          _selectedIds.add(item.id);
+        }
+      }
+    });
+  }
+
+  /// 골라둔 것들을 한 폴더로 옮깁니다.
+  Future<void> _moveSelectedToFolder() async {
+    final List<TaxonomyItem> folders =
+        _taxonomyOptions[TaxonomyKind.folder] ?? <TaxonomyItem>[];
+
+    // 폴더가 하나도 없으면 고를 것이 없습니다.
+    // "폴더 없음"만 덩그러니 뜨는 대화상자보다, 무엇을 하면 되는지 알려줍니다.
+    if (folders.isEmpty) {
+      _showMessage('먼저 오른쪽 위 "분류 관리"에서 폴더를 만들어주세요.');
+      return;
+    }
+
+    final int count = _selectedIds.length;
+
+    final PickedTaxonomy? picked = await showPickTaxonomyDialog(
+      context: context,
+      kind: TaxonomyKind.folder,
+      items: folders,
+      title: '$count장을 옮길 폴더',
+
+      // "폴더 없음"을 고르면 폴더에서 빼냅니다.
+      allowNone: true,
+    );
+
+    // 대화상자를 그냥 닫았으면 아무것도 하지 않습니다.
+    if (picked == null) {
+      return;
+    }
+
+    // picked.item이 null이면 "폴더에서 빼기"입니다. 취소와는 다릅니다.
+    await widget.repository.moveManyToFolder(
+      _selectedIds.toList(),
+      picked.item?.id,
+    );
+
+    final String where = picked.item == null ? '폴더에서 빼냈습니다' : '"${picked.item!.name}"으로 옮겼습니다';
+    await _finishBulkAction('$count장을 $where.');
+  }
+
+  /// 골라둔 것들에 태그를 붙입니다.
+  Future<void> _addTagToSelected() async {
+    final List<TaxonomyItem> tags =
+        _taxonomyOptions[TaxonomyKind.tag] ?? <TaxonomyItem>[];
+
+    if (tags.isEmpty) {
+      _showMessage('먼저 오른쪽 위 "분류 관리"에서 태그를 만들어주세요.');
+      return;
+    }
+
+    final int count = _selectedIds.length;
+
+    final PickedTaxonomy? picked = await showPickTaxonomyDialog(
+      context: context,
+      kind: TaxonomyKind.tag,
+      items: tags,
+      title: '$count장에 붙일 태그',
+    );
+
+    // 태그 고르기에는 "없음"이 없으므로 item은 반드시 들어 있습니다.
+    if (picked == null || picked.item == null) {
+      return;
+    }
+
+    await widget.repository.addTaxonomyItemToMany(
+      _selectedIds.toList(),
+      picked.item!.id,
+    );
+
+    await _finishBulkAction('$count장에 "${picked.item!.name}" 태그를 붙였습니다.');
+  }
+
+  /// 골라둔 것들을 한꺼번에 지웁니다.
+  Future<void> _deleteSelected() async {
+    final int count = _selectedIds.length;
+
+    final bool confirmed = await _confirmBulkDelete(count);
+    if (!confirmed) {
+      return;
+    }
+
+    await widget.repository.deleteMany(_selectedIds.toList());
+
+    await _finishBulkAction('$count장을 지웠습니다.');
+  }
+
+  /// 여러 장을 정말 지울지 확인받습니다.
+  ///
+  /// 낱장 삭제에는 확인이 없지만 여기에는 둡니다. 한 장을 잘못 지우는 것과
+  /// 50장을 잘못 지우는 것은 되돌리는 수고가 완전히 다르기 때문입니다.
+  Future<bool> _confirmBulkDelete(int count) async {
+    final bool? result = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('레퍼런스 삭제'),
+          content: Text(
+            '고른 $count장을 지웁니다.\n\n'
+            '이미지 파일은 남지만 목록에서는 사라집니다.',
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('취소'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              style: FilledButton.styleFrom(
+                backgroundColor: Theme.of(context).colorScheme.error,
+                foregroundColor: Theme.of(context).colorScheme.onError,
+              ),
+              child: const Text('삭제'),
+            ),
+          ],
+        );
+      },
+    );
+
+    // 바깥을 눌러 닫으면 null이 옵니다. 그때는 안 지웁니다.
+    return result ?? false;
+  }
+
+  /// 일괄 작업이 끝난 뒤 목록을 새로 고치고 결과를 알려줍니다.
+  ///
+  /// 셋 다 끝나면 고르기 모드를 **끕니다.** 작업 하나가 끝났는데 선택이
+  /// 그대로 남아 있으면, 다음 작업이 방금 그 장들에 또 적용되는 줄 모르고
+  /// 두 번 실행하기 쉽습니다.
+  Future<void> _finishBulkAction(String message) async {
+    _exitSelectionMode();
+    await _loadItems();
+
+    if (!mounted) {
+      return;
+    }
+
+    _showMessage(message);
+  }
+
+  /// 화면 아래쪽에 짧은 안내를 띄웁니다.
+  void _showMessage(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
   }
 
   /// 이미지 파일을 골라서 레퍼런스로 추가합니다.
@@ -348,7 +564,7 @@ class _HomeScreenState extends State<HomeScreen> {
         continue;
       }
 
-      final ImageFetchResult fetched = await _readDroppedItem(reader);
+      final ImageFetchResult fetched = await _droppedItemReader.read(reader);
 
       if (!fetched.isSuccess) {
         failedCount++;
@@ -374,195 +590,6 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     await _finishAdding(savedCount, failedCount, lastError);
-  }
-
-  /// 떨어진 항목 하나를 읽어 이미지 데이터로 만듭니다.
-  Future<ImageFetchResult> _readDroppedItem(DataReader reader) async {
-    // 1) 이미지 데이터를 직접 줄 수 있는지 먼저 봅니다.
-    for (final FileFormat format in _droppableImageFormats) {
-      if (!reader.canProvide(format)) {
-        continue;
-      }
-
-      final Uint8List? bytes = await _readFileBytes(reader, format);
-      if (bytes != null && bytes.isNotEmpty) {
-        return ImageFetchResult.success(bytes);
-      }
-    }
-
-    // 2) 이미지를 못 주면 HTML 조각을 봅니다.
-    //
-    //    ── 주소보다 HTML을 먼저 보는 이유 (핀터레스트) ──
-    //    이미지가 링크에 감싸여 있으면 브라우저가 주는 주소는 **이미지가 아니라
-    //    링크가 가리키는 페이지 주소**입니다. 핀터레스트가 정확히 그렇습니다.
-    //    그걸 내려받으면 HTML이 와서 "그림이 아니다"로 실패합니다.
-    //
-    //    반면 HTML 조각에는 <img src="진짜 이미지 주소">가 들어 있어서
-    //    링크에 감싸여 있어도 실제 이미지를 찾을 수 있습니다.
-    if (reader.canProvide(Formats.htmlText)) {
-      final String? html = await _readValue<String>(reader, Formats.htmlText);
-
-      String? imageUrl = html == null ? null : imageUrlFromHtml(html);
-
-      // 못 찾았으면 글자가 깨져서 온 경우일 수 있습니다.
-      // 되돌려서 한 번 더 찾아봅니다. (핀터레스트 피드가 이 경우입니다)
-      if (imageUrl == null && html != null) {
-        final String? repaired = repairMangledHtml(html);
-        if (repaired != null) {
-          imageUrl = imageUrlFromHtml(repaired);
-        }
-      }
-
-      debugPrint('[드롭] HTML에서 찾은 주소: $imageUrl');
-
-      if (imageUrl != null) {
-        final ImageFetchResult result = await widget.imageSource.fetchFromUrl(
-          imageUrl,
-        );
-        // 여기서 실패하면 아래 주소 방식으로 한 번 더 시도해봅니다.
-        if (result.isSuccess) {
-          return result;
-        }
-      }
-    }
-
-    // 3) 그래도 안 되면 주소를 그대로 받아봅니다.
-    //    이미지를 직접 끈 경우(링크에 안 감싸인 경우)에는 이쪽이 맞습니다.
-    if (reader.canProvide(Formats.uri)) {
-      final NamedUri? named = await _readValue<NamedUri>(reader, Formats.uri);
-      final String? url = named?.uri.toString();
-      debugPrint('[드롭] 주소: $url');
-
-      if (url != null && looksLikeUrl(url)) {
-        return widget.imageSource.fetchFromUrl(url);
-      }
-    }
-
-    // 4) 표준 형식으로 아무것도 못 얻었으면, 사이트가 자기 방식으로 끼워 넣은
-    //    데이터를 뒤져봅니다.
-    //
-    //    ── 왜 이게 필요한가 (핀터레스트 상세 페이지) ──
-    //    핀터레스트 상세 페이지에서 끌면 표준 형식이 하나도 안 옵니다.
-    //    HTML도, 주소도, 파일도 없습니다. 대신 자체 형식 안에
-    //    이미지 주소를 넣어둡니다.
-    //
-    //      application/x-pinterest-closeup-image
-    //      {"pinId":"...","previewImageUrl":"https://i.pinimg.com/736x/...jpg"}
-    //
-    //    이름은 사이트마다 다르므로 이름을 찾지 않고 주소처럼 생긴 글자를 찾습니다.
-    final String? urlFromCustomData = await _findUrlInCustomData(reader);
-    if (urlFromCustomData != null) {
-      return widget.imageSource.fetchFromUrl(urlFromCustomData);
-    }
-
-    // 여기까지 왔으면 어느 경로로도 못 얻은 것입니다.
-    // 새로운 사이트가 안 될 때 원인을 짚을 수 있도록 무엇이 넘어왔는지 남깁니다.
-    debugPrint('[드롭] 실패 — 넘어온 형식: ${reader.platformFormats}');
-
-    return const ImageFetchResult.failure('이미지를 찾지 못했습니다. 이미지를 복사해서 붙여넣어 보세요.');
-  }
-
-  /// 사이트가 자체 형식으로 끼워 넣은 데이터에서 이미지 주소를 찾습니다.
-  ///
-  /// 표준 형식으로 아무것도 못 얻었을 때만 부릅니다.
-  Future<String?> _findUrlInCustomData(DataReader reader) async {
-    final raw.DataReaderItem? item = reader.rawReader;
-    if (item == null) {
-      return null;
-    }
-
-    try {
-      final List<String> formats = await item.getAvailableFormats();
-
-      for (final String format in formats) {
-        // 그림 자체(비트맵)는 여기서 다루지 않습니다. 아주 크고,
-        // 우리가 찾는 건 글자 속 주소입니다.
-        if (format.contains('DragImageBits')) {
-          continue;
-        }
-
-        final (Future<Object?>, raw.ReadProgress) request = item
-            .getDataForFormat(format);
-        final Object? data = await request.$1;
-
-        String? text;
-        if (data is String) {
-          text = data;
-        } else if (data is List<int> && data.length <= 100000) {
-          // 0이 낀 채로 오는 경우가 있어서 그대로 읽으면 안 됩니다.
-          // 자세한 이유는 textFromCustomData()의 설명을 보세요.
-          text = textFromCustomData(data);
-        }
-
-        if (text == null) {
-          continue;
-        }
-
-        final String? found = findImageUrlInText(text);
-        if (found != null) {
-          debugPrint('[드롭] 사이트 자체 데이터($format)에서 찾은 주소: $found');
-          return found;
-        }
-      }
-    } catch (error) {
-      debugPrint('[드롭] 자체 데이터 살펴보기 실패: $error');
-    }
-
-    return null;
-  }
-
-  /// 값을 읽어 돌려줍니다. 못 읽으면 null입니다.
-  ///
-  /// getValue()도 결과를 콜백으로 주기 때문에 Completer로 감싸 Future로 바꿉니다.
-  /// (getFile과 같은 이유입니다)
-  Future<T?> _readValue<T extends Object>(
-    DataReader reader,
-    ValueFormat<T> format,
-  ) {
-    final Completer<T?> completer = Completer<T?>();
-
-    reader.getValue<T>(
-      format,
-      (T? value) {
-        if (!completer.isCompleted) {
-          completer.complete(value);
-        }
-      },
-      onError: (Object error) {
-        debugPrint('떨어진 항목 값 읽기 실패: $error');
-        if (!completer.isCompleted) {
-          completer.complete(null);
-        }
-      },
-    );
-
-    return completer.future;
-  }
-
-  /// 읽기 결과를 기다렸다가 바이트로 돌려줍니다.
-  ///
-  /// getFile()은 결과를 콜백으로 주기 때문에, await로 기다릴 수 있도록
-  /// Completer로 감싸 Future로 바꿉니다.
-  Future<Uint8List?> _readFileBytes(DataReader reader, FileFormat format) {
-    final Completer<Uint8List?> completer = Completer<Uint8List?>();
-
-    reader.getFile(
-      format,
-      (DataReaderFile file) async {
-        final Uint8List bytes = await file.readAll();
-        if (!completer.isCompleted) {
-          completer.complete(bytes);
-        }
-      },
-      onError: (Object error) {
-        debugPrint('떨어진 항목 읽기 실패: $error');
-        if (!completer.isCompleted) {
-          completer.complete(null);
-        }
-      },
-    );
-
-    return completer.future;
   }
 
   /// 클립보드에 있는 것을 레퍼런스로 추가합니다. (Ctrl+V)
@@ -743,17 +770,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('레퍼런스 아카이브'),
-        backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
-        actions: <Widget>[
-          IconButton(
-            onPressed: _openTaxonomyManage,
-            icon: const Icon(Icons.folder_special_outlined),
-            tooltip: '분류 관리',
-          ),
-        ],
-      ),
+      appBar: _isSelecting ? _buildSelectionAppBar() : _buildNormalAppBar(),
       // CallbackShortcuts는 지정한 키 조합이 눌리면 함수를 실행합니다.
       // Focus(autofocus: true)로 감싸야 화면이 키 입력을 받습니다.
       // 안 감싸면 아무 데도 초점이 없어서 Ctrl+V가 무시됩니다.
@@ -784,19 +801,92 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        // 추가하는 중에는 null을 넣어 버튼을 잠급니다.
-        // Flutter에서는 onPressed가 null이면 버튼이 자동으로 비활성화됩니다.
-        onPressed: _isAdding ? null : _addImages,
-        icon: _isAdding
-            ? const SizedBox(
-                width: 18,
-                height: 18,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              )
-            : const Icon(Icons.add_photo_alternate_outlined),
-        label: Text(_isAdding ? '추가하는 중...' : '이미지 추가'),
+      // 고르는 중에는 화면 아래에 일괄 작업 막대가 붙습니다.
+      // bottomNavigationBar에 넣으면 목록이 그만큼 위로 줄어들어서,
+      // 떠 있는 버튼과 달리 마지막 줄의 카드를 가리지 않습니다.
+      bottomNavigationBar: _isSelecting
+          ? BulkActionBar(
+              selectedCount: _selectedIds.length,
+              onMoveToFolder: _moveSelectedToFolder,
+              onAddTag: _addTagToSelected,
+              onDelete: _deleteSelected,
+            )
+          : null,
+
+      // 고르는 중에는 추가 버튼을 숨깁니다.
+      // 아래 작업 막대와 겹쳐 보이고, 고르는 도중에 새로 추가할 일도 없습니다.
+      floatingActionButton: _isSelecting
+          ? null
+          : FloatingActionButton.extended(
+              // 추가하는 중에는 null을 넣어 버튼을 잠급니다.
+              // Flutter에서는 onPressed가 null이면 버튼이 자동으로 비활성화됩니다.
+              onPressed: _isAdding ? null : _addImages,
+              icon: _isAdding
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.add_photo_alternate_outlined),
+              label: Text(_isAdding ? '추가하는 중...' : '이미지 추가'),
+            ),
+    );
+  }
+
+  /// 평소의 위쪽 막대를 만듭니다.
+  PreferredSizeWidget _buildNormalAppBar() {
+    return AppBar(
+      title: const Text('레퍼런스 아카이브'),
+      backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+      actions: <Widget>[
+        IconButton(
+          // 보여줄 것이 없으면 고를 것도 없으므로 버튼을 잠급니다.
+          onPressed: _items.isEmpty ? null : _toggleSelectionMode,
+          icon: const Icon(Icons.check_circle_outline),
+          tooltip: '여러 장 고르기',
+        ),
+        IconButton(
+          onPressed: _openTaxonomyManage,
+          icon: const Icon(Icons.folder_special_outlined),
+          tooltip: '분류 관리',
+        ),
+      ],
+    );
+  }
+
+  /// 고르는 중일 때의 위쪽 막대를 만듭니다.
+  ///
+  /// 색과 내용을 통째로 바꿔서 "지금은 평소와 다른 모드"임을 분명히 합니다.
+  PreferredSizeWidget _buildSelectionAppBar() {
+    final ColorScheme colors = Theme.of(context).colorScheme;
+
+    final bool allSelected =
+        _items.isNotEmpty && _selectedIds.length == _items.length;
+
+    return AppBar(
+      backgroundColor: colors.primaryContainer,
+      foregroundColor: colors.onPrimaryContainer,
+
+      // 왼쪽 X 버튼으로 고르기를 끝냅니다.
+      leading: IconButton(
+        onPressed: _exitSelectionMode,
+        icon: const Icon(Icons.close),
+        tooltip: '고르기 끝내기',
       ),
+
+      title: Text(
+        _selectedIds.isEmpty ? '고를 카드를 눌러주세요' : '${_selectedIds.length}장 선택',
+      ),
+
+      actions: <Widget>[
+        IconButton(
+          onPressed: _items.isEmpty ? null : _toggleSelectAll,
+          icon: Icon(
+            allSelected ? Icons.deselect : Icons.select_all,
+          ),
+          tooltip: allSelected ? '전체 해제' : '전체 선택',
+        ),
+      ],
     );
   }
 
@@ -810,11 +900,9 @@ class _HomeScreenState extends State<HomeScreen> {
     return DropRegion(
       // 받을 수 있다고 알릴 형식들입니다. 여기 없는 형식은 아예 안 들어옵니다.
       // (앞서 쓰던 desktop_drop은 파일 형식만 받아서 브라우저 드래그가 막혔습니다)
-      formats: <DataFormat<Object>>[
-        ..._droppableImageFormats,
-        Formats.uri,
-        Formats.fileUri,
-      ],
+      // 목록 자체는 dropped_item_reader.dart에 있습니다. 받는 쪽과 읽는 쪽이
+      // 따로 놀면 "받아는 놓고 읽지 못하는" 형식이 생기기 때문입니다.
+      formats: dropRegionFormats,
 
       // 끌고 지나가는 동안 "복사할 수 있다"고 알려줍니다.
       // none을 돌려주면 커서에 금지 표시가 뜨고 놓을 수 없습니다.
@@ -968,6 +1056,9 @@ class _HomeScreenState extends State<HomeScreen> {
           imagePath: _imagePaths[item.id],
           onDelete: () => _deleteItem(item),
           onTap: () => _openDetail(item),
+          isSelectionMode: _isSelecting,
+          isSelected: _selectedIds.contains(item.id),
+          onSelectToggle: () => _toggleSelected(item),
         );
       },
     );

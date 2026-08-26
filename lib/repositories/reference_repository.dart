@@ -74,4 +74,39 @@ abstract class ReferenceRepository {
     TaxonomyKind kind,
     List<String> taxonomyItemIds,
   );
+
+  // ── 아래 셋은 "여러 건을 한꺼번에" 처리하는 함수들입니다 ──
+  //
+  // 화면에서 for 문을 돌며 save()를 여러 번 부르지 않고 따로 만든 이유가 있습니다.
+  //   1. **속도** — 100장을 옮길 때 save()를 100번 부르면 데이터베이스에
+  //      100번 오갑니다. 여기서는 한 번의 명령으로 끝냅니다.
+  //   2. **중간에 끊기지 않음** — 50장째에서 오류가 나면 절반만 옮겨진
+  //      어정쩡한 상태가 됩니다.
+  //   3. **나중에 서버를 붙일 때** — 서버 구현체에서도 "한 번의 요청"으로
+  //      보낼 수 있습니다. 화면 코드는 그대로 두고요.
+
+  /// 여러 레퍼런스를 한 폴더로 옮깁니다.
+  ///
+  /// [folderId]에 null을 넘기면 **폴더에서 빼냅니다.** (폴더 없음 상태)
+  /// ReferenceItem.copyWith로는 값을 null로 만들 수 없어서, 이렇게 따로 받습니다.
+  ///
+  /// 빈 목록을 넘기면 아무 일도 하지 않습니다.
+  Future<void> moveManyToFolder(List<String> referenceIds, String? folderId);
+
+  /// 여러 레퍼런스에 같은 태그(또는 프로젝트)를 붙입니다.
+  ///
+  /// **이미 붙어있는 것은 건드리지 않습니다.** 다시 붙이면 "방금 붙인 것"으로
+  /// 기록되어, 나중에 기기 간 동기화가 바뀐 게 없는데도 바뀌었다고 판단합니다.
+  ///
+  /// 붙이기만 하고 떼지는 않습니다. 일괄 작업에서 "이 태그를 다 같이 달자"는
+  /// 흔하지만, "고른 것들의 태그를 통째로 갈아치우자"는 실수하기 쉬워서입니다.
+  Future<void> addTaxonomyItemToMany(
+    List<String> referenceIds,
+    String taxonomyItemId,
+  );
+
+  /// 여러 레퍼런스를 한꺼번에 지웁니다.
+  ///
+  /// delete()와 마찬가지로 소프트 삭제입니다. 진짜로 지우지 않고 deletedAt만 찍습니다.
+  Future<void> deleteMany(List<String> referenceIds);
 }

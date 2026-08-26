@@ -18,6 +18,9 @@ class ReferenceCard extends StatelessWidget {
     required this.imagePath,
     required this.onDelete,
     required this.onTap,
+    required this.isSelectionMode,
+    required this.isSelected,
+    required this.onSelectToggle,
   });
 
   /// 보여줄 레퍼런스
@@ -37,7 +40,21 @@ class ReferenceCard extends StatelessWidget {
   final VoidCallback onDelete;
 
   /// 카드를 눌렀을 때 실행할 동작입니다. (편집 화면 열기)
+  ///
+  /// 고르기 모드에서는 이걸 부르지 않고 [onSelectToggle]을 부릅니다.
   final VoidCallback onTap;
+
+  /// 지금 여러 장 고르는 중인지 여부입니다.
+  ///
+  /// 켜져 있으면 카드에 체크박스가 생기고, 카드를 눌러도 편집 화면이 열리지 않습니다.
+  /// 고르려고 누른 것인데 화면이 열려버리면 여러 장 고르기가 아예 불가능합니다.
+  final bool isSelectionMode;
+
+  /// 이 카드가 지금 골라져 있는지 여부입니다.
+  final bool isSelected;
+
+  /// 이 카드를 고르거나 고르기를 취소할 때 실행할 동작입니다.
+  final VoidCallback onSelectToggle;
 
   /// 카드의 생김새를 만들어 돌려줍니다.
   @override
@@ -47,15 +64,30 @@ class ReferenceCard extends StatelessWidget {
     return Card(
       clipBehavior: Clip.antiAlias,
 
+      // 골라둔 카드는 테두리를 둘러 한눈에 구분되게 합니다.
+      // 체크박스만으로는 카드가 많을 때 어느 걸 골랐는지 알아보기 어렵습니다.
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: isSelected
+            ? BorderSide(color: colors.primary, width: 2)
+            : BorderSide.none,
+      ),
+
       // InkWell로 감싸면 누를 수 있게 되고, 누를 때 물결 효과도 함께 나옵니다.
       // 삭제 버튼은 이 안에 있지만 자기 동작이 따로 있어서 카드 열기와 섞이지 않습니다.
       child: InkWell(
-        onTap: onTap,
+        // 고르기 모드에서는 누르는 것이 "고르기"가 됩니다.
+        onTap: isSelectionMode ? onSelectToggle : onTap,
+
+        // 길게 누르면 고르기 모드로 들어갑니다.
+        // 폰에는 우클릭이 없어서, 길게 누르기가 "여러 개 고르기"의 표준 방법입니다.
+        onLongPress: onSelectToggle,
+
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
             // 카드의 그림 부분입니다. 남는 공간을 전부 차지하도록 Expanded로 감쌉니다.
-            Expanded(child: _buildThumbnail(colors)),
+            Expanded(child: _buildThumbnailArea(colors)),
 
             // 카드 아래쪽 제목과 표시들, 삭제 버튼입니다.
             Padding(
@@ -82,13 +114,17 @@ class ReferenceCard extends StatelessWidget {
                       style: Theme.of(context).textTheme.bodyMedium,
                     ),
                   ),
-                  IconButton(
-                    onPressed: onDelete,
-                    icon: const Icon(Icons.delete_outline),
-                    tooltip: '삭제',
-                    iconSize: 20,
-                    color: colors.onSurfaceVariant,
-                  ),
+                  // 고르기 모드에서는 낱장 삭제 버튼을 숨깁니다.
+                  // 여러 장을 고르는 중에 실수로 한 장만 지우면 당황스럽고,
+                  // 지우는 방법은 아래 작업 막대에 이미 있습니다.
+                  if (!isSelectionMode)
+                    IconButton(
+                      onPressed: onDelete,
+                      icon: const Icon(Icons.delete_outline),
+                      tooltip: '삭제',
+                      iconSize: 20,
+                      color: colors.onSurfaceVariant,
+                    ),
                 ],
               ),
             ),
@@ -98,7 +134,42 @@ class ReferenceCard extends StatelessWidget {
     );
   }
 
-  /// 카드의 그림 부분을 만듭니다.
+  /// 카드의 그림 부분을 만듭니다. 고르기 모드에서는 체크박스를 위에 얹습니다.
+  Widget _buildThumbnailArea(ColorScheme colors) {
+    // 고르는 중이 아니면 그림만 있으면 됩니다.
+    if (!isSelectionMode) {
+      return _buildThumbnail(colors);
+    }
+
+    // Stack = 위젯을 겹쳐 쌓는 것입니다. 그림 위에 체크박스를 올립니다.
+    return Stack(
+      children: <Widget>[
+        Positioned.fill(child: _buildThumbnail(colors)),
+
+        Positioned(
+          top: 4,
+          left: 4,
+          child: Container(
+            // 밝은 사진 위에 흰 체크박스가 놓이면 안 보입니다.
+            // 반투명 바탕을 깔아 어떤 그림 위에서도 보이게 합니다.
+            decoration: BoxDecoration(
+              color: colors.surface.withValues(alpha: 0.85),
+              shape: BoxShape.circle,
+            ),
+            child: Checkbox(
+              value: isSelected,
+
+              // 체크박스를 눌렀을 때도 카드를 눌렀을 때와 똑같이 동작합니다.
+              // 값 자체는 안 쓰지만 Checkbox가 넘겨주기 때문에 받아만 둡니다.
+              onChanged: (bool? _) => onSelectToggle(),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// 카드의 그림만 만듭니다.
   Widget _buildThumbnail(ColorScheme colors) {
     // 유튜브는 3단계에서 붙입니다. 지금은 자리만 표시해둡니다.
     if (item.type == ReferenceType.youtube) {
