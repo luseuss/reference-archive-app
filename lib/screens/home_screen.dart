@@ -5,6 +5,7 @@
 //   - 오른쪽 아래 버튼으로 이미지 추가하기
 //   - 카드의 휴지통 버튼으로 삭제하기
 //   - 여러 장을 골라 한꺼번에 폴더 이동 / 태그 추가 / 삭제하기
+//   - 유튜브 카드에 마우스를 올리면 소리 없이 미리보기 재생 (데스크톱만)
 //
 // ── 화면이 데이터를 다루는 방식 ──
 // 이 화면은 데이터베이스를 직접 만지지 않습니다. 생성자로 받은 repository
@@ -18,6 +19,7 @@ import 'dart:io';
 import 'package:super_clipboard/super_clipboard.dart';
 import 'package:super_drag_and_drop/super_drag_and_drop.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -30,6 +32,7 @@ import '../repositories/taxonomy_repository.dart';
 import '../services/dropped_item_reader.dart';
 import '../services/image_source.dart';
 import '../services/image_storage.dart';
+import '../services/local_player_server.dart';
 import '../services/youtube_info_source.dart';
 import '../services/youtube_url.dart';
 import '../utils/id_generator.dart';
@@ -41,6 +44,23 @@ import '../widgets/reference_filter_bar.dart';
 import 'reference_detail_screen.dart';
 import 'taxonomy_manage_screen.dart';
 import 'youtube_player_screen.dart';
+
+/// 마우스를 올린 뒤 미리보기를 시작하기까지 기다리는 시간입니다.
+///
+/// 짧으면 목록을 훑을 때 지나가는 영상이 줄줄이 켜지고, 길면 "왜 안 나오지?"
+/// 하게 됩니다. 처음엔 0.4초로 뒀는데 써보니 답답해서 0.2초로 줄였습니다.
+/// 너무 부산스럽거나 굼뜨면 이 값을 고치세요.
+const Duration hoverPreviewDelay = Duration(milliseconds: 200);
+
+/// 이 기기에서 호버 미리보기를 쓸 수 있는지 여부입니다.
+///
+/// 폰·태블릿에는 마우스가 없어서 "올려두기"라는 동작 자체가 없습니다.
+/// 억지로 흉내내지 않고 데스크톱에서만 켭니다. (CLAUDE.md 플랫폼 차이표)
+bool get supportsHoverPreview {
+  return defaultTargetPlatform == TargetPlatform.windows ||
+      defaultTargetPlatform == TargetPlatform.macOS ||
+      defaultTargetPlatform == TargetPlatform.linux;
+}
 
 /// 레퍼런스 목록 화면입니다.
 ///
@@ -127,6 +147,33 @@ class _HomeScreenState extends State<HomeScreen> {
   /// 카드를 그릴 때마다 확인하는 값이라 이 차이가 실제로 체감됩니다.
   final Set<String> _selectedIds = <String>{};
 
+  /// 지금 미리보기 영상을 틀고 있는 카드의 id입니다. 없으면 null입니다.
+  ///
+  /// **한 번에 하나만 틀 수 있게** 이렇게 하나만 기억합니다.
+  /// 카드마다 웹뷰를 두면 목록에 영상이 서른 개일 때 감당이 안 됩니다.
+  /// 마우스는 한 곳에만 있으므로 이걸로 충분합니다.
+  String? _previewingItemId;
+
+  /// 미리보기 영상을 띄울 주소입니다.
+  String? _previewUrl;
+
+  /// 마우스를 올린 뒤 미리보기를 시작하기까지 기다리는 타이머입니다.
+  Timer? _hoverTimer;
+
+  /// 미리보기를 시작하려고 마음먹은 카드의 id입니다.
+  ///
+  /// ── 왜 따로 기억하나 ──
+  /// 미리보기를 켜려면 임시 서버를 띄워야 하고, 그동안 사용자는 이미 마우스를
+  /// 다른 데로 옮겼을 수 있습니다. 그때 그대로 진행하면 **마우스가 없는 카드에서
+  /// 영상이 재생됩니다.** 서버가 준비된 뒤 이 값을 다시 확인해서 막습니다.
+  String? _pendingPreviewId;
+
+  /// 미리보기 페이지를 띄워주는 임시 서버입니다.
+  ///
+  /// 재생 화면이 쓰는 것과 같은 도구입니다. 유튜브 재생기는 진짜 주소를 가진
+  /// 페이지 안에 있어야 하기 때문입니다. (local_player_server.dart 참고)
+  final LocalPlayerServer _previewServer = LocalPlayerServer();
+
   /// 끌어다 놓은 것을 읽어 이미지 데이터로 만들어주는 도구입니다.
   ///
   /// late를 붙인 이유: 이 도구를 만들려면 widget.imageSource가 필요한데,
@@ -155,9 +202,91 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void dispose() {
     _searchDebounce?.cancel();
+    _hoverTimer?.cancel();
+    _previewServer.stop();
     _searchController.removeListener(_onSearchTextChanged);
     _searchController.dispose();
     super.dispose();
+  }
+
+  /// 마우스가 카드에 올라오거나 벗어났을 때 실행됩니다.
+  ///
+  /// ── 왜 바로 틀지 않고 기다리나 ──
+  /// 목록을 훑을 때 마우스는 카드 여러 장을 스쳐 지나갑니다. 올라오자마자 틀면
+  /// 지나가는 길에 있던 영상이 줄줄이 켜졌다 꺼지면서 화면이 정신없어지고,
+  /// 볼 생각도 없던 영상을 계속 받아오게 됩니다.
+  ///
+  /// 그래서 잠깐 머물렀을 때만 켭니다. "보려고 멈춘 것"과 "지나가는 것"의 차이입니다.
+  void _onCardHoverChanged(ReferenceItem item, bool isHovering) {
+    // 지나가던 타이머는 언제나 취소합니다.
+    _hoverTimer?.cancel();
+
+    if (!isHovering) {
+      _pendingPreviewId = null;
+
+      // 다른 카드에서 이미 틀고 있는 중이라면 건드리지 않습니다.
+      // 카드 A를 벗어나는 알림이 카드 B에 들어온 뒤에 올 수도 있습니다.
+      if (_previewingItemId == item.id) {
+        _stopPreview();
+      }
+      return;
+    }
+
+    // 고르는 중에는 틀지 않습니다. 여러 장 고르는 데 집중하는 상황이고,
+    // 지나갈 때마다 영상이 켜지면 방해만 됩니다.
+    if (_isSelecting) {
+      return;
+    }
+
+    _pendingPreviewId = item.id;
+    _hoverTimer = Timer(hoverPreviewDelay, () => _startPreview(item));
+  }
+
+  /// 카드 위에서 미리보기 영상을 켭니다.
+  Future<void> _startPreview(ReferenceItem item) async {
+    final String? videoId = item.youtubeVideoId;
+    if (videoId == null) {
+      return;
+    }
+
+    // 소리는 끕니다. 목록을 훑을 때마다 소리가 나면 쓸 수 없는 기능이 됩니다.
+    final String? url = await _previewServer.start(
+      youtubePlayerHtml(videoId, muted: true),
+    );
+
+    if (!mounted || url == null) {
+      return;
+    }
+
+    // 서버를 켜는 사이에 마우스가 다른 데로 갔으면 그만둡니다.
+    // 이걸 안 보면 마우스가 없는 카드에서 영상이 재생됩니다.
+    if (_pendingPreviewId != item.id) {
+      await _previewServer.stop();
+      return;
+    }
+
+    setState(() {
+      _previewingItemId = item.id;
+      _previewUrl = url;
+    });
+  }
+
+  /// 미리보기 영상을 끕니다.
+  void _stopPreview() {
+    _pendingPreviewId = null;
+
+    if (_previewingItemId == null) {
+      return;
+    }
+
+    setState(() {
+      _previewingItemId = null;
+      _previewUrl = null;
+    });
+
+    // 서버는 끄는 데 시간이 걸리므로 기다리지 않습니다.
+    // 화면은 이미 미리보기를 치웠고, 서버는 뒤에서 정리되면 됩니다.
+    _previewServer.stop();
   }
 
   /// 검색창의 글자가 바뀌었을 때 실행됩니다.
@@ -249,6 +378,11 @@ class _HomeScreenState extends State<HomeScreen> {
 
   /// 고르기 모드를 켜거나 끕니다.
   void _toggleSelectionMode() {
+    // 고르기로 넘어가면 틀고 있던 미리보기를 끕니다.
+    // 체크박스를 누르려는데 뒤에서 영상이 돌아가면 산만합니다.
+    _hoverTimer?.cancel();
+    _stopPreview();
+
     setState(() {
       _isSelecting = !_isSelecting;
 
@@ -272,6 +406,10 @@ class _HomeScreenState extends State<HomeScreen> {
   ///
   /// 고르기 모드가 꺼져 있을 때 불리면(카드를 길게 눌렀을 때) 모드를 켭니다.
   void _toggleSelected(ReferenceItem item) {
+    // 길게 눌러 고르기로 들어오는 경로입니다. 여기서도 미리보기를 끕니다.
+    _hoverTimer?.cancel();
+    _stopPreview();
+
     setState(() {
       _isSelecting = true;
 
@@ -545,6 +683,14 @@ class _HomeScreenState extends State<HomeScreen> {
     if (videoId == null) {
       return;
     }
+
+    // 크게 보러 가기 전에 미리보기를 끕니다.
+    //
+    // 재생 버튼을 누르는 시점에는 마우스가 카드 위에 있으므로 미리보기가 돌고
+    // 있습니다. 그대로 두면 **뒤에서 같은 영상이 하나 더 돌아갑니다.** 보이지도
+    // 않는 영상을 계속 받아오는 셈이고, 웹뷰도 두 개가 됩니다.
+    _hoverTimer?.cancel();
+    _stopPreview();
 
     await Navigator.of(context).push<void>(
       MaterialPageRoute<void>(
@@ -1235,6 +1381,11 @@ class _HomeScreenState extends State<HomeScreen> {
       itemCount: _items.length,
       itemBuilder: (BuildContext context, int index) {
         final ReferenceItem item = _items[index];
+        // 호버 미리보기는 **유튜브 카드**에만, **데스크톱에서만** 붙입니다.
+        // null을 넘기면 카드가 호버를 아예 살피지 않습니다.
+        final bool canPreview =
+            supportsHoverPreview && item.type == ReferenceType.youtube;
+
         return ReferenceCard(
           item: item,
           imagePath: _imagePaths[item.id],
@@ -1244,6 +1395,11 @@ class _HomeScreenState extends State<HomeScreen> {
           isSelected: _selectedIds.contains(item.id),
           onSelectToggle: () => _toggleSelected(item),
           onPlay: () => _playYoutube(item),
+          onHoverChanged: canPreview
+              ? (bool isHovering) => _onCardHoverChanged(item, isHovering)
+              : null,
+          isPreviewPlaying: _previewingItemId == item.id,
+          previewUrl: _previewUrl,
         );
       },
     );

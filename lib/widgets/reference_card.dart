@@ -5,7 +5,9 @@
 
 import 'dart:io';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
 import '../models/enums.dart';
 import '../models/reference_item.dart';
@@ -22,6 +24,9 @@ class ReferenceCard extends StatelessWidget {
     required this.isSelected,
     required this.onSelectToggle,
     required this.onPlay,
+    this.onHoverChanged,
+    this.isPreviewPlaying = false,
+    this.previewUrl,
   });
 
   /// 보여줄 레퍼런스
@@ -63,9 +68,43 @@ class ReferenceCard extends StatelessWidget {
   /// 삭제 버튼이 카드 안에 있으면서 자기 동작을 갖는 것과 같은 방식입니다.
   final VoidCallback onPlay;
 
+  /// 마우스가 이 카드에 올라오거나 벗어났을 때 알려줍니다.
+  ///
+  /// null이면 호버를 아예 살피지 않습니다. 폰·태블릿에는 마우스가 없어서
+  /// 화면 쪽에서 null을 넘깁니다.
+  final ValueChanged<bool>? onHoverChanged;
+
+  /// 지금 이 카드에서 미리보기 영상을 틀고 있는지 여부입니다.
+  final bool isPreviewPlaying;
+
+  /// 미리보기 영상을 띄울 주소입니다. 없으면 null입니다.
+  ///
+  /// 카드가 주소를 직접 만들지 않습니다. 어느 카드에서 틀지 정하는 일은
+  /// 화면(home_screen.dart)이 하고, 카드는 받은 것을 보여주기만 합니다.
+  final String? previewUrl;
+
   /// 카드의 생김새를 만들어 돌려줍니다.
   @override
   Widget build(BuildContext context) {
+    final Widget card = _buildCard(context);
+
+    // 호버를 안 살피는 경우(폰 등)에는 감싸지 않고 그대로 돌려줍니다.
+    final ValueChanged<bool>? onHover = onHoverChanged;
+    if (onHover == null) {
+      return card;
+    }
+
+    // MouseRegion = 마우스가 이 영역에 들어오고 나가는 것을 알려주는 위젯입니다.
+    // 손가락 터치로는 아무 일도 일어나지 않습니다.
+    return MouseRegion(
+      onEnter: (PointerEnterEvent event) => onHover(true),
+      onExit: (PointerExitEvent event) => onHover(false),
+      child: card,
+    );
+  }
+
+  /// 카드 본체를 만듭니다.
+  Widget _buildCard(BuildContext context) {
     final ColorScheme colors = Theme.of(context).colorScheme;
 
     return Card(
@@ -159,34 +198,13 @@ class ReferenceCard extends StatelessWidget {
       children: <Widget>[
         Positioned.fill(child: _buildThumbnail(colors)),
 
+        // 미리보기 영상은 썸네일을 덮습니다. 재생 버튼은 그 위에 그대로 남습니다.
+        if (isPreviewPlaying && previewUrl != null)
+          Positioned.fill(child: _buildPreviewPlayer(previewUrl!)),
+
         // 재생 버튼은 고르기 모드가 아닐 때만 보입니다.
         // 여러 장 고르는 중에 영상이 재생되기 시작하면 곤란합니다.
-        if (isYoutube && !isSelectionMode)
-          Positioned.fill(
-            child: Center(
-              child: Material(
-                // 투명한 Material 위에 InkWell을 두면 누를 때 물결이 나옵니다.
-                color: Colors.transparent,
-                shape: const CircleBorder(),
-                clipBehavior: Clip.antiAlias,
-                child: InkWell(
-                  onTap: onPlay,
-                  child: Padding(
-                    padding: const EdgeInsets.all(6),
-                    child: Icon(
-                      Icons.play_circle_fill,
-                      size: 48,
-                      // 썸네일이 밝든 어둡든 보이도록 흰색에 그림자를 줍니다.
-                      color: Colors.white.withValues(alpha: 0.92),
-                      shadows: const <Shadow>[
-                        Shadow(color: Colors.black54, blurRadius: 10),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
+        if (isYoutube && !isSelectionMode) _buildPlayButton(),
 
         if (isSelectionMode)
           Positioned(
@@ -209,6 +227,88 @@ class ReferenceCard extends StatelessWidget {
             ),
           ),
       ],
+    );
+  }
+
+  /// 눌러서 크게 보는 재생 버튼입니다.
+  ///
+  /// ── 미리보기 중에는 작아져서 구석으로 갑니다 ──
+  /// 평소에는 "이건 영상이다"를 알리는 표시라 가운데 크게 있는 편이 좋습니다.
+  /// 그런데 미리보기가 도는 동안에도 가운데 그대로 있으면 **영상 한가운데를
+  /// 가려서** 정작 보려던 것을 못 보게 됩니다.
+  ///
+  /// 그렇다고 아예 숨기면 크게 보러 가는 길이 사라집니다. 그래서 작게 줄여
+  /// 오른쪽 아래로 옮깁니다. 왼쪽 위는 체크박스 자리라 비워둡니다.
+  Widget _buildPlayButton() {
+    // 미리보기 중에는 작게, 평소에는 크게.
+    final double iconSize = isPreviewPlaying ? 28 : 48;
+
+    final Widget button = Material(
+      // 투명한 Material 위에 InkWell을 두면 누를 때 물결이 나옵니다.
+      color: Colors.transparent,
+      shape: const CircleBorder(),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onPlay,
+        child: Padding(
+          padding: const EdgeInsets.all(6),
+          child: Icon(
+            Icons.play_circle_fill,
+            size: iconSize,
+            // 썸네일이 밝든 어둡든 보이도록 흰색에 그림자를 줍니다.
+            color: Colors.white.withValues(alpha: 0.92),
+            shadows: const <Shadow>[
+              Shadow(color: Colors.black54, blurRadius: 10),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    if (isPreviewPlaying) {
+      return Positioned(right: 2, bottom: 2, child: button);
+    }
+
+    return Positioned.fill(child: Center(child: button));
+  }
+
+  /// 호버했을 때 썸네일 위에 겹치는 미리보기 영상입니다.
+  ///
+  /// ── IgnorePointer로 감싼 이유 ──
+  /// 웹뷰는 그 위의 마우스 클릭을 자기가 가져갑니다. 그대로 두면 미리보기가
+  /// 도는 동안 **카드를 눌러도 편집 화면이 안 열립니다.** 사용자 입장에서는
+  /// 카드가 갑자기 먹통이 되는 셈입니다.
+  ///
+  /// IgnorePointer는 "이 안은 클릭 대상으로 치지 말라"는 뜻입니다. 덕분에
+  /// 미리보기는 움직이는 썸네일처럼만 동작하고, 카드의 클릭·재생 버튼·길게 누르기는
+  /// 평소와 똑같이 동작합니다. 마우스가 올라왔는지 살피는 일은 이 바깥의
+  /// MouseRegion이 하므로 영향을 받지 않습니다.
+  Widget _buildPreviewPlayer(String url) {
+    // 웹뷰 부품이 준비되지 않은 환경(리눅스, 테스트 등)에서는 아무것도 안 얹습니다.
+    // 확인 없이 만들면 목록 전체가 빨간 오류 화면이 됩니다.
+    // 재생 화면(youtube_player_screen.dart)에서와 같은 이유입니다.
+    if (InAppWebViewPlatform.instance == null) {
+      return const SizedBox.shrink();
+    }
+
+    return IgnorePointer(
+      child: InAppWebView(
+        // 카드마다 주소가 다르므로 key를 붙여, 다른 영상으로 바뀌었을 때
+        // Flutter가 웹뷰를 새로 만들게 합니다.
+        key: ValueKey<String>(url),
+        initialUrlRequest: URLRequest(url: WebUri(url)),
+        initialSettings: InAppWebViewSettings(
+          // 소리 없는 자동재생이라 사용자가 누르지 않아도 시작되어야 합니다.
+          mediaPlaybackRequiresUserGesture: false,
+          javaScriptEnabled: true,
+          allowsInlineMediaPlayback: true,
+
+          // 미리보기는 스크롤할 것이 없습니다. 꺼두면 목록을 스크롤할 때
+          // 웹뷰가 대신 스크롤을 먹는 일이 없습니다.
+          disableVerticalScroll: true,
+          disableHorizontalScroll: true,
+        ),
+      ),
     );
   }
 
