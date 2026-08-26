@@ -14,11 +14,8 @@
 
 import 'dart:async';
 
-import 'dart:io';
 
-import 'package:super_clipboard/super_clipboard.dart';
 import 'package:super_drag_and_drop/super_drag_and_drop.dart';
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -30,6 +27,8 @@ import '../models/reference_query.dart';
 import '../models/taxonomy_item.dart';
 import '../repositories/reference_repository.dart';
 import '../repositories/taxonomy_repository.dart';
+import '../services/app_settings.dart';
+import '../services/reference_importer.dart';
 import '../services/dropped_item_reader.dart';
 import '../services/image_source.dart';
 import '../services/image_storage.dart';
@@ -39,13 +38,15 @@ import '../services/youtube_url.dart';
 import '../theme/app_metrics.dart';
 import '../theme/app_palette.dart';
 import '../theme/app_text.dart';
-import '../utils/id_generator.dart';
 import '../widgets/add_youtube_dialog.dart';
+import '../widgets/app_sidebar.dart';
 import '../widgets/bulk_action_bar.dart';
+import '../widgets/main_header.dart';
 import '../widgets/pick_taxonomy_dialog.dart';
 import '../widgets/reference_card.dart';
 import '../widgets/reference_filter_bar.dart';
 import 'reference_detail_screen.dart';
+import 'settings_screen.dart';
 import 'taxonomy_manage_screen.dart';
 import 'youtube_player_screen.dart';
 
@@ -78,6 +79,7 @@ class HomeScreen extends StatefulWidget {
     required this.imageStorage,
     required this.imageSource,
     required this.youtubeInfoSource,
+    required this.settings,
   });
 
   /// 레퍼런스를 읽고 쓰는 통로입니다.
@@ -95,6 +97,9 @@ class HomeScreen extends StatefulWidget {
 
   /// 주소나 클립보드에서 이미지를 가져오는 도구입니다.
   final ImageSource imageSource;
+
+  /// 앱 설정입니다. 사이드바의 사용자 이름과 설정 화면에 씁니다.
+  final AppSettings settings;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -151,6 +156,13 @@ class _HomeScreenState extends State<HomeScreen> {
   /// 그래서 "고르기 모드"와 "무엇을 골랐는지"를 따로 둡니다.
   bool _isSelecting = false;
 
+  /// 사이드바 서랍을 열고 닫을 때 쓰는 열쇠입니다.
+  ///
+  /// 좁은 창에서는 사이드바가 서랍으로 들어갑니다. 그 서랍을 여는 버튼은
+  /// 본문 머리줄에 있는데, 서랍은 Scaffold가 갖고 있습니다. 서로 다른 곳에
+  /// 있어서 이 열쇠로 Scaffold를 찾아 서랍을 엽니다.
+  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
+
   /// 지금 골라둔 레퍼런스들의 id입니다.
   ///
   /// List가 아니라 Set인 이유: Set은 같은 값이 두 번 안 들어가고,
@@ -190,8 +202,15 @@ class _HomeScreenState extends State<HomeScreen> {
   /// late를 붙인 이유: 이 도구를 만들려면 widget.imageSource가 필요한데,
   /// 값을 적어두는 시점에는 아직 widget이 준비되기 전이라 쓸 수 없습니다.
   /// late = "지금 말고 처음 쓸 때 만들어라"라는 뜻입니다.
-  late final DroppedItemReader _droppedItemReader = DroppedItemReader(
-    widget.imageSource,
+  /// 레퍼런스를 들여와 저장해주는 도구입니다.
+  ///
+  /// 파일 고르기·끌어다 놓기·붙여넣기·유튜브가 전부 이 도구를 거칩니다.
+  /// 화면은 결과를 받아 안내를 띄우고 목록을 새로 고치는 일만 합니다.
+  late final ReferenceImporter _importer = ReferenceImporter(
+    repository: widget.repository,
+    imageStorage: widget.imageStorage,
+    imageSource: widget.imageSource,
+    youtubeInfoSource: widget.youtubeInfoSource,
   );
 
   /// 화면이 처음 만들어질 때 딱 한 번 실행됩니다.
@@ -603,13 +622,7 @@ class _HomeScreenState extends State<HomeScreen> {
   /// 유튜브 주소를 입력받아 레퍼런스로 추가합니다.
   Future<void> _addYoutube() async {
     // 클립보드에 이미 유튜브 주소가 있으면 입력창에 채워서 띄웁니다.
-    // 방금 복사해온 것을 또 붙여넣게 하는 것은 번거롭기만 합니다.
-    final String? clipboardText = await widget.imageSource.readClipboardText();
-
-    String? prefill;
-    if (clipboardText != null && isYoutubeVideoUrl(clipboardText)) {
-      prefill = clipboardText.trim();
-    }
+    final String? prefill = await _importer.youtubeUrlInClipboard();
 
     // 클립보드를 읽는 사이에 화면이 닫혔을 수 있습니다.
     if (!mounted) {
@@ -626,74 +639,7 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
-    await _addYoutubeById(videoId);
-  }
-
-  /// 영상 번호로 유튜브 레퍼런스를 추가하고 결과를 알려줍니다.
-  ///
-  /// 대화상자·붙여넣기·끌어다 놓기가 전부 여기로 모입니다.
-  /// 들어오는 길은 셋이지만 저장하는 방식은 하나여야 합니다.
-  Future<void> _addYoutubeById(String videoId) async {
-    if (_isAdding) {
-      return;
-    }
-
-    setState(() {
-      _isAdding = true;
-    });
-
-    final bool ok = await _saveYoutubeReference(videoId);
-
-    await _finishAdding(
-      ok ? 1 : 0,
-      ok ? 0 : 1,
-      ok ? null : '유튜브 영상을 추가하지 못했습니다.',
-      successMessage: '유튜브 영상을 추가했습니다.',
-    );
-  }
-
-  /// 유튜브 영상 하나를 레퍼런스로 저장합니다.
-  ///
-  /// ── 썸네일을 왜 내려받아 저장하나 ──
-  /// 화면에 띄울 때마다 img.youtube.com에서 가져오게 할 수도 있습니다.
-  /// 하지만 그러면 **인터넷이 없을 때 목록이 텅 빈 회색 칸으로 보입니다.**
-  /// 이 앱은 "내 컴퓨터에 모아두는" 것이 핵심이라, 이미지와 똑같이 파일로
-  /// 저장해둡니다. 그러면 비행기 안에서도 목록은 그대로 보입니다.
-  ///
-  /// 제목이나 썸네일을 못 가져와도 **저장은 합니다.** 영상 번호만 있으면
-  /// 나중에 재생할 수 있고, 제목은 편집 화면에서 직접 적을 수 있습니다.
-  ///
-  /// 성공하면 true, 실패하면 false를 돌려줍니다.
-  Future<bool> _saveYoutubeReference(String videoId) async {
-    try {
-      final YoutubeVideoInfo info = await widget.youtubeInfoSource.fetch(
-        videoId,
-      );
-
-      // 썸네일은 있으면 저장하고, 없으면 없는 대로 넘어갑니다.
-      String? savedFileName;
-      final Uint8List? thumbnail = info.thumbnailBytes;
-      if (thumbnail != null) {
-        savedFileName = await widget.imageStorage.saveImage(thumbnail);
-      }
-
-      final DateTime now = DateTime.now().toUtc();
-      await widget.repository.save(
-        ReferenceItem(
-          id: newId(),
-          type: ReferenceType.youtube,
-          title: info.title,
-          fileName: savedFileName,
-          youtubeVideoId: videoId,
-          createdAt: now,
-          updatedAt: now,
-        ),
-      );
-      return true;
-    } catch (error) {
-      debugPrint('유튜브 저장 실패: $error');
-      return false;
-    }
+    await _runImport(() => _importer.importYoutube(videoId));
   }
 
   /// 유튜브 재생 화면을 엽니다.
@@ -722,119 +668,16 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  /// 이미지 파일을 골라서 레퍼런스로 추가합니다.
-  Future<void> _addImages() async {
-    // 파일 고르기 창을 띄웁니다. 여러 장을 한 번에 고를 수 있습니다.
-    // 사용자가 취소하면 null이 돌아옵니다.
-    //
-    // withData: true를 주면 파일 내용을 메모리에 함께 담아줍니다.
-    // 안드로이드에서는 다른 앱이 넘겨준 파일에 실제 경로가 없을 수 있어서,
-    // 경로 대신 내용을 직접 받는 편이 안전합니다.
-    final FilePickerResult? picked = await FilePicker.pickFiles(
-      type: FileType.image,
-      allowMultiple: true,
-      withData: true,
-      dialogTitle: '레퍼런스로 추가할 이미지 고르기',
-    );
-
-    if (picked == null || picked.files.isEmpty) {
-      return;
-    }
-
-    setState(() {
-      _isAdding = true;
-    });
-
-    int savedCount = 0;
-    int failedCount = 0;
-
-    for (final PlatformFile file in picked.files) {
-      final bool ok = await _saveOneImage(file);
-      if (ok) {
-        savedCount++;
-      } else {
-        failedCount++;
-      }
-    }
-
-    await _finishAdding(savedCount, failedCount, null);
-  }
-
-  /// 고른 파일 하나를 줄여서 저장하고 레퍼런스로 등록합니다.
+  /// 들여오기를 실행하고, 끝나면 목록을 새로 고치고 결과를 알려줍니다.
   ///
-  /// 성공하면 true, 실패하면 false를 돌려줍니다.
-  Future<bool> _saveOneImage(PlatformFile file) async {
-    final String originalName = file.name;
-    try {
-      // withData: true로 골랐으므로 bytes에 내용이 들어있습니다.
-      // 혹시 없으면(플랫폼 사정) 경로로 읽어봅니다.
-      Uint8List? bytes = file.bytes;
-
-      if (bytes == null) {
-        final String? path = file.path;
-        if (path == null) {
-          return false;
-        }
-        bytes = await File(path).readAsBytes();
-      }
-
-      return await _saveImageBytes(bytes, title: _stripExtension(originalName));
-    } catch (error) {
-      // 파일 하나가 실패해도 나머지는 계속 처리되도록 여기서 잡습니다.
-      // 사진 10장 중 1장이 깨졌다고 9장까지 못 넣으면 곤란합니다.
-      debugPrint('이미지 저장 실패 ($originalName): $error');
-      return false;
-    }
-  }
-
-  /// 이미지 데이터를 줄여서 저장하고 레퍼런스로 등록합니다.
+  /// ── 왜 함수를 받아서 대신 실행하나 ──
+  /// 파일 고르기·끌어다 놓기·붙여넣기·유튜브 넷이 **앞뒤로 똑같은 일**을 합니다.
+  ///   앞: 이미 하는 중이면 그만두기 → "추가하는 중" 표시 켜기
+  ///   뒤: 표시 끄기 → 목록 새로 고치기 → 안내 띄우기
   ///
-  /// **파일 고르기·끌어다 놓기·붙여넣기가 전부 이 함수로 모입니다.**
-  /// 가져오는 경로는 셋이지만 저장하는 방식은 하나여야, 어느 쪽으로 넣든
-  /// 똑같이 리사이즈되고 똑같이 기록됩니다.
-  ///
-  /// 성공하면 true, 실패하면 false를 돌려줍니다.
-  Future<bool> _saveImageBytes(Uint8List bytes, {String? title}) async {
-    try {
-      final String? savedFileName = await widget.imageStorage.saveImage(bytes);
-
-      // 그림 파일이 아니거나 깨진 파일이면 null이 돌아옵니다.
-      if (savedFileName == null) {
-        return false;
-      }
-
-      final DateTime now = DateTime.now().toUtc();
-      await widget.repository.save(
-        ReferenceItem(
-          id: newId(),
-          type: ReferenceType.image,
-          // 제목을 못 뽑아낸 경우(클립보드 등)에는 빈 제목으로 둡니다.
-          // 목록에서는 "(제목 없음)"으로 보이고 편집 화면에서 고칠 수 있습니다.
-          title: title ?? '',
-          fileName: savedFileName,
-          createdAt: now,
-          updatedAt: now,
-        ),
-      );
-      return true;
-    } catch (error) {
-      debugPrint('이미지 저장 실패: $error');
-      return false;
-    }
-  }
-
-  /// 앱 창에 무언가를 끌어다 놓았을 때 실행됩니다.
-  ///
-  /// ── 브라우저에서 끌면 무엇이 오는가 ──
-  /// 상황마다 다릅니다. 이미지 데이터가 그대로 오기도 하고, 주소만 오기도 합니다.
-  /// 그래서 각 항목마다 **줄 수 있는 형식을 물어보고** 처리 방법을 정합니다.
-  ///
-  ///   1. 이미지 형식(PNG/JPEG/...)을 줄 수 있으면 → 그대로 받습니다
-  ///   2. 주소를 줄 수 있으면 → 내려받습니다
-  ///
-  /// 이 순서가 중요합니다. 브라우저는 보통 둘 다 줄 수 있다고 하는데,
-  /// 이미 갖고 있는 데이터를 쓰는 쪽이 빠르고 실패할 일도 없습니다.
-  Future<void> _handleDrop(PerformDropEvent event) async {
+  /// 넷에 각각 적어두면 언젠가 한 군데를 빠뜨려서 "추가하는 중"이 안 꺼지거나
+  /// 목록이 안 갱신됩니다. 가운데의 다른 부분만 함수로 받아서 여기서 감쌉니다.
+  Future<void> _runImport(Future<ImportOutcome> Function() importAction) async {
     if (_isAdding) {
       return;
     }
@@ -843,143 +686,18 @@ class _HomeScreenState extends State<HomeScreen> {
       _isAdding = true;
     });
 
-    int savedCount = 0;
-    int failedCount = 0;
-    String? lastError;
+    final ImportOutcome outcome = await importAction();
 
-    for (final DropItem item in event.session.items) {
-      final DataReader? reader = item.dataReader;
-      if (reader == null) {
-        failedCount++;
-        continue;
+    // 사용자가 파일 고르기를 취소한 경우입니다. 알릴 것이 없습니다.
+    if (outcome.isNothingToDo) {
+      if (mounted) {
+        setState(() {
+          _isAdding = false;
+        });
       }
-
-      // 유튜브 링크를 끌어온 것인지 **먼저** 봅니다.
-      // 그냥 read()에 넘기면 이미지인 줄 알고 내려받다가 실패합니다.
-      // (자세한 이유는 DroppedItemReader.youtubeVideoIdOf() 설명 참고)
-      final String? videoId = await _droppedItemReader.youtubeVideoIdOf(reader);
-      if (videoId != null) {
-        final bool savedVideo = await _saveYoutubeReference(videoId);
-        if (savedVideo) {
-          savedCount++;
-        } else {
-          failedCount++;
-          lastError = '유튜브 영상을 추가하지 못했습니다.';
-        }
-        continue;
-      }
-
-      final ImageFetchResult fetched = await _droppedItemReader.read(reader);
-
-      if (!fetched.isSuccess) {
-        failedCount++;
-        lastError = fetched.errorMessage;
-        continue;
-      }
-
-      final bool ok = await _saveImageBytes(
-        fetched.bytes!,
-        title: fetched.suggestedTitle,
-      );
-      if (ok) {
-        savedCount++;
-      } else {
-        failedCount++;
-        // 가져오기는 됐는데 그림이 아닌 경우입니다.
-        // (예: 이미지가 아니라 웹페이지 주소를 받아온 경우)
-        // "그림 파일이 맞는지 확인하세요"보다 다음에 뭘 하면 되는지 알려줍니다.
-        lastError =
-            '가져온 것이 이미지가 아닙니다. '
-            '이미지를 우클릭해 "이미지 복사" 후 붙여넣어 보세요.';
-      }
-    }
-
-    await _finishAdding(savedCount, failedCount, lastError);
-  }
-
-  /// 클립보드에 있는 것을 레퍼런스로 추가합니다. (Ctrl+V)
-  ///
-  /// 두 가지를 순서대로 시도합니다.
-  ///   1. 클립보드에 **이미지**가 있으면 그걸 씁니다. (브라우저에서 "이미지 복사")
-  ///   2. 없으면 클립보드의 **글자**가 이미지 주소인지 보고, 맞으면 내려받습니다.
-  ///      (브라우저에서 "이미지 주소 복사")
-  ///
-  /// 사용자는 둘 중 무엇을 복사했는지 신경 쓰지 않아도 되게 하려는 것입니다.
-  Future<void> _pasteFromClipboard() async {
-    if (_isAdding) {
       return;
     }
 
-    setState(() {
-      _isAdding = true;
-    });
-
-    ImageFetchResult fetched = await widget.imageSource.fetchFromClipboard();
-
-    // 주소를 실제로 받아보려 시도했는지 기록합니다.
-    //
-    // 이걸 구분하는 이유: 주소를 받아보다 실패한 경우에는 그쪽에서 온 구체적인
-    // 이유("그 사이트가 막고 있습니다" 등)를 그대로 보여줘야 합니다.
-    // 그걸 "클립보드에 이미지가 없습니다"로 덮어쓰면, 사용자는 클립보드를
-    // 다시 복사하러 가는 엉뚱한 행동을 하게 됩니다.
-    bool triedUrl = false;
-
-    if (!fetched.isSuccess) {
-      final String? text = await widget.imageSource.readClipboardText();
-
-      // 유튜브 주소면 이미지로 내려받으려 하지 말고 영상으로 저장합니다.
-      // 유튜브 페이지를 내려받아 봐야 HTML이라 "그림이 아니다"로 실패합니다.
-      final String? videoId = text == null ? null : youtubeVideoIdFrom(text);
-      if (videoId != null) {
-        final bool savedVideo = await _saveYoutubeReference(videoId);
-        await _finishAdding(
-          savedVideo ? 1 : 0,
-          savedVideo ? 0 : 1,
-          savedVideo ? null : '유튜브 영상을 추가하지 못했습니다.',
-          successMessage: '유튜브 영상을 추가했습니다.',
-        );
-        return;
-      }
-
-      if (text != null && looksLikeUrl(text)) {
-        triedUrl = true;
-        fetched = await widget.imageSource.fetchFromUrl(text.trim());
-      }
-    }
-
-    if (!fetched.isSuccess) {
-      await _finishAdding(
-        0,
-        1,
-        triedUrl
-            // 주소를 받아보다 실패 → 그쪽 이유를 그대로 전합니다.
-            ? fetched.errorMessage
-            // 클립보드에 쓸 만한 게 아예 없음 → 무엇을 하면 되는지 알려줍니다.
-            : '클립보드에 이미지가 없습니다. 브라우저에서 이미지를 우클릭해 '
-                  '"이미지 복사" 또는 "이미지 주소 복사"를 해보세요.',
-      );
-      return;
-    }
-
-    final bool ok = await _saveImageBytes(
-      fetched.bytes!,
-      title: fetched.suggestedTitle,
-    );
-
-    await _finishAdding(ok ? 1 : 0, ok ? 0 : 1, ok ? null : '이미지를 저장하지 못했습니다.');
-  }
-
-  /// 추가 작업이 끝난 뒤 목록을 새로 고치고 결과를 알려줍니다.
-  ///
-  /// 파일 고르기·끌어다 놓기·붙여넣기가 끝날 때 공통으로 하는 일입니다.
-  /// [successMessage]를 주면 성공했을 때 그 문구를 대신 보여줍니다.
-  /// 유튜브는 "1장 추가했습니다"가 어색해서 따로 문구를 넘깁니다.
-  Future<void> _finishAdding(
-    int savedCount,
-    int failedCount,
-    String? errorMessage, {
-    String? successMessage,
-  }) async {
     await _loadItems();
 
     if (!mounted) {
@@ -990,12 +708,32 @@ class _HomeScreenState extends State<HomeScreen> {
       _isAdding = false;
     });
 
-    if (successMessage != null && failedCount == 0) {
-      _showMessage(successMessage);
-      return;
+    _showImportResult(outcome);
+  }
+
+  /// 들여오기 결과를 화면 아래쪽에 잠깐 띄웁니다.
+  ///
+  /// 가져오기 쪽에서 온 구체적인 이유("그 사이트가 막고 있습니다" 등)를
+  /// "실패했습니다"보다 우선해서 보여줍니다. 그쪽이 훨씬 쓸모 있습니다.
+  void _showImportResult(ImportOutcome outcome) {
+    String message;
+
+    if (outcome.failedCount == 0) {
+      message = outcome.successMessage ?? '${outcome.savedCount}장 추가했습니다.';
+    } else if (outcome.savedCount == 0) {
+      message = outcome.errorMessage ?? '추가하지 못했습니다. 그림 파일이 맞는지 확인해주세요.';
+    } else {
+      message =
+          '${outcome.savedCount}장 추가했습니다. ${outcome.failedCount}장은 읽지 못했습니다.';
     }
 
-    _showResultMessage(savedCount, failedCount, errorMessage: errorMessage);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        // 안내가 길어질 수 있어서(사이트가 막는 경우 등) 조금 더 오래 띄웁니다.
+        duration: const Duration(seconds: 5),
+      ),
+    );
   }
 
   /// 레퍼런스를 지웁니다.
@@ -1057,78 +795,52 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  /// 추가 결과를 화면 아래쪽에 잠깐 띄웁니다.
-  ///
-  /// [errorMessage]가 있으면 그걸 우선해서 보여줍니다. 가져오기 쪽에서 온
-  /// 구체적인 이유("그 사이트가 막고 있습니다" 등)가 "실패했습니다"보다
-  /// 사용자에게 훨씬 쓸모 있기 때문입니다.
-  void _showResultMessage(
-    int savedCount,
-    int failedCount, {
-    String? errorMessage,
-  }) {
-    String message;
-    if (failedCount == 0) {
-      message = '$savedCount장 추가했습니다.';
-    } else if (savedCount == 0) {
-      message = errorMessage ?? '추가하지 못했습니다. 그림 파일이 맞는지 확인해주세요.';
-    } else {
-      message = '$savedCount장 추가했습니다. $failedCount장은 읽지 못했습니다.';
-    }
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        // 안내가 길어질 수 있어서(사이트가 막는 경우 등) 조금 더 오래 띄웁니다.
-        duration: const Duration(seconds: 5),
-      ),
-    );
-  }
-
-  /// 파일 이름에서 확장자를 떼어냅니다. ("노을.jpg" → "노을")
-  String _stripExtension(String fileName) {
-    final int dotIndex = fileName.lastIndexOf('.');
-    if (dotIndex <= 0) {
-      return fileName;
-    }
-    return fileName.substring(0, dotIndex);
-  }
-
   /// 화면의 생김새를 만들어 돌려줍니다.
+  ///
+  /// ── 왼쪽 사이드바 + 오른쪽 본문 ──
+  /// 의뢰인이 정해준 구조입니다. 창이 넓으면 사이드바를 늘 펼쳐두고,
+  /// 좁으면(폰 등) 숨겨뒀다가 메뉴 버튼으로 꺼냅니다.
+  /// 좁은 화면에서까지 사이드바가 자리를 차지하면 정작 볼 목록이 좁아집니다.
   @override
   Widget build(BuildContext context) {
+    final bool isWide =
+        MediaQuery.sizeOf(context).width >= sidebarBreakpoint;
+
     return Scaffold(
-      appBar: _isSelecting ? _buildSelectionAppBar() : _buildNormalAppBar(),
+      key: _scaffoldKey,
+
+      // 고르는 중에만 위쪽 막대가 나옵니다.
+      // 평소에는 본문 안의 머리줄(MainHeader)이 그 역할을 합니다.
+      appBar: _isSelecting ? _buildSelectionAppBar() : null,
+
+      // 좁은 창에서 메뉴 버튼으로 꺼내는 사이드바입니다.
+      drawer: isWide ? null : Drawer(child: _buildSidebar()),
+
       // CallbackShortcuts는 지정한 키 조합이 눌리면 함수를 실행합니다.
       // Focus(autofocus: true)로 감싸야 화면이 키 입력을 받습니다.
       // 안 감싸면 아무 데도 초점이 없어서 Ctrl+V가 무시됩니다.
       body: CallbackShortcuts(
         bindings: <ShortcutActivator, VoidCallback>{
           const SingleActivator(LogicalKeyboardKey.keyV, control: true):
-              _pasteFromClipboard,
+              () => _runImport(_importer.importFromClipboard),
           // macOS는 Ctrl 대신 Command를 씁니다.
           const SingleActivator(LogicalKeyboardKey.keyV, meta: true):
-              _pasteFromClipboard,
+              () => _runImport(_importer.importFromClipboard),
         },
         child: Focus(
           autofocus: true,
-          child: _buildDropArea(
-            // 검색·필터 줄은 항상 위에 붙어 있고, 그 아래 내용만 바뀝니다.
-            // 결과가 없을 때도 검색창이 남아 있어야 조건을 고칠 수 있습니다.
-            Column(
-              children: <Widget>[
-                ReferenceFilterBar(
-                  query: _query,
-                  searchController: _searchController,
-                  taxonomyOptions: _taxonomyOptions,
-                  onQueryChanged: _applyQuery,
-                ),
-                Expanded(child: _buildBody()),
-              ],
-            ),
+          child: Row(
+            children: <Widget>[
+              // 넓은 창에서만 사이드바를 늘 펼쳐둡니다.
+              if (isWide) _buildSidebar(),
+
+              // Expanded로 감싸야 본문이 남는 폭을 다 차지합니다.
+              Expanded(child: _buildMainArea(isWide)),
+            ],
           ),
         ),
       ),
+
       // 고르는 중에는 화면 아래에 일괄 작업 막대가 붙습니다.
       // bottomNavigationBar에 넣으면 목록이 그만큼 위로 줄어들어서,
       // 떠 있는 버튼과 달리 마지막 줄의 카드를 가리지 않습니다.
@@ -1140,71 +852,87 @@ class _HomeScreenState extends State<HomeScreen> {
               onDelete: _deleteSelected,
             )
           : null,
-
-      // 고르는 중에는 추가 버튼을 숨깁니다.
-      // 아래 작업 막대와 겹쳐 보이고, 고르는 도중에 새로 추가할 일도 없습니다.
-      floatingActionButton: _isSelecting ? null : _buildAddButtons(),
     );
   }
 
-  /// 오른쪽 아래의 추가 버튼들을 만듭니다.
+  /// 왼쪽 사이드바를 만듭니다. (①②③)
+  Widget _buildSidebar() {
+    return AppSidebar(
+      userName: widget.settings.userName,
+      onOpenSettings: _openSettings,
+      onLogInOut: _showLoginNotReady,
+    );
+  }
+
+  /// 오른쪽 본문을 만듭니다. (④⑤⑥)
+  Widget _buildMainArea(bool isWide) {
+    return _buildDropArea(
+      Column(
+        children: <Widget>[
+          // ④ 머리줄 — 제목·개수·검색·추가 버튼
+          MainHeader(
+            itemCount: _items.length,
+            searchController: _searchController,
+            hasSearchText: _query.searchText.isNotEmpty,
+            onClearSearch: () {
+              _searchController.clear();
+              _applyQuery(_query.copyWith(searchText: ''));
+            },
+            isAdding: _isAdding,
+            onAddImages: () => _runImport(_importer.importFromFilePicker),
+            onAddYoutube: _addYoutube,
+
+            // 사이드바가 이미 펼쳐져 있으면 메뉴 버튼이 필요 없습니다.
+            onOpenMenu: isWide
+                ? null
+                : () => _scaffoldKey.currentState?.openDrawer(),
+          ),
+
+          // ⑤ 폴더·카테고리·프로젝트 고르기 (정렬·즐겨찾기도 함께)
+          ReferenceFilterBar(
+            query: _query,
+            taxonomyOptions: _taxonomyOptions,
+            onQueryChanged: _applyQuery,
+            onToggleSelectionMode: _items.isEmpty
+                ? null
+                : _toggleSelectionMode,
+            onOpenTaxonomyManage: _openTaxonomyManage,
+          ),
+
+          // ⑥ 레퍼런스 격자
+          Expanded(child: _buildBody()),
+        ],
+      ),
+    );
+  }
+
+  /// 설정 화면을 엽니다.
+  Future<void> _openSettings() async {
+    // 좁은 창이면 사이드바가 서랍으로 열려 있으므로 먼저 닫습니다.
+    // 안 닫으면 설정 화면 위에 서랍이 겹쳐 보입니다.
+    final NavigatorState navigator = Navigator.of(context);
+    if (_scaffoldKey.currentState?.isDrawerOpen ?? false) {
+      navigator.pop();
+    }
+
+    await navigator.push<void>(
+      MaterialPageRoute<void>(
+        builder: (BuildContext context) =>
+            SettingsScreen(settings: widget.settings),
+      ),
+    );
+  }
+
+  /// 로그인은 아직 없다고 알려줍니다.
   ///
-  /// 유튜브는 작은 버튼으로 이미지 버튼 위에 얹습니다.
-  /// 메뉴 안에 감추지 않은 이유: 한 번 더 눌러야 나오는 기능은 잘 안 쓰게 됩니다.
-  /// 이미지 쪽을 큰 버튼으로 둔 것은 그쪽이 더 자주 쓰이기 때문입니다.
-  Widget _buildAddButtons() {
-    // 추가하는 중에는 null을 넣어 버튼을 잠급니다.
-    // Flutter에서는 onPressed가 null이면 버튼이 자동으로 비활성화됩니다.
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.end,
-      children: <Widget>[
-        FloatingActionButton.small(
-          heroTag: 'addYoutube',
-          onPressed: _isAdding ? null : _addYoutube,
-          tooltip: '유튜브 영상 추가',
-          child: const Icon(Icons.smart_display_outlined),
-        ),
-        const SizedBox(height: 12),
-        FloatingActionButton.extended(
-          // heroTag를 서로 다르게 줘야 합니다. 화면에 떠 있는 버튼이 둘 이상인데
-          // 이름표가 같으면, 화면을 넘나들 때 Flutter가 어느 버튼을 이어서
-          // 움직여야 할지 몰라 오류를 냅니다.
-          heroTag: 'addImages',
-          onPressed: _isAdding ? null : _addImages,
-          icon: _isAdding
-              ? const SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Icon(Icons.add_photo_alternate_outlined),
-          label: Text(_isAdding ? '추가하는 중...' : '이미지 추가'),
-        ),
-      ],
-    );
-  }
-
-  /// 평소의 위쪽 막대를 만듭니다.
-  PreferredSizeWidget _buildNormalAppBar() {
-    // 색은 지정하지 않습니다. 테마(app_theme.dart)에 정해둔 것을 씁니다.
-    // 여기서 따로 정하면 나중에 앱 색을 바꿀 때 이 줄만 안 바뀌어 튑니다.
-    return AppBar(
-      title: const Text('레퍼런스 아카이브'),
-      actions: <Widget>[
-        IconButton(
-          // 보여줄 것이 없으면 고를 것도 없으므로 버튼을 잠급니다.
-          onPressed: _items.isEmpty ? null : _toggleSelectionMode,
-          icon: const Icon(Icons.check_circle_outline),
-          tooltip: '여러 장 고르기',
-        ),
-        IconButton(
-          onPressed: _openTaxonomyManage,
-          icon: const Icon(Icons.folder_special_outlined),
-          tooltip: '분류 관리',
-        ),
-      ],
-    );
+  /// 버튼을 아예 빼지 않고 남겨둔 이유: 의뢰인이 정한 구조에 로그인 자리가
+  /// 있고, 나중에 붙일 곳을 미리 보여두는 편이 낫습니다.
+  /// 다만 눌렀을 때 아무 일도 안 일어나면 고장난 줄 알게 되므로 알려줍니다.
+  void _showLoginNotReady() {
+    if (_scaffoldKey.currentState?.isDrawerOpen ?? false) {
+      Navigator.of(context).pop();
+    }
+    _showMessage('로그인 기능은 아직 만들지 않았습니다.');
   }
 
   /// 고르는 중일 때의 위쪽 막대를 만듭니다.
@@ -1269,7 +997,7 @@ class _HomeScreenState extends State<HomeScreen> {
       },
       onPerformDrop: (PerformDropEvent event) async {
         setState(() => _isDragging = false);
-        await _handleDrop(event);
+        await _runImport(() => _importer.importFromDrop(event));
       },
       child: Stack(
         children: <Widget>[

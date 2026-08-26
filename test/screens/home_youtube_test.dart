@@ -17,6 +17,7 @@ import 'package:reference_archive_app/models/enums.dart';
 import 'package:reference_archive_app/models/reference_item.dart';
 import 'package:reference_archive_app/repositories/local_reference_repository.dart';
 import 'package:reference_archive_app/repositories/local_taxonomy_repository.dart';
+import 'package:reference_archive_app/services/app_settings.dart';
 
 import '../fakes/fake_image_source.dart';
 import '../fakes/fake_image_storage.dart';
@@ -65,6 +66,7 @@ void main() {
       imageStorage: imageStorage,
       imageSource: imageSource,
       youtubeInfoSource: youtubeInfoSource,
+      settings: AppSettings(),
     );
   }
 
@@ -77,7 +79,7 @@ void main() {
 
   /// 오른쪽 아래 유튜브 버튼을 눌러 대화상자를 엽니다.
   Future<void> openYoutubeDialog(WidgetTester tester) async {
-    await tester.tap(find.byTooltip('유튜브 영상 추가'));
+    await tester.tap(find.widgetWithText(OutlinedButton, '유튜브'));
     await tester.pumpAndSettle();
   }
 
@@ -295,7 +297,7 @@ void main() {
       await openYoutubeDialog(tester);
       await submitUrl(tester, videoUrl);
 
-      await tester.tap(find.byTooltip('여러 장 고르기'));
+      await tester.tap(find.widgetWithText(OutlinedButton, '고르기'));
       await tester.pumpAndSettle();
 
       expect(find.byIcon(Icons.play_circle_fill), findsNothing);

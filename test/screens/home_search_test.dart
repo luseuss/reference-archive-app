@@ -14,6 +14,7 @@ import 'package:reference_archive_app/models/reference_item.dart';
 import 'package:reference_archive_app/models/taxonomy_item.dart';
 import 'package:reference_archive_app/repositories/local_reference_repository.dart';
 import 'package:reference_archive_app/repositories/local_taxonomy_repository.dart';
+import 'package:reference_archive_app/services/app_settings.dart';
 import 'package:reference_archive_app/utils/id_generator.dart';
 
 import '../fakes/fake_image_source.dart';
@@ -91,6 +92,7 @@ void main() {
       imageStorage: FakeImageStorage(),
       imageSource: FakeImageSource(),
       youtubeInfoSource: FakeYoutubeInfoSource(),
+      settings: AppSettings(),
     );
   }
 
