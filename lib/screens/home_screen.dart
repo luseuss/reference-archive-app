@@ -15,7 +15,6 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:super_clipboard/super_clipboard.dart';
-import 'package:super_native_extensions/raw_clipboard.dart' as raw;
 import 'package:super_drag_and_drop/super_drag_and_drop.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -27,6 +26,7 @@ import '../models/reference_query.dart';
 import '../models/taxonomy_item.dart';
 import '../repositories/reference_repository.dart';
 import '../repositories/taxonomy_repository.dart';
+import '../services/dropped_item_reader.dart';
 import '../services/image_source.dart';
 import '../services/image_storage.dart';
 import '../utils/id_generator.dart';
@@ -34,19 +34,6 @@ import '../widgets/reference_card.dart';
 import '../widgets/reference_filter_bar.dart';
 import 'reference_detail_screen.dart';
 import 'taxonomy_manage_screen.dart';
-
-/// 끌어다 놓기로 받을 수 있는 이미지 형식들입니다.
-///
-/// 여기 없는 형식은 창에 놓아도 아예 들어오지 않습니다.
-/// 브라우저가 이미지를 건네줄 때 쓰는 흔한 형식들을 담았습니다.
-const List<FileFormat> _droppableImageFormats = <FileFormat>[
-  Formats.png,
-  Formats.jpeg,
-  Formats.gif,
-  Formats.webp,
-  Formats.bmp,
-  Formats.tiff,
-];
 
 /// 레퍼런스 목록 화면입니다.
 ///
@@ -113,6 +100,15 @@ class _HomeScreenState extends State<HomeScreen> {
   /// 지금 무언가를 창 위로 끌고 있는 중인지 여부입니다.
   /// 켜져 있으면 "여기 놓으세요" 안내를 덧그립니다.
   bool _isDragging = false;
+
+  /// 끌어다 놓은 것을 읽어 이미지 데이터로 만들어주는 도구입니다.
+  ///
+  /// late를 붙인 이유: 이 도구를 만들려면 widget.imageSource가 필요한데,
+  /// 값을 적어두는 시점에는 아직 widget이 준비되기 전이라 쓸 수 없습니다.
+  /// late = "지금 말고 처음 쓸 때 만들어라"라는 뜻입니다.
+  late final DroppedItemReader _droppedItemReader = DroppedItemReader(
+    widget.imageSource,
+  );
 
   /// 화면이 처음 만들어질 때 딱 한 번 실행됩니다.
   @override
@@ -348,7 +344,7 @@ class _HomeScreenState extends State<HomeScreen> {
         continue;
       }
 
-      final ImageFetchResult fetched = await _readDroppedItem(reader);
+      final ImageFetchResult fetched = await _droppedItemReader.read(reader);
 
       if (!fetched.isSuccess) {
         failedCount++;
@@ -374,195 +370,6 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     await _finishAdding(savedCount, failedCount, lastError);
-  }
-
-  /// 떨어진 항목 하나를 읽어 이미지 데이터로 만듭니다.
-  Future<ImageFetchResult> _readDroppedItem(DataReader reader) async {
-    // 1) 이미지 데이터를 직접 줄 수 있는지 먼저 봅니다.
-    for (final FileFormat format in _droppableImageFormats) {
-      if (!reader.canProvide(format)) {
-        continue;
-      }
-
-      final Uint8List? bytes = await _readFileBytes(reader, format);
-      if (bytes != null && bytes.isNotEmpty) {
-        return ImageFetchResult.success(bytes);
-      }
-    }
-
-    // 2) 이미지를 못 주면 HTML 조각을 봅니다.
-    //
-    //    ── 주소보다 HTML을 먼저 보는 이유 (핀터레스트) ──
-    //    이미지가 링크에 감싸여 있으면 브라우저가 주는 주소는 **이미지가 아니라
-    //    링크가 가리키는 페이지 주소**입니다. 핀터레스트가 정확히 그렇습니다.
-    //    그걸 내려받으면 HTML이 와서 "그림이 아니다"로 실패합니다.
-    //
-    //    반면 HTML 조각에는 <img src="진짜 이미지 주소">가 들어 있어서
-    //    링크에 감싸여 있어도 실제 이미지를 찾을 수 있습니다.
-    if (reader.canProvide(Formats.htmlText)) {
-      final String? html = await _readValue<String>(reader, Formats.htmlText);
-
-      String? imageUrl = html == null ? null : imageUrlFromHtml(html);
-
-      // 못 찾았으면 글자가 깨져서 온 경우일 수 있습니다.
-      // 되돌려서 한 번 더 찾아봅니다. (핀터레스트 피드가 이 경우입니다)
-      if (imageUrl == null && html != null) {
-        final String? repaired = repairMangledHtml(html);
-        if (repaired != null) {
-          imageUrl = imageUrlFromHtml(repaired);
-        }
-      }
-
-      debugPrint('[드롭] HTML에서 찾은 주소: $imageUrl');
-
-      if (imageUrl != null) {
-        final ImageFetchResult result = await widget.imageSource.fetchFromUrl(
-          imageUrl,
-        );
-        // 여기서 실패하면 아래 주소 방식으로 한 번 더 시도해봅니다.
-        if (result.isSuccess) {
-          return result;
-        }
-      }
-    }
-
-    // 3) 그래도 안 되면 주소를 그대로 받아봅니다.
-    //    이미지를 직접 끈 경우(링크에 안 감싸인 경우)에는 이쪽이 맞습니다.
-    if (reader.canProvide(Formats.uri)) {
-      final NamedUri? named = await _readValue<NamedUri>(reader, Formats.uri);
-      final String? url = named?.uri.toString();
-      debugPrint('[드롭] 주소: $url');
-
-      if (url != null && looksLikeUrl(url)) {
-        return widget.imageSource.fetchFromUrl(url);
-      }
-    }
-
-    // 4) 표준 형식으로 아무것도 못 얻었으면, 사이트가 자기 방식으로 끼워 넣은
-    //    데이터를 뒤져봅니다.
-    //
-    //    ── 왜 이게 필요한가 (핀터레스트 상세 페이지) ──
-    //    핀터레스트 상세 페이지에서 끌면 표준 형식이 하나도 안 옵니다.
-    //    HTML도, 주소도, 파일도 없습니다. 대신 자체 형식 안에
-    //    이미지 주소를 넣어둡니다.
-    //
-    //      application/x-pinterest-closeup-image
-    //      {"pinId":"...","previewImageUrl":"https://i.pinimg.com/736x/...jpg"}
-    //
-    //    이름은 사이트마다 다르므로 이름을 찾지 않고 주소처럼 생긴 글자를 찾습니다.
-    final String? urlFromCustomData = await _findUrlInCustomData(reader);
-    if (urlFromCustomData != null) {
-      return widget.imageSource.fetchFromUrl(urlFromCustomData);
-    }
-
-    // 여기까지 왔으면 어느 경로로도 못 얻은 것입니다.
-    // 새로운 사이트가 안 될 때 원인을 짚을 수 있도록 무엇이 넘어왔는지 남깁니다.
-    debugPrint('[드롭] 실패 — 넘어온 형식: ${reader.platformFormats}');
-
-    return const ImageFetchResult.failure('이미지를 찾지 못했습니다. 이미지를 복사해서 붙여넣어 보세요.');
-  }
-
-  /// 사이트가 자체 형식으로 끼워 넣은 데이터에서 이미지 주소를 찾습니다.
-  ///
-  /// 표준 형식으로 아무것도 못 얻었을 때만 부릅니다.
-  Future<String?> _findUrlInCustomData(DataReader reader) async {
-    final raw.DataReaderItem? item = reader.rawReader;
-    if (item == null) {
-      return null;
-    }
-
-    try {
-      final List<String> formats = await item.getAvailableFormats();
-
-      for (final String format in formats) {
-        // 그림 자체(비트맵)는 여기서 다루지 않습니다. 아주 크고,
-        // 우리가 찾는 건 글자 속 주소입니다.
-        if (format.contains('DragImageBits')) {
-          continue;
-        }
-
-        final (Future<Object?>, raw.ReadProgress) request = item
-            .getDataForFormat(format);
-        final Object? data = await request.$1;
-
-        String? text;
-        if (data is String) {
-          text = data;
-        } else if (data is List<int> && data.length <= 100000) {
-          // 0이 낀 채로 오는 경우가 있어서 그대로 읽으면 안 됩니다.
-          // 자세한 이유는 textFromCustomData()의 설명을 보세요.
-          text = textFromCustomData(data);
-        }
-
-        if (text == null) {
-          continue;
-        }
-
-        final String? found = findImageUrlInText(text);
-        if (found != null) {
-          debugPrint('[드롭] 사이트 자체 데이터($format)에서 찾은 주소: $found');
-          return found;
-        }
-      }
-    } catch (error) {
-      debugPrint('[드롭] 자체 데이터 살펴보기 실패: $error');
-    }
-
-    return null;
-  }
-
-  /// 값을 읽어 돌려줍니다. 못 읽으면 null입니다.
-  ///
-  /// getValue()도 결과를 콜백으로 주기 때문에 Completer로 감싸 Future로 바꿉니다.
-  /// (getFile과 같은 이유입니다)
-  Future<T?> _readValue<T extends Object>(
-    DataReader reader,
-    ValueFormat<T> format,
-  ) {
-    final Completer<T?> completer = Completer<T?>();
-
-    reader.getValue<T>(
-      format,
-      (T? value) {
-        if (!completer.isCompleted) {
-          completer.complete(value);
-        }
-      },
-      onError: (Object error) {
-        debugPrint('떨어진 항목 값 읽기 실패: $error');
-        if (!completer.isCompleted) {
-          completer.complete(null);
-        }
-      },
-    );
-
-    return completer.future;
-  }
-
-  /// 읽기 결과를 기다렸다가 바이트로 돌려줍니다.
-  ///
-  /// getFile()은 결과를 콜백으로 주기 때문에, await로 기다릴 수 있도록
-  /// Completer로 감싸 Future로 바꿉니다.
-  Future<Uint8List?> _readFileBytes(DataReader reader, FileFormat format) {
-    final Completer<Uint8List?> completer = Completer<Uint8List?>();
-
-    reader.getFile(
-      format,
-      (DataReaderFile file) async {
-        final Uint8List bytes = await file.readAll();
-        if (!completer.isCompleted) {
-          completer.complete(bytes);
-        }
-      },
-      onError: (Object error) {
-        debugPrint('떨어진 항목 읽기 실패: $error');
-        if (!completer.isCompleted) {
-          completer.complete(null);
-        }
-      },
-    );
-
-    return completer.future;
   }
 
   /// 클립보드에 있는 것을 레퍼런스로 추가합니다. (Ctrl+V)
@@ -810,11 +617,9 @@ class _HomeScreenState extends State<HomeScreen> {
     return DropRegion(
       // 받을 수 있다고 알릴 형식들입니다. 여기 없는 형식은 아예 안 들어옵니다.
       // (앞서 쓰던 desktop_drop은 파일 형식만 받아서 브라우저 드래그가 막혔습니다)
-      formats: <DataFormat<Object>>[
-        ..._droppableImageFormats,
-        Formats.uri,
-        Formats.fileUri,
-      ],
+      // 목록 자체는 dropped_item_reader.dart에 있습니다. 받는 쪽과 읽는 쪽이
+      // 따로 놀면 "받아는 놓고 읽지 못하는" 형식이 생기기 때문입니다.
+      formats: dropRegionFormats,
 
       // 끌고 지나가는 동안 "복사할 수 있다"고 알려줍니다.
       // none을 돌려주면 커서에 금지 표시가 뜨고 놓을 수 없습니다.
