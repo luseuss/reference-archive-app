@@ -27,6 +27,7 @@ import '../models/reference_query.dart';
 import '../models/taxonomy_item.dart';
 import '../repositories/reference_repository.dart';
 import '../repositories/taxonomy_repository.dart';
+import '../services/app_settings.dart';
 import '../services/reference_importer.dart';
 import '../services/dropped_item_reader.dart';
 import '../services/image_source.dart';
@@ -38,11 +39,14 @@ import '../theme/app_metrics.dart';
 import '../theme/app_palette.dart';
 import '../theme/app_text.dart';
 import '../widgets/add_youtube_dialog.dart';
+import '../widgets/app_sidebar.dart';
 import '../widgets/bulk_action_bar.dart';
+import '../widgets/main_header.dart';
 import '../widgets/pick_taxonomy_dialog.dart';
 import '../widgets/reference_card.dart';
 import '../widgets/reference_filter_bar.dart';
 import 'reference_detail_screen.dart';
+import 'settings_screen.dart';
 import 'taxonomy_manage_screen.dart';
 import 'youtube_player_screen.dart';
 
@@ -75,6 +79,7 @@ class HomeScreen extends StatefulWidget {
     required this.imageStorage,
     required this.imageSource,
     required this.youtubeInfoSource,
+    required this.settings,
   });
 
   /// 레퍼런스를 읽고 쓰는 통로입니다.
@@ -92,6 +97,9 @@ class HomeScreen extends StatefulWidget {
 
   /// 주소나 클립보드에서 이미지를 가져오는 도구입니다.
   final ImageSource imageSource;
+
+  /// 앱 설정입니다. 사이드바의 사용자 이름과 설정 화면에 씁니다.
+  final AppSettings settings;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -147,6 +155,13 @@ class _HomeScreenState extends State<HomeScreen> {
   /// 통째로 사라집니다. 사용자는 잘못 눌러서 모드가 꺼졌다고 느낍니다.
   /// 그래서 "고르기 모드"와 "무엇을 골랐는지"를 따로 둡니다.
   bool _isSelecting = false;
+
+  /// 사이드바 서랍을 열고 닫을 때 쓰는 열쇠입니다.
+  ///
+  /// 좁은 창에서는 사이드바가 서랍으로 들어갑니다. 그 서랍을 여는 버튼은
+  /// 본문 머리줄에 있는데, 서랍은 Scaffold가 갖고 있습니다. 서로 다른 곳에
+  /// 있어서 이 열쇠로 Scaffold를 찾아 서랍을 엽니다.
+  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
 
   /// 지금 골라둔 레퍼런스들의 id입니다.
   ///
@@ -781,10 +796,26 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   /// 화면의 생김새를 만들어 돌려줍니다.
+  ///
+  /// ── 왼쪽 사이드바 + 오른쪽 본문 ──
+  /// 의뢰인이 정해준 구조입니다. 창이 넓으면 사이드바를 늘 펼쳐두고,
+  /// 좁으면(폰 등) 숨겨뒀다가 메뉴 버튼으로 꺼냅니다.
+  /// 좁은 화면에서까지 사이드바가 자리를 차지하면 정작 볼 목록이 좁아집니다.
   @override
   Widget build(BuildContext context) {
+    final bool isWide =
+        MediaQuery.sizeOf(context).width >= sidebarBreakpoint;
+
     return Scaffold(
-      appBar: _isSelecting ? _buildSelectionAppBar() : _buildNormalAppBar(),
+      key: _scaffoldKey,
+
+      // 고르는 중에만 위쪽 막대가 나옵니다.
+      // 평소에는 본문 안의 머리줄(MainHeader)이 그 역할을 합니다.
+      appBar: _isSelecting ? _buildSelectionAppBar() : null,
+
+      // 좁은 창에서 메뉴 버튼으로 꺼내는 사이드바입니다.
+      drawer: isWide ? null : Drawer(child: _buildSidebar()),
+
       // CallbackShortcuts는 지정한 키 조합이 눌리면 함수를 실행합니다.
       // Focus(autofocus: true)로 감싸야 화면이 키 입력을 받습니다.
       // 안 감싸면 아무 데도 초점이 없어서 Ctrl+V가 무시됩니다.
@@ -798,23 +829,18 @@ class _HomeScreenState extends State<HomeScreen> {
         },
         child: Focus(
           autofocus: true,
-          child: _buildDropArea(
-            // 검색·필터 줄은 항상 위에 붙어 있고, 그 아래 내용만 바뀝니다.
-            // 결과가 없을 때도 검색창이 남아 있어야 조건을 고칠 수 있습니다.
-            Column(
-              children: <Widget>[
-                ReferenceFilterBar(
-                  query: _query,
-                  searchController: _searchController,
-                  taxonomyOptions: _taxonomyOptions,
-                  onQueryChanged: _applyQuery,
-                ),
-                Expanded(child: _buildBody()),
-              ],
-            ),
+          child: Row(
+            children: <Widget>[
+              // 넓은 창에서만 사이드바를 늘 펼쳐둡니다.
+              if (isWide) _buildSidebar(),
+
+              // Expanded로 감싸야 본문이 남는 폭을 다 차지합니다.
+              Expanded(child: _buildMainArea(isWide)),
+            ],
           ),
         ),
       ),
+
       // 고르는 중에는 화면 아래에 일괄 작업 막대가 붙습니다.
       // bottomNavigationBar에 넣으면 목록이 그만큼 위로 줄어들어서,
       // 떠 있는 버튼과 달리 마지막 줄의 카드를 가리지 않습니다.
@@ -826,73 +852,87 @@ class _HomeScreenState extends State<HomeScreen> {
               onDelete: _deleteSelected,
             )
           : null,
-
-      // 고르는 중에는 추가 버튼을 숨깁니다.
-      // 아래 작업 막대와 겹쳐 보이고, 고르는 도중에 새로 추가할 일도 없습니다.
-      floatingActionButton: _isSelecting ? null : _buildAddButtons(),
     );
   }
 
-  /// 오른쪽 아래의 추가 버튼들을 만듭니다.
+  /// 왼쪽 사이드바를 만듭니다. (①②③)
+  Widget _buildSidebar() {
+    return AppSidebar(
+      userName: widget.settings.userName,
+      onOpenSettings: _openSettings,
+      onLogInOut: _showLoginNotReady,
+    );
+  }
+
+  /// 오른쪽 본문을 만듭니다. (④⑤⑥)
+  Widget _buildMainArea(bool isWide) {
+    return _buildDropArea(
+      Column(
+        children: <Widget>[
+          // ④ 머리줄 — 제목·개수·검색·추가 버튼
+          MainHeader(
+            itemCount: _items.length,
+            searchController: _searchController,
+            hasSearchText: _query.searchText.isNotEmpty,
+            onClearSearch: () {
+              _searchController.clear();
+              _applyQuery(_query.copyWith(searchText: ''));
+            },
+            isAdding: _isAdding,
+            onAddImages: () => _runImport(_importer.importFromFilePicker),
+            onAddYoutube: _addYoutube,
+
+            // 사이드바가 이미 펼쳐져 있으면 메뉴 버튼이 필요 없습니다.
+            onOpenMenu: isWide
+                ? null
+                : () => _scaffoldKey.currentState?.openDrawer(),
+          ),
+
+          // ⑤ 폴더·카테고리·프로젝트 고르기 (정렬·즐겨찾기도 함께)
+          ReferenceFilterBar(
+            query: _query,
+            taxonomyOptions: _taxonomyOptions,
+            onQueryChanged: _applyQuery,
+            onToggleSelectionMode: _items.isEmpty
+                ? null
+                : _toggleSelectionMode,
+            onOpenTaxonomyManage: _openTaxonomyManage,
+          ),
+
+          // ⑥ 레퍼런스 격자
+          Expanded(child: _buildBody()),
+        ],
+      ),
+    );
+  }
+
+  /// 설정 화면을 엽니다.
+  Future<void> _openSettings() async {
+    // 좁은 창이면 사이드바가 서랍으로 열려 있으므로 먼저 닫습니다.
+    // 안 닫으면 설정 화면 위에 서랍이 겹쳐 보입니다.
+    final NavigatorState navigator = Navigator.of(context);
+    if (_scaffoldKey.currentState?.isDrawerOpen ?? false) {
+      navigator.pop();
+    }
+
+    await navigator.push<void>(
+      MaterialPageRoute<void>(
+        builder: (BuildContext context) =>
+            SettingsScreen(settings: widget.settings),
+      ),
+    );
+  }
+
+  /// 로그인은 아직 없다고 알려줍니다.
   ///
-  /// 유튜브는 작은 버튼으로 이미지 버튼 위에 얹습니다.
-  /// 메뉴 안에 감추지 않은 이유: 한 번 더 눌러야 나오는 기능은 잘 안 쓰게 됩니다.
-  /// 이미지 쪽을 큰 버튼으로 둔 것은 그쪽이 더 자주 쓰이기 때문입니다.
-  Widget _buildAddButtons() {
-    // 추가하는 중에는 null을 넣어 버튼을 잠급니다.
-    // Flutter에서는 onPressed가 null이면 버튼이 자동으로 비활성화됩니다.
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.end,
-      children: <Widget>[
-        FloatingActionButton.small(
-          heroTag: 'addYoutube',
-          onPressed: _isAdding ? null : _addYoutube,
-          tooltip: '유튜브 영상 추가',
-          child: const Icon(Icons.smart_display_outlined),
-        ),
-        const SizedBox(height: 12),
-        FloatingActionButton.extended(
-          // heroTag를 서로 다르게 줘야 합니다. 화면에 떠 있는 버튼이 둘 이상인데
-          // 이름표가 같으면, 화면을 넘나들 때 Flutter가 어느 버튼을 이어서
-          // 움직여야 할지 몰라 오류를 냅니다.
-          heroTag: 'addImages',
-          onPressed: _isAdding
-              ? null
-              : () => _runImport(_importer.importFromFilePicker),
-          icon: _isAdding
-              ? const SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Icon(Icons.add_photo_alternate_outlined),
-          label: Text(_isAdding ? '추가하는 중...' : '이미지 추가'),
-        ),
-      ],
-    );
-  }
-
-  /// 평소의 위쪽 막대를 만듭니다.
-  PreferredSizeWidget _buildNormalAppBar() {
-    // 색은 지정하지 않습니다. 테마(app_theme.dart)에 정해둔 것을 씁니다.
-    // 여기서 따로 정하면 나중에 앱 색을 바꿀 때 이 줄만 안 바뀌어 튑니다.
-    return AppBar(
-      title: const Text('레퍼런스 아카이브'),
-      actions: <Widget>[
-        IconButton(
-          // 보여줄 것이 없으면 고를 것도 없으므로 버튼을 잠급니다.
-          onPressed: _items.isEmpty ? null : _toggleSelectionMode,
-          icon: const Icon(Icons.check_circle_outline),
-          tooltip: '여러 장 고르기',
-        ),
-        IconButton(
-          onPressed: _openTaxonomyManage,
-          icon: const Icon(Icons.folder_special_outlined),
-          tooltip: '분류 관리',
-        ),
-      ],
-    );
+  /// 버튼을 아예 빼지 않고 남겨둔 이유: 의뢰인이 정한 구조에 로그인 자리가
+  /// 있고, 나중에 붙일 곳을 미리 보여두는 편이 낫습니다.
+  /// 다만 눌렀을 때 아무 일도 안 일어나면 고장난 줄 알게 되므로 알려줍니다.
+  void _showLoginNotReady() {
+    if (_scaffoldKey.currentState?.isDrawerOpen ?? false) {
+      Navigator.of(context).pop();
+    }
+    _showMessage('로그인 기능은 아직 만들지 않았습니다.');
   }
 
   /// 고르는 중일 때의 위쪽 막대를 만듭니다.

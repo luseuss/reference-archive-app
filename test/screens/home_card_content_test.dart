@@ -18,6 +18,7 @@ import 'package:reference_archive_app/models/reference_item.dart';
 import 'package:reference_archive_app/models/taxonomy_item.dart';
 import 'package:reference_archive_app/repositories/local_reference_repository.dart';
 import 'package:reference_archive_app/repositories/local_taxonomy_repository.dart';
+import 'package:reference_archive_app/services/app_settings.dart';
 import 'package:reference_archive_app/utils/date_format.dart';
 import 'package:reference_archive_app/utils/id_generator.dart';
 
@@ -59,6 +60,7 @@ void main() {
       imageStorage: FakeImageStorage(),
       imageSource: FakeImageSource(),
       youtubeInfoSource: FakeYoutubeInfoSource(),
+      settings: AppSettings(),
     );
   }
 
@@ -212,7 +214,7 @@ void main() {
     expect(find.text('#노을'), findsOneWidget);
 
     // 실제 사용자가 하는 대로 분류 관리 화면에 들어가 이름을 바꿉니다.
-    await tester.tap(find.byTooltip('분류 관리'));
+    await tester.tap(find.widgetWithText(OutlinedButton, '분류 관리'));
     await tester.pumpAndSettle();
 
     // 태그 탭으로 옮깁니다.

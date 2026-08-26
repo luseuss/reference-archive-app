@@ -28,17 +28,23 @@ import 'screens/home_screen.dart';
 import 'services/image_source.dart';
 import 'services/image_storage.dart';
 import 'services/local_image_storage.dart';
+import 'services/app_settings.dart';
 import 'services/network_image_source.dart';
 import 'services/youtube_info_source.dart';
 import 'theme/app_theme.dart';
 
 /// 앱을 실행합니다. Dart 프로그램은 언제나 main() 함수부터 시작합니다.
-void main() {
+void main() async {
   // Flutter가 완전히 준비되기 전에 데이터베이스 같은 플러그인을 건드리면 오류가 납니다.
   // 이 한 줄이 "준비될 때까지 기다려라"는 뜻입니다.
   WidgetsFlutterBinding.ensureInitialized();
 
   final AppDatabase database = AppDatabase();
+
+  // 저장해둔 설정(밝기 모드, 사용자 이름)을 먼저 읽습니다.
+  // 화면을 띄운 뒤에 읽으면 밝은 화면이 잠깐 번쩍였다가 어두워집니다.
+  final AppSettings settings = AppSettings();
+  await settings.load();
 
   runApp(
     ReferenceArchiveApp(
@@ -46,6 +52,7 @@ void main() {
       taxonomyRepository: LocalTaxonomyRepository(database),
       imageStorage: LocalImageStorage(),
       imageSource: NetworkImageSource(),
+      settings: settings,
       youtubeInfoSource: NetworkYoutubeInfoSource(),
     ),
   );
@@ -60,6 +67,7 @@ class ReferenceArchiveApp extends StatelessWidget {
     required this.imageStorage,
     required this.imageSource,
     required this.youtubeInfoSource,
+    required this.settings,
   });
 
   /// 레퍼런스를 읽고 쓰는 통로입니다.
@@ -81,32 +89,44 @@ class ReferenceArchiveApp extends StatelessWidget {
   /// 주소나 클립보드에서 이미지를 가져오는 도구입니다.
   final ImageSource imageSource;
 
+  /// 앱 설정입니다. 사이드바의 사용자 이름과 설정 화면에 씁니다.
+  final AppSettings settings;
+
   /// 앱의 화면 구조를 만들어 돌려줍니다.
   /// Flutter는 화면을 새로 그려야 할 때마다 이 build() 함수를 다시 호출합니다.
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: '레퍼런스 아카이브',
+    // ListenableBuilder = 설정이 바뀌면 이 안을 다시 그려주는 위젯입니다.
+    // 설정 화면에서 "어둡게"를 고르는 순간 앱 전체가 어두워지는 것이 이 덕분입니다.
+    // 이게 없으면 앱을 껐다 켜야 반영됩니다.
+    return ListenableBuilder(
+      listenable: settings,
+      builder: (BuildContext context, Widget? child) {
+        return MaterialApp(
+          title: '레퍼런스 아카이브',
 
-      // 오른쪽 위에 뜨는 "DEBUG" 리본을 숨깁니다. 개발 중에도 실제 모습을 보기 위함입니다.
-      debugShowCheckedModeBanner: false,
+          // 오른쪽 위에 뜨는 "DEBUG" 리본을 숨깁니다.
+          // 개발 중에도 실제 모습을 보기 위함입니다.
+          debugShowCheckedModeBanner: false,
 
-      // 밝은 모드 / 어두운 모드 테마를 각각 지정하고,
-      // 어느 쪽을 쓸지는 themeMode로 정합니다.
-      theme: buildLightTheme(),
-      darkTheme: buildDarkTheme(),
+          // 밝은 모드 / 어두운 모드 테마를 각각 지정하고,
+          // 어느 쪽을 쓸지는 themeMode로 정합니다.
+          theme: buildLightTheme(),
+          darkTheme: buildDarkTheme(),
 
-      // ThemeMode.system = 사용자의 운영체제 설정(밝게/어둡게)을 그대로 따라갑니다.
-      // 나중에 앱 안에서 직접 토글하게 만들려면 이 값을 상태로 빼내면 됩니다.
-      themeMode: ThemeMode.system,
+          // 설정 화면에서 고른 값입니다. 기본값은 기기 설정 따라가기입니다.
+          themeMode: settings.themeMode,
 
-      home: HomeScreen(
-        repository: referenceRepository,
-        taxonomyRepository: taxonomyRepository,
-        imageStorage: imageStorage,
-        imageSource: imageSource,
-        youtubeInfoSource: youtubeInfoSource,
-      ),
+          home: HomeScreen(
+            repository: referenceRepository,
+            taxonomyRepository: taxonomyRepository,
+            imageStorage: imageStorage,
+            imageSource: imageSource,
+            youtubeInfoSource: youtubeInfoSource,
+            settings: settings,
+          ),
+        );
+      },
     );
   }
 }

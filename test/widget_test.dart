@@ -19,6 +19,7 @@ import 'package:reference_archive_app/models/enums.dart';
 import 'package:reference_archive_app/models/reference_item.dart';
 import 'package:reference_archive_app/repositories/local_reference_repository.dart';
 import 'package:reference_archive_app/repositories/local_taxonomy_repository.dart';
+import 'package:reference_archive_app/services/app_settings.dart';
 import 'fakes/fake_image_source.dart';
 import 'fakes/fake_image_storage.dart';
 import 'fakes/fake_youtube_info_source.dart';
@@ -47,6 +48,7 @@ void main() {
       imageStorage: FakeImageStorage(),
       imageSource: FakeImageSource(),
       youtubeInfoSource: FakeYoutubeInfoSource(),
+      settings: AppSettings(),
     );
   }
 

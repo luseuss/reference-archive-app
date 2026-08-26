@@ -17,25 +17,28 @@ class ReferenceFilterBar extends StatelessWidget {
   const ReferenceFilterBar({
     super.key,
     required this.query,
-    required this.searchController,
     required this.taxonomyOptions,
     required this.onQueryChanged,
+    required this.onToggleSelectionMode,
+    required this.onOpenTaxonomyManage,
   });
 
   /// 지금 걸려 있는 조건입니다.
   final ReferenceQuery query;
-
-  /// 검색 입력창을 다루는 도구입니다.
-  ///
-  /// 이 위젯이 직접 만들지 않고 화면에서 받아옵니다.
-  /// 목록을 다시 그릴 때마다 새로 만들면 입력하던 글자가 사라지기 때문입니다.
-  final TextEditingController searchController;
 
   /// 고를 수 있는 분류 항목들입니다. (종류별로 나눠 담겨 있습니다)
   final Map<TaxonomyKind, List<TaxonomyItem>> taxonomyOptions;
 
   /// 조건이 바뀌었을 때 바뀐 조건 전체를 알려줍니다.
   final ValueChanged<ReferenceQuery> onQueryChanged;
+
+  /// "여러 장 고르기"를 눌렀을 때 실행할 동작입니다.
+  ///
+  /// null이면 버튼이 잠깁니다. 보여줄 것이 없으면 고를 것도 없습니다.
+  final VoidCallback? onToggleSelectionMode;
+
+  /// "분류 관리"를 눌렀을 때 실행할 동작입니다.
+  final VoidCallback onOpenTaxonomyManage;
 
   /// 해당 종류에서 지금 골라진 항목의 id를 돌려줍니다.
   String? _selectedIdFor(TaxonomyKind kind) {
@@ -81,9 +84,6 @@ class ReferenceFilterBar extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          _buildSearchField(),
-          const SizedBox(height: 12),
-
           // Wrap을 쓰면 창이 좁아졌을 때 다음 줄로 넘어갑니다.
           // Row로 만들면 폰처럼 좁은 화면에서 화면 밖으로 삐져나가며 오류가 납니다.
           Wrap(
@@ -95,34 +95,13 @@ class ReferenceFilterBar extends StatelessWidget {
               _buildFavoritesToggle(),
               ...TaxonomyKind.values.map(_buildTaxonomyFilter),
               if (query.hasAnyFilter) _buildClearButton(),
+
+              // 목록에 대한 동작들입니다. 조건과 성격이 달라서 오른쪽 끝에 둡니다.
+              _buildSelectionButton(),
+              _buildManageButton(),
             ],
           ),
         ],
-      ),
-    );
-  }
-
-  /// 검색 입력창입니다.
-  Widget _buildSearchField() {
-    return TextField(
-      controller: searchController,
-      decoration: InputDecoration(
-        hintText: '제목이나 메모에서 찾기',
-        prefixIcon: const Icon(Icons.search),
-        border: const OutlineInputBorder(),
-        isDense: true,
-
-        // 글자를 입력했을 때만 지우기 버튼을 보여줍니다.
-        suffixIcon: query.searchText.isEmpty
-            ? null
-            : IconButton(
-                icon: const Icon(Icons.close),
-                tooltip: '검색어 지우기',
-                onPressed: () {
-                  searchController.clear();
-                  onQueryChanged(query.copyWith(searchText: ''));
-                },
-              ),
       ),
     );
   }
@@ -244,14 +223,32 @@ class ReferenceFilterBar extends StatelessWidget {
   }
 
   /// 걸린 조건을 한 번에 지우는 버튼입니다.
+  ///
+  /// 검색어는 여기서 안 지웁니다. 검색창이 위쪽 머리줄로 옮겨가면서
+  /// 그 글자를 다루는 일도 화면이 맡게 됐습니다.
   Widget _buildClearButton() {
     return TextButton.icon(
-      onPressed: () {
-        searchController.clear();
-        onQueryChanged(query.clearAll());
-      },
+      onPressed: () => onQueryChanged(query.clearAll()),
       icon: const Icon(Icons.filter_alt_off_outlined, size: 18),
       label: const Text('조건 지우기'),
+    );
+  }
+
+  /// "여러 장 고르기"로 들어가는 버튼입니다.
+  Widget _buildSelectionButton() {
+    return OutlinedButton.icon(
+      onPressed: onToggleSelectionMode,
+      icon: const Icon(Icons.check_circle_outline, size: 18),
+      label: const Text('고르기'),
+    );
+  }
+
+  /// 분류 관리 화면을 여는 버튼입니다.
+  Widget _buildManageButton() {
+    return OutlinedButton.icon(
+      onPressed: onOpenTaxonomyManage,
+      icon: const Icon(Icons.folder_special_outlined, size: 18),
+      label: const Text('분류 관리'),
     );
   }
 }

@@ -16,6 +16,7 @@ import 'package:reference_archive_app/models/reference_item.dart';
 import 'package:reference_archive_app/models/taxonomy_item.dart';
 import 'package:reference_archive_app/repositories/local_reference_repository.dart';
 import 'package:reference_archive_app/repositories/local_taxonomy_repository.dart';
+import 'package:reference_archive_app/services/app_settings.dart';
 import 'package:reference_archive_app/utils/id_generator.dart';
 
 import '../fakes/fake_image_source.dart';
@@ -56,6 +57,7 @@ void main() {
       imageStorage: FakeImageStorage(),
       imageSource: FakeImageSource(),
       youtubeInfoSource: FakeYoutubeInfoSource(),
+      settings: AppSettings(),
     );
   }
 
@@ -97,7 +99,7 @@ void main() {
 
   /// 위쪽 막대의 "여러 장 고르기" 버튼을 눌러 고르기 모드로 들어갑니다.
   Future<void> enterSelectionMode(WidgetTester tester) async {
-    await tester.tap(find.byTooltip('여러 장 고르기'));
+    await tester.tap(find.widgetWithText(OutlinedButton, '고르기'));
     await tester.pumpAndSettle();
   }
 
