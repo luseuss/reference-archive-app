@@ -234,12 +234,17 @@ lib/
 
 기능을 붙이다 보면 파일이 커집니다. 지금 알고 있는 것:
 
-- **`lib/screens/home_screen.dart`가 1066줄** (300줄 기준 초과).
-  다음에 뺄 후보는 **이미지 가져오기 부분** — `_addImages` / `_handleDrop` /
-  `_pasteFromClipboard` / `_saveImageBytes` / `_finishAdding` / `_stripExtension`을
-  `lib/services/reference_importer.dart`로 묶으면 200줄쯤 빠지고,
-  `file_picker` · `dart:io` · `super_drag_and_drop` 의존도 화면에서 사라집니다.
-  (PR #8에서 끌어다 놓기 부분을 뺀 것과 같은 방식)
+- ~~이미지 가져오기 부분 분리~~ ✅ **PR #14에서 완료**
+  (`lib/services/reference_importer.dart`)
+- **`lib/screens/home_screen.dart`가 아직 1166줄** (300줄 기준 초과).
+  가져오기를 빼냈는데도 사이드바 구조가 들어오면서 다시 늘었습니다.
+
+  다음에 뺄 후보는 **여러 장 고르기 부분**입니다 — `_toggleSelected` /
+  `_toggleSelectAll` / `_moveSelectedToFolder` / `_addTagToSelected` /
+  `_deleteSelected` / `_confirmBulkDelete` 를 묶으면 200줄쯤 빠집니다.
+
+  그다음은 **호버 미리보기 부분**(`_onCardHoverChanged` / `_startPreview` /
+  `_stopPreview` / `_previewServer`)입니다.
 
 ### 단계 밖 작업: 웹에서 이미지 바로 가져오기 ✅ 완료 (PR #7)
 
