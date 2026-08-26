@@ -19,6 +19,7 @@ import 'package:reference_archive_app/models/enums.dart';
 import 'package:reference_archive_app/models/reference_item.dart';
 import 'package:reference_archive_app/repositories/local_reference_repository.dart';
 import 'package:reference_archive_app/repositories/local_taxonomy_repository.dart';
+import 'fakes/fake_image_source.dart';
 import 'fakes/fake_image_storage.dart';
 import 'package:reference_archive_app/utils/id_generator.dart';
 
@@ -43,6 +44,7 @@ void main() {
       referenceRepository: repository,
       taxonomyRepository: taxonomyRepository,
       imageStorage: FakeImageStorage(),
+      imageSource: FakeImageSource(),
     );
   }
 

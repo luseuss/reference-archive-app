@@ -10,11 +10,16 @@
 // (약속)만 통해서 읽고 씁니다. 그래서 나중에 저장 방식이 서버로 바뀌어도
 // 이 파일은 안 고쳐도 됩니다. (CLAUDE.md 설계 원칙 3)
 
-
 import 'dart:async';
 
+import 'dart:io';
+
+import 'package:super_clipboard/super_clipboard.dart';
+import 'package:super_native_extensions/raw_clipboard.dart' as raw;
+import 'package:super_drag_and_drop/super_drag_and_drop.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../models/enums.dart';
 import '../models/reference_item.dart';
@@ -22,12 +27,26 @@ import '../models/reference_query.dart';
 import '../models/taxonomy_item.dart';
 import '../repositories/reference_repository.dart';
 import '../repositories/taxonomy_repository.dart';
+import '../services/image_source.dart';
 import '../services/image_storage.dart';
 import '../utils/id_generator.dart';
 import '../widgets/reference_card.dart';
 import '../widgets/reference_filter_bar.dart';
 import 'reference_detail_screen.dart';
 import 'taxonomy_manage_screen.dart';
+
+/// 끌어다 놓기로 받을 수 있는 이미지 형식들입니다.
+///
+/// 여기 없는 형식은 창에 놓아도 아예 들어오지 않습니다.
+/// 브라우저가 이미지를 건네줄 때 쓰는 흔한 형식들을 담았습니다.
+const List<FileFormat> _droppableImageFormats = <FileFormat>[
+  Formats.png,
+  Formats.jpeg,
+  Formats.gif,
+  Formats.webp,
+  Formats.bmp,
+  Formats.tiff,
+];
 
 /// 레퍼런스 목록 화면입니다.
 ///
@@ -39,6 +58,7 @@ class HomeScreen extends StatefulWidget {
     required this.repository,
     required this.taxonomyRepository,
     required this.imageStorage,
+    required this.imageSource,
   });
 
   /// 레퍼런스를 읽고 쓰는 통로입니다.
@@ -50,6 +70,9 @@ class HomeScreen extends StatefulWidget {
 
   /// 이미지 파일을 저장하고 경로를 알려주는 도구입니다.
   final ImageStorage imageStorage;
+
+  /// 주소나 클립보드에서 이미지를 가져오는 도구입니다.
+  final ImageSource imageSource;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -86,6 +109,10 @@ class _HomeScreenState extends State<HomeScreen> {
   /// 고를 수 있는 분류 항목들입니다. 필터 메뉴를 채우는 데 씁니다.
   Map<TaxonomyKind, List<TaxonomyItem>> _taxonomyOptions =
       <TaxonomyKind, List<TaxonomyItem>>{};
+
+  /// 지금 무언가를 창 위로 끌고 있는 중인지 여부입니다.
+  /// 켜져 있으면 "여기 놓으세요" 안내를 덧그립니다.
+  bool _isDragging = false;
 
   /// 화면이 처음 만들어질 때 딱 한 번 실행됩니다.
   @override
@@ -192,13 +219,19 @@ class _HomeScreenState extends State<HomeScreen> {
   /// 이미지 파일을 골라서 레퍼런스로 추가합니다.
   Future<void> _addImages() async {
     // 파일 고르기 창을 띄웁니다. 여러 장을 한 번에 고를 수 있습니다.
-    // 사용자가 취소하면 빈 목록이 돌아옵니다.
-    final List<PlatformFile> picked = await FilePicker.pickFiles(
+    // 사용자가 취소하면 null이 돌아옵니다.
+    //
+    // withData: true를 주면 파일 내용을 메모리에 함께 담아줍니다.
+    // 안드로이드에서는 다른 앱이 넘겨준 파일에 실제 경로가 없을 수 있어서,
+    // 경로 대신 내용을 직접 받는 편이 안전합니다.
+    final FilePickerResult? picked = await FilePicker.pickFiles(
       type: FileType.image,
+      allowMultiple: true,
+      withData: true,
       dialogTitle: '레퍼런스로 추가할 이미지 고르기',
     );
 
-    if (picked.isEmpty) {
+    if (picked == null || picked.files.isEmpty) {
       return;
     }
 
@@ -209,7 +242,7 @@ class _HomeScreenState extends State<HomeScreen> {
     int savedCount = 0;
     int failedCount = 0;
 
-    for (final PlatformFile file in picked) {
+    for (final PlatformFile file in picked.files) {
       final bool ok = await _saveOneImage(file);
       if (ok) {
         savedCount++;
@@ -218,32 +251,46 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     }
 
-    await _loadItems();
-
-    if (!mounted) {
-      return;
-    }
-
-    setState(() {
-      _isAdding = false;
-    });
-
-    _showResultMessage(savedCount, failedCount);
+    await _finishAdding(savedCount, failedCount, null);
   }
 
   /// 고른 파일 하나를 줄여서 저장하고 레퍼런스로 등록합니다.
   ///
   /// 성공하면 true, 실패하면 false를 돌려줍니다.
-  ///
-  /// 파일 경로(path)로 읽지 않고 readAsBytes()를 쓰는 이유:
-  /// 안드로이드에서는 다른 앱(갤러리 등)이 넘겨준 파일에 실제 경로가 없을 수 있습니다.
-  /// readAsBytes()는 그런 경우에도 내용을 읽어줍니다.
   Future<bool> _saveOneImage(PlatformFile file) async {
     final String originalName = file.name;
     try {
-      // 파일을 통째로 읽어서 크기를 줄인 뒤 앱 폴더에 저장합니다.
-      final String? savedFileName =
-          await widget.imageStorage.saveImage(await file.readAsBytes());
+      // withData: true로 골랐으므로 bytes에 내용이 들어있습니다.
+      // 혹시 없으면(플랫폼 사정) 경로로 읽어봅니다.
+      Uint8List? bytes = file.bytes;
+
+      if (bytes == null) {
+        final String? path = file.path;
+        if (path == null) {
+          return false;
+        }
+        bytes = await File(path).readAsBytes();
+      }
+
+      return await _saveImageBytes(bytes, title: _stripExtension(originalName));
+    } catch (error) {
+      // 파일 하나가 실패해도 나머지는 계속 처리되도록 여기서 잡습니다.
+      // 사진 10장 중 1장이 깨졌다고 9장까지 못 넣으면 곤란합니다.
+      debugPrint('이미지 저장 실패 ($originalName): $error');
+      return false;
+    }
+  }
+
+  /// 이미지 데이터를 줄여서 저장하고 레퍼런스로 등록합니다.
+  ///
+  /// **파일 고르기·끌어다 놓기·붙여넣기가 전부 이 함수로 모입니다.**
+  /// 가져오는 경로는 셋이지만 저장하는 방식은 하나여야, 어느 쪽으로 넣든
+  /// 똑같이 리사이즈되고 똑같이 기록됩니다.
+  ///
+  /// 성공하면 true, 실패하면 false를 돌려줍니다.
+  Future<bool> _saveImageBytes(Uint8List bytes, {String? title}) async {
+    try {
+      final String? savedFileName = await widget.imageStorage.saveImage(bytes);
 
       // 그림 파일이 아니거나 깨진 파일이면 null이 돌아옵니다.
       if (savedFileName == null) {
@@ -255,9 +302,9 @@ class _HomeScreenState extends State<HomeScreen> {
         ReferenceItem(
           id: newId(),
           type: ReferenceType.image,
-          // 제목은 원본 파일 이름에서 확장자를 뗀 것으로 시작합니다.
-          // 사용자가 제목을 고치는 기능은 2단계에서 붙입니다.
-          title: _stripExtension(originalName),
+          // 제목을 못 뽑아낸 경우(클립보드 등)에는 빈 제목으로 둡니다.
+          // 목록에서는 "(제목 없음)"으로 보이고 편집 화면에서 고칠 수 있습니다.
+          title: title ?? '',
           fileName: savedFileName,
           createdAt: now,
           updatedAt: now,
@@ -265,11 +312,335 @@ class _HomeScreenState extends State<HomeScreen> {
       );
       return true;
     } catch (error) {
-      // 파일 하나가 실패해도 나머지는 계속 처리되도록 여기서 잡습니다.
-      // 사진 10장 중 1장이 깨졌다고 9장까지 못 넣으면 곤란합니다.
-      debugPrint('이미지 저장 실패 ($originalName): $error');
+      debugPrint('이미지 저장 실패: $error');
       return false;
     }
+  }
+
+  /// 앱 창에 무언가를 끌어다 놓았을 때 실행됩니다.
+  ///
+  /// ── 브라우저에서 끌면 무엇이 오는가 ──
+  /// 상황마다 다릅니다. 이미지 데이터가 그대로 오기도 하고, 주소만 오기도 합니다.
+  /// 그래서 각 항목마다 **줄 수 있는 형식을 물어보고** 처리 방법을 정합니다.
+  ///
+  ///   1. 이미지 형식(PNG/JPEG/...)을 줄 수 있으면 → 그대로 받습니다
+  ///   2. 주소를 줄 수 있으면 → 내려받습니다
+  ///
+  /// 이 순서가 중요합니다. 브라우저는 보통 둘 다 줄 수 있다고 하는데,
+  /// 이미 갖고 있는 데이터를 쓰는 쪽이 빠르고 실패할 일도 없습니다.
+  Future<void> _handleDrop(PerformDropEvent event) async {
+    if (_isAdding) {
+      return;
+    }
+
+    setState(() {
+      _isAdding = true;
+    });
+
+    int savedCount = 0;
+    int failedCount = 0;
+    String? lastError;
+
+    for (final DropItem item in event.session.items) {
+      final DataReader? reader = item.dataReader;
+      if (reader == null) {
+        failedCount++;
+        continue;
+      }
+
+      final ImageFetchResult fetched = await _readDroppedItem(reader);
+
+      if (!fetched.isSuccess) {
+        failedCount++;
+        lastError = fetched.errorMessage;
+        continue;
+      }
+
+      final bool ok = await _saveImageBytes(
+        fetched.bytes!,
+        title: fetched.suggestedTitle,
+      );
+      if (ok) {
+        savedCount++;
+      } else {
+        failedCount++;
+        // 가져오기는 됐는데 그림이 아닌 경우입니다.
+        // (예: 이미지가 아니라 웹페이지 주소를 받아온 경우)
+        // "그림 파일이 맞는지 확인하세요"보다 다음에 뭘 하면 되는지 알려줍니다.
+        lastError =
+            '가져온 것이 이미지가 아닙니다. '
+            '이미지를 우클릭해 "이미지 복사" 후 붙여넣어 보세요.';
+      }
+    }
+
+    await _finishAdding(savedCount, failedCount, lastError);
+  }
+
+  /// 떨어진 항목 하나를 읽어 이미지 데이터로 만듭니다.
+  Future<ImageFetchResult> _readDroppedItem(DataReader reader) async {
+    // 1) 이미지 데이터를 직접 줄 수 있는지 먼저 봅니다.
+    for (final FileFormat format in _droppableImageFormats) {
+      if (!reader.canProvide(format)) {
+        continue;
+      }
+
+      final Uint8List? bytes = await _readFileBytes(reader, format);
+      if (bytes != null && bytes.isNotEmpty) {
+        return ImageFetchResult.success(bytes);
+      }
+    }
+
+    // 2) 이미지를 못 주면 HTML 조각을 봅니다.
+    //
+    //    ── 주소보다 HTML을 먼저 보는 이유 (핀터레스트) ──
+    //    이미지가 링크에 감싸여 있으면 브라우저가 주는 주소는 **이미지가 아니라
+    //    링크가 가리키는 페이지 주소**입니다. 핀터레스트가 정확히 그렇습니다.
+    //    그걸 내려받으면 HTML이 와서 "그림이 아니다"로 실패합니다.
+    //
+    //    반면 HTML 조각에는 <img src="진짜 이미지 주소">가 들어 있어서
+    //    링크에 감싸여 있어도 실제 이미지를 찾을 수 있습니다.
+    if (reader.canProvide(Formats.htmlText)) {
+      final String? html = await _readValue<String>(reader, Formats.htmlText);
+
+      String? imageUrl = html == null ? null : imageUrlFromHtml(html);
+
+      // 못 찾았으면 글자가 깨져서 온 경우일 수 있습니다.
+      // 되돌려서 한 번 더 찾아봅니다. (핀터레스트 피드가 이 경우입니다)
+      if (imageUrl == null && html != null) {
+        final String? repaired = repairMangledHtml(html);
+        if (repaired != null) {
+          imageUrl = imageUrlFromHtml(repaired);
+        }
+      }
+
+      debugPrint('[드롭] HTML에서 찾은 주소: $imageUrl');
+
+      if (imageUrl != null) {
+        final ImageFetchResult result = await widget.imageSource.fetchFromUrl(
+          imageUrl,
+        );
+        // 여기서 실패하면 아래 주소 방식으로 한 번 더 시도해봅니다.
+        if (result.isSuccess) {
+          return result;
+        }
+      }
+    }
+
+    // 3) 그래도 안 되면 주소를 그대로 받아봅니다.
+    //    이미지를 직접 끈 경우(링크에 안 감싸인 경우)에는 이쪽이 맞습니다.
+    if (reader.canProvide(Formats.uri)) {
+      final NamedUri? named = await _readValue<NamedUri>(reader, Formats.uri);
+      final String? url = named?.uri.toString();
+      debugPrint('[드롭] 주소: $url');
+
+      if (url != null && looksLikeUrl(url)) {
+        return widget.imageSource.fetchFromUrl(url);
+      }
+    }
+
+    // 4) 표준 형식으로 아무것도 못 얻었으면, 사이트가 자기 방식으로 끼워 넣은
+    //    데이터를 뒤져봅니다.
+    //
+    //    ── 왜 이게 필요한가 (핀터레스트 상세 페이지) ──
+    //    핀터레스트 상세 페이지에서 끌면 표준 형식이 하나도 안 옵니다.
+    //    HTML도, 주소도, 파일도 없습니다. 대신 자체 형식 안에
+    //    이미지 주소를 넣어둡니다.
+    //
+    //      application/x-pinterest-closeup-image
+    //      {"pinId":"...","previewImageUrl":"https://i.pinimg.com/736x/...jpg"}
+    //
+    //    이름은 사이트마다 다르므로 이름을 찾지 않고 주소처럼 생긴 글자를 찾습니다.
+    final String? urlFromCustomData = await _findUrlInCustomData(reader);
+    if (urlFromCustomData != null) {
+      return widget.imageSource.fetchFromUrl(urlFromCustomData);
+    }
+
+    // 여기까지 왔으면 어느 경로로도 못 얻은 것입니다.
+    // 새로운 사이트가 안 될 때 원인을 짚을 수 있도록 무엇이 넘어왔는지 남깁니다.
+    debugPrint('[드롭] 실패 — 넘어온 형식: ${reader.platformFormats}');
+
+    return const ImageFetchResult.failure('이미지를 찾지 못했습니다. 이미지를 복사해서 붙여넣어 보세요.');
+  }
+
+  /// 사이트가 자체 형식으로 끼워 넣은 데이터에서 이미지 주소를 찾습니다.
+  ///
+  /// 표준 형식으로 아무것도 못 얻었을 때만 부릅니다.
+  Future<String?> _findUrlInCustomData(DataReader reader) async {
+    final raw.DataReaderItem? item = reader.rawReader;
+    if (item == null) {
+      return null;
+    }
+
+    try {
+      final List<String> formats = await item.getAvailableFormats();
+
+      for (final String format in formats) {
+        // 그림 자체(비트맵)는 여기서 다루지 않습니다. 아주 크고,
+        // 우리가 찾는 건 글자 속 주소입니다.
+        if (format.contains('DragImageBits')) {
+          continue;
+        }
+
+        final (Future<Object?>, raw.ReadProgress) request = item
+            .getDataForFormat(format);
+        final Object? data = await request.$1;
+
+        String? text;
+        if (data is String) {
+          text = data;
+        } else if (data is List<int> && data.length <= 100000) {
+          // 0이 낀 채로 오는 경우가 있어서 그대로 읽으면 안 됩니다.
+          // 자세한 이유는 textFromCustomData()의 설명을 보세요.
+          text = textFromCustomData(data);
+        }
+
+        if (text == null) {
+          continue;
+        }
+
+        final String? found = findImageUrlInText(text);
+        if (found != null) {
+          debugPrint('[드롭] 사이트 자체 데이터($format)에서 찾은 주소: $found');
+          return found;
+        }
+      }
+    } catch (error) {
+      debugPrint('[드롭] 자체 데이터 살펴보기 실패: $error');
+    }
+
+    return null;
+  }
+
+  /// 값을 읽어 돌려줍니다. 못 읽으면 null입니다.
+  ///
+  /// getValue()도 결과를 콜백으로 주기 때문에 Completer로 감싸 Future로 바꿉니다.
+  /// (getFile과 같은 이유입니다)
+  Future<T?> _readValue<T extends Object>(
+    DataReader reader,
+    ValueFormat<T> format,
+  ) {
+    final Completer<T?> completer = Completer<T?>();
+
+    reader.getValue<T>(
+      format,
+      (T? value) {
+        if (!completer.isCompleted) {
+          completer.complete(value);
+        }
+      },
+      onError: (Object error) {
+        debugPrint('떨어진 항목 값 읽기 실패: $error');
+        if (!completer.isCompleted) {
+          completer.complete(null);
+        }
+      },
+    );
+
+    return completer.future;
+  }
+
+  /// 읽기 결과를 기다렸다가 바이트로 돌려줍니다.
+  ///
+  /// getFile()은 결과를 콜백으로 주기 때문에, await로 기다릴 수 있도록
+  /// Completer로 감싸 Future로 바꿉니다.
+  Future<Uint8List?> _readFileBytes(DataReader reader, FileFormat format) {
+    final Completer<Uint8List?> completer = Completer<Uint8List?>();
+
+    reader.getFile(
+      format,
+      (DataReaderFile file) async {
+        final Uint8List bytes = await file.readAll();
+        if (!completer.isCompleted) {
+          completer.complete(bytes);
+        }
+      },
+      onError: (Object error) {
+        debugPrint('떨어진 항목 읽기 실패: $error');
+        if (!completer.isCompleted) {
+          completer.complete(null);
+        }
+      },
+    );
+
+    return completer.future;
+  }
+
+  /// 클립보드에 있는 것을 레퍼런스로 추가합니다. (Ctrl+V)
+  ///
+  /// 두 가지를 순서대로 시도합니다.
+  ///   1. 클립보드에 **이미지**가 있으면 그걸 씁니다. (브라우저에서 "이미지 복사")
+  ///   2. 없으면 클립보드의 **글자**가 이미지 주소인지 보고, 맞으면 내려받습니다.
+  ///      (브라우저에서 "이미지 주소 복사")
+  ///
+  /// 사용자는 둘 중 무엇을 복사했는지 신경 쓰지 않아도 되게 하려는 것입니다.
+  Future<void> _pasteFromClipboard() async {
+    if (_isAdding) {
+      return;
+    }
+
+    setState(() {
+      _isAdding = true;
+    });
+
+    ImageFetchResult fetched = await widget.imageSource.fetchFromClipboard();
+
+    // 주소를 실제로 받아보려 시도했는지 기록합니다.
+    //
+    // 이걸 구분하는 이유: 주소를 받아보다 실패한 경우에는 그쪽에서 온 구체적인
+    // 이유("그 사이트가 막고 있습니다" 등)를 그대로 보여줘야 합니다.
+    // 그걸 "클립보드에 이미지가 없습니다"로 덮어쓰면, 사용자는 클립보드를
+    // 다시 복사하러 가는 엉뚱한 행동을 하게 됩니다.
+    bool triedUrl = false;
+
+    if (!fetched.isSuccess) {
+      final String? text = await widget.imageSource.readClipboardText();
+      if (text != null && looksLikeUrl(text)) {
+        triedUrl = true;
+        fetched = await widget.imageSource.fetchFromUrl(text.trim());
+      }
+    }
+
+    if (!fetched.isSuccess) {
+      await _finishAdding(
+        0,
+        1,
+        triedUrl
+            // 주소를 받아보다 실패 → 그쪽 이유를 그대로 전합니다.
+            ? fetched.errorMessage
+            // 클립보드에 쓸 만한 게 아예 없음 → 무엇을 하면 되는지 알려줍니다.
+            : '클립보드에 이미지가 없습니다. 브라우저에서 이미지를 우클릭해 '
+                  '"이미지 복사" 또는 "이미지 주소 복사"를 해보세요.',
+      );
+      return;
+    }
+
+    final bool ok = await _saveImageBytes(
+      fetched.bytes!,
+      title: fetched.suggestedTitle,
+    );
+
+    await _finishAdding(ok ? 1 : 0, ok ? 0 : 1, ok ? null : '이미지를 저장하지 못했습니다.');
+  }
+
+  /// 추가 작업이 끝난 뒤 목록을 새로 고치고 결과를 알려줍니다.
+  ///
+  /// 파일 고르기·끌어다 놓기·붙여넣기가 끝날 때 공통으로 하는 일입니다.
+  Future<void> _finishAdding(
+    int savedCount,
+    int failedCount,
+    String? errorMessage,
+  ) async {
+    await _loadItems();
+
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _isAdding = false;
+    });
+
+    _showResultMessage(savedCount, failedCount, errorMessage: errorMessage);
   }
 
   /// 레퍼런스를 지웁니다.
@@ -285,9 +656,8 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _openTaxonomyManage() async {
     final bool? changed = await Navigator.of(context).push<bool>(
       MaterialPageRoute<bool>(
-        builder: (BuildContext context) => TaxonomyManageScreen(
-          repository: widget.taxonomyRepository,
-        ),
+        builder: (BuildContext context) =>
+            TaxonomyManageScreen(repository: widget.taxonomyRepository),
       ),
     );
 
@@ -333,17 +703,31 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   /// 추가 결과를 화면 아래쪽에 잠깐 띄웁니다.
-  void _showResultMessage(int savedCount, int failedCount) {
+  ///
+  /// [errorMessage]가 있으면 그걸 우선해서 보여줍니다. 가져오기 쪽에서 온
+  /// 구체적인 이유("그 사이트가 막고 있습니다" 등)가 "실패했습니다"보다
+  /// 사용자에게 훨씬 쓸모 있기 때문입니다.
+  void _showResultMessage(
+    int savedCount,
+    int failedCount, {
+    String? errorMessage,
+  }) {
     String message;
     if (failedCount == 0) {
       message = '$savedCount장 추가했습니다.';
     } else if (savedCount == 0) {
-      message = '추가하지 못했습니다. 그림 파일이 맞는지 확인해주세요.';
+      message = errorMessage ?? '추가하지 못했습니다. 그림 파일이 맞는지 확인해주세요.';
     } else {
       message = '$savedCount장 추가했습니다. $failedCount장은 읽지 못했습니다.';
     }
 
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        // 안내가 길어질 수 있어서(사이트가 막는 경우 등) 조금 더 오래 띄웁니다.
+        duration: const Duration(seconds: 5),
+      ),
+    );
   }
 
   /// 파일 이름에서 확장자를 떼어냅니다. ("노을.jpg" → "노을")
@@ -370,18 +754,35 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ],
       ),
-      // 검색·필터 줄은 항상 위에 붙어 있고, 그 아래 내용만 바뀝니다.
-      // 결과가 없을 때도 검색창이 남아 있어야 조건을 고칠 수 있습니다.
-      body: Column(
-        children: <Widget>[
-          ReferenceFilterBar(
-            query: _query,
-            searchController: _searchController,
-            taxonomyOptions: _taxonomyOptions,
-            onQueryChanged: _applyQuery,
+      // CallbackShortcuts는 지정한 키 조합이 눌리면 함수를 실행합니다.
+      // Focus(autofocus: true)로 감싸야 화면이 키 입력을 받습니다.
+      // 안 감싸면 아무 데도 초점이 없어서 Ctrl+V가 무시됩니다.
+      body: CallbackShortcuts(
+        bindings: <ShortcutActivator, VoidCallback>{
+          const SingleActivator(LogicalKeyboardKey.keyV, control: true):
+              _pasteFromClipboard,
+          // macOS는 Ctrl 대신 Command를 씁니다.
+          const SingleActivator(LogicalKeyboardKey.keyV, meta: true):
+              _pasteFromClipboard,
+        },
+        child: Focus(
+          autofocus: true,
+          child: _buildDropArea(
+            // 검색·필터 줄은 항상 위에 붙어 있고, 그 아래 내용만 바뀝니다.
+            // 결과가 없을 때도 검색창이 남아 있어야 조건을 고칠 수 있습니다.
+            Column(
+              children: <Widget>[
+                ReferenceFilterBar(
+                  query: _query,
+                  searchController: _searchController,
+                  taxonomyOptions: _taxonomyOptions,
+                  onQueryChanged: _applyQuery,
+                ),
+                Expanded(child: _buildBody()),
+              ],
+            ),
           ),
-          Expanded(child: _buildBody()),
-        ],
+        ),
       ),
       floatingActionButton: FloatingActionButton.extended(
         // 추가하는 중에는 null을 넣어 버튼을 잠급니다.
@@ -395,6 +796,82 @@ class _HomeScreenState extends State<HomeScreen> {
               )
             : const Icon(Icons.add_photo_alternate_outlined),
         label: Text(_isAdding ? '추가하는 중...' : '이미지 추가'),
+      ),
+    );
+  }
+
+  /// 화면 전체를 "끌어다 놓을 수 있는 영역"으로 감쌉니다.
+  ///
+  /// 끄는 중일 때는 테두리와 안내를 덧그려서 "여기 놓으면 된다"를 알려줍니다.
+  /// 아무 표시가 없으면 사용자는 놓아도 되는지 알 수 없습니다.
+  Widget _buildDropArea(Widget child) {
+    final ColorScheme colors = Theme.of(context).colorScheme;
+
+    return DropRegion(
+      // 받을 수 있다고 알릴 형식들입니다. 여기 없는 형식은 아예 안 들어옵니다.
+      // (앞서 쓰던 desktop_drop은 파일 형식만 받아서 브라우저 드래그가 막혔습니다)
+      formats: <DataFormat<Object>>[
+        ..._droppableImageFormats,
+        Formats.uri,
+        Formats.fileUri,
+      ],
+
+      // 끌고 지나가는 동안 "복사할 수 있다"고 알려줍니다.
+      // none을 돌려주면 커서에 금지 표시가 뜨고 놓을 수 없습니다.
+      onDropOver: (DropOverEvent event) => DropOperation.copy,
+
+      onDropEnter: (DropEvent event) {
+        setState(() => _isDragging = true);
+      },
+      onDropLeave: (DropEvent event) {
+        setState(() => _isDragging = false);
+      },
+      onPerformDrop: (PerformDropEvent event) async {
+        setState(() => _isDragging = false);
+        await _handleDrop(event);
+      },
+      child: Stack(
+        children: <Widget>[
+          child,
+
+          // 끄는 중에만 위에 덧그립니다.
+          if (_isDragging)
+            Positioned.fill(
+              child: IgnorePointer(
+                child: Container(
+                  // 반투명이라 아래 목록이 비쳐 보입니다.
+                  color: colors.primary.withValues(alpha: 0.12),
+                  child: Center(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 24,
+                        vertical: 16,
+                      ),
+                      decoration: BoxDecoration(
+                        color: colors.surface,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: colors.primary, width: 2),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: <Widget>[
+                          Icon(
+                            Icons.file_download_outlined,
+                            color: colors.primary,
+                          ),
+                          const SizedBox(width: 12),
+                          Text(
+                            '여기에 놓으면 레퍼런스로 추가됩니다',
+                            style: Theme.of(context).textTheme.titleMedium,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -443,10 +920,10 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             const SizedBox(height: 8),
             Text(
-              isFiltered
-                  ? '검색어나 필터를 바꿔보세요.'
-                  : '오른쪽 아래 버튼으로 이미지를 추가해보세요.',
-              style: textStyles.bodyMedium?.copyWith(color: colors.onSurfaceVariant),
+              isFiltered ? '검색어나 필터를 바꿔보세요.' : '오른쪽 아래 버튼으로 이미지를 추가해보세요.',
+              style: textStyles.bodyMedium?.copyWith(
+                color: colors.onSurfaceVariant,
+              ),
               textAlign: TextAlign.center,
             ),
             if (isFiltered) ...<Widget>[

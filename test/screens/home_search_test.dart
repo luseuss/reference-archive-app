@@ -16,6 +16,7 @@ import 'package:reference_archive_app/repositories/local_reference_repository.da
 import 'package:reference_archive_app/repositories/local_taxonomy_repository.dart';
 import 'package:reference_archive_app/utils/id_generator.dart';
 
+import '../fakes/fake_image_source.dart';
 import '../fakes/fake_image_storage.dart';
 
 void main() {
@@ -87,6 +88,7 @@ void main() {
       referenceRepository: repository,
       taxonomyRepository: taxonomyRepository,
       imageStorage: FakeImageStorage(),
+      imageSource: FakeImageSource(),
     );
   }
 
