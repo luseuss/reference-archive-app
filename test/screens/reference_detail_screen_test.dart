@@ -286,7 +286,7 @@ void main() {
       await tester.tap(find.text('만들기'));
       await tester.pumpAndSettle();
 
-      expect(find.text('이미 같은 이름의 태그이 있습니다.'), findsOneWidget);
+      expect(find.text('같은 이름의 태그가 이미 있습니다.'), findsOneWidget);
 
       // 태그가 두 개로 늘어나지 않아야 합니다.
       final List<TaxonomyItem> tags = await taxonomyRepository.getAll(TaxonomyKind.tag);

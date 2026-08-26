@@ -33,4 +33,13 @@ abstract class TaxonomyRepository {
   /// 폴더 "인물"이 두 개 생기면 사용자가 어느 쪽에 넣었는지 알 수 없게 됩니다.
   /// [excludeId]는 이름 바꾸기를 할 때 자기 자신은 빼고 검사하려고 쓰는 값입니다.
   Future<bool> existsWithName(TaxonomyKind kind, String name, {String? excludeId});
+
+  /// 이 분류 항목을 쓰고 있는 레퍼런스가 몇 개인지 세어 돌려줍니다.
+  ///
+  /// 지우기 전에 "이 태그를 쓰는 레퍼런스가 3개 있습니다"라고 알려주기 위한 것입니다.
+  /// 지우면 그 레퍼런스들에서 조용히 연결이 끊기는데 되돌릴 방법이 없으므로,
+  /// 미리 알려주고 확인을 받아야 합니다.
+  ///
+  /// 이미 지워진 레퍼런스는 세지 않습니다.
+  Future<int> countReferencesUsing(String id);
 }
