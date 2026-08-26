@@ -155,6 +155,14 @@ void main() {
   testWidgets('체크박스를 직접 눌러도 한 번만 골라진다', (WidgetTester tester) async {
     // 체크박스는 카드(InkWell) 안에 있습니다. 누를 때 체크박스와 카드가
     // 둘 다 반응하면 두 번 뒤집혀서 아무 일도 안 일어난 것처럼 보입니다.
+    //
+    // ── 이 테스트가 덤으로 잡아준 것 ──
+    // 격자를 메이슨리로 바꾸면서 카드 높이를 **그림이 정하게** 했더니,
+    // 그림을 아직 안 읽은 동안 높이가 0이 되어 카드가 찌부러졌습니다.
+    // 그러면 위에 얹은 체크박스가 카드 밖으로 밀려나 잘려서 **눌리지 않습니다.**
+    // 눈으로는 "가끔 안 눌린다" 정도로만 보여서 놓치기 쉬운 문제였는데,
+    // 이 테스트가 바로 잡아줬습니다.
+    // (해결: reference_card.dart의 `frameBuilder`가 읽는 동안 자리를 잡아둠)
     await saveReference('A');
     await openApp(tester);
     await enterSelectionMode(tester);

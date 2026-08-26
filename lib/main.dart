@@ -30,6 +30,7 @@ import 'services/image_storage.dart';
 import 'services/local_image_storage.dart';
 import 'services/network_image_source.dart';
 import 'services/youtube_info_source.dart';
+import 'theme/app_theme.dart';
 
 /// 앱을 실행합니다. Dart 프로그램은 언제나 main() 함수부터 시작합니다.
 void main() {
@@ -92,8 +93,8 @@ class ReferenceArchiveApp extends StatelessWidget {
 
       // 밝은 모드 / 어두운 모드 테마를 각각 지정하고,
       // 어느 쪽을 쓸지는 themeMode로 정합니다.
-      theme: _buildLightTheme(),
-      darkTheme: _buildDarkTheme(),
+      theme: buildLightTheme(),
+      darkTheme: buildDarkTheme(),
 
       // ThemeMode.system = 사용자의 운영체제 설정(밝게/어둡게)을 그대로 따라갑니다.
       // 나중에 앱 안에서 직접 토글하게 만들려면 이 값을 상태로 빼내면 됩니다.
@@ -108,32 +109,4 @@ class ReferenceArchiveApp extends StatelessWidget {
       ),
     );
   }
-}
-
-/// 앱의 대표 색상입니다. 이 색 하나에서 밝은/어두운 테마의 나머지 색이 자동으로 만들어집니다.
-///
-/// 기존 웹앱에서 쓰던 세이지 그린 계열 accent 색을 그대로 가져왔습니다.
-/// 앱 전체 색감을 바꾸고 싶으면 이 값 하나만 고치면 됩니다.
-const Color _seedColor = Color(0xFF719F89);
-
-/// 밝은 모드 테마를 만들어 돌려줍니다.
-ThemeData _buildLightTheme() {
-  return ThemeData(
-    colorScheme: ColorScheme.fromSeed(
-      seedColor: _seedColor,
-      brightness: Brightness.light,
-    ),
-    useMaterial3: true,
-  );
-}
-
-/// 어두운 모드 테마를 만들어 돌려줍니다.
-ThemeData _buildDarkTheme() {
-  return ThemeData(
-    colorScheme: ColorScheme.fromSeed(
-      seedColor: _seedColor,
-      brightness: Brightness.dark,
-    ),
-    useMaterial3: true,
-  );
 }
