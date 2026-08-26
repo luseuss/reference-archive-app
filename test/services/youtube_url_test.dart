@@ -169,6 +169,30 @@ void main() {
       expect(html, contains('autoplay'));
     });
 
+    test('미리보기용 주소는 소리가 꺼지고 조작 버튼이 숨는다', () {
+      // 호버 미리보기용입니다. 목록을 훑을 때마다 소리가 나면 못 씁니다.
+      // (브라우저들도 소리가 나는 자동재생은 대부분 막습니다)
+      final String url = youtubeEmbedUrl(id, muted: true);
+
+      expect(url, contains('mute=1'));
+      expect(url, contains('controls=0'));
+      // 자동재생은 그대로 있어야 합니다. 미리보기는 저절로 시작돼야 하니까요.
+      expect(url, contains('autoplay=1'));
+    });
+
+    test('그냥 재생할 때는 소리가 켜져 있다', () {
+      // 재생 화면에서까지 음소거면 사용자가 당황합니다.
+      expect(youtubeEmbedUrl(id), isNot(contains('mute=1')));
+      expect(youtubeEmbedUrl(id), isNot(contains('controls=0')));
+    });
+
+    test('미리보기용 HTML도 음소거가 적용된다', () {
+      // 옵션이 iframe까지 전달되는지 봅니다.
+      // 여기서 안 넘어가면 소리가 그대로 납니다.
+      expect(youtubePlayerHtml(id, muted: true), contains('mute=1'));
+      expect(youtubePlayerHtml(id), isNot(contains('mute=1')));
+    });
+
     test('썸네일 주소는 두 가지를 만들 수 있다', () {
       expect(
         youtubeThumbnailUrl(id),

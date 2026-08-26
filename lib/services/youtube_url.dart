@@ -107,9 +107,22 @@ String youtubeWatchUrl(String videoId) {
 ///   - `autoplay=1`  창을 열면 바로 재생합니다. 보려고 연 것이니까요.
 ///   - `rel=0`       영상이 끝났을 때 남의 채널 추천을 덜 보여줍니다.
 ///   - `playsinline=1` 아이폰에서 전체화면으로 튕기지 않고 그 자리에서 재생합니다.
-String youtubeEmbedUrl(String videoId) {
-  return 'https://www.youtube.com/embed/$videoId'
+///
+/// [muted]를 켜면 소리 없이, 조작 버튼 없이 재생합니다. **호버 미리보기용**입니다.
+/// 목록 위로 마우스가 지나갈 때마다 소리가 나면 쓸 수 없는 기능이 됩니다.
+/// (브라우저들도 소리가 나는 자동재생은 대부분 막습니다)
+String youtubeEmbedUrl(String videoId, {bool muted = false}) {
+  final String base =
+      'https://www.youtube.com/embed/$videoId'
       '?autoplay=1&rel=0&playsinline=1';
+
+  if (!muted) {
+    return base;
+  }
+
+  // controls=0 = 조작 버튼 숨김. 미리보기는 누를 수 없게 해둘 것이라
+  // 버튼이 보이면 눌리는 줄 알고 헛클릭하게 됩니다.
+  return '$base&mute=1&controls=0';
 }
 
 /// 앱 안 웹뷰에 띄울 재생기 HTML을 만듭니다.
@@ -121,17 +134,19 @@ String youtubeEmbedUrl(String videoId) {
 ///
 ///   오류 153 — 플레이어 구성 오류
 ///
-/// 그래서 embed 주소를 **`<iframe>` 안에** 넣고, 그 iframe을 담은 페이지를
-/// 유튜브 주소를 기준으로 띄웁니다. (웹뷰 쪽에서 baseUrl로 지정)
-/// 그러면 참조 주소가 제대로 붙어서 재생기가 정상 동작합니다.
+/// 그래서 embed 주소를 **`<iframe>` 안에** 넣습니다. 그리고 이 HTML은
+/// **진짜 주소를 가진 페이지로** 띄워야 합니다 — `local_player_server.dart`가
+/// 그 역할을 합니다. 웹뷰에 HTML을 직접 넘기면서 "youtube.com에 있는 것으로
+/// 쳐달라"(baseUrl)고 하는 방법은 **Windows에서 통하지 않습니다.**
+/// (그 경위도 local_player_server.dart 맨 위에 적어뒀습니다)
 ///
 /// 기존 웹앱이 잘 되던 이유도 같습니다. 거기서는 애초에 iframe이었고,
-/// 페이지 주소가 참조 주소 역할을 해줬습니다.
+/// 진짜 페이지 주소가 참조 주소 역할을 해줬습니다.
 ///
 /// [videoId]는 이 파일의 `youtubeVideoIdFrom()`을 거쳐 **영문·숫자·`-`·`_` 11글자**로
 /// 확인된 값만 들어옵니다. 그래서 HTML에 그대로 끼워 넣어도 안전합니다.
 /// 확인을 거치지 않은 글자를 여기 넣으면 안 됩니다.
-String youtubePlayerHtml(String videoId) {
+String youtubePlayerHtml(String videoId, {bool muted = false}) {
   return '''
 <!DOCTYPE html>
 <html>
@@ -146,7 +161,7 @@ String youtubePlayerHtml(String videoId) {
 </head>
 <body>
 <iframe
-  src="${youtubeEmbedUrl(videoId)}"
+  src="${youtubeEmbedUrl(videoId, muted: muted)}"
   allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
   allowfullscreen></iframe>
 </body>
