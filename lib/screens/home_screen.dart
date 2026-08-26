@@ -4,6 +4,7 @@
 //   - 저장된 레퍼런스를 불러와 격자로 보여주기
 //   - 오른쪽 아래 버튼으로 이미지 추가하기
 //   - 카드의 휴지통 버튼으로 삭제하기
+//   - 여러 장을 골라 한꺼번에 폴더 이동 / 태그 추가 / 삭제하기
 //
 // ── 화면이 데이터를 다루는 방식 ──
 // 이 화면은 데이터베이스를 직접 만지지 않습니다. 생성자로 받은 repository
@@ -30,6 +31,8 @@ import '../services/dropped_item_reader.dart';
 import '../services/image_source.dart';
 import '../services/image_storage.dart';
 import '../utils/id_generator.dart';
+import '../widgets/bulk_action_bar.dart';
+import '../widgets/pick_taxonomy_dialog.dart';
 import '../widgets/reference_card.dart';
 import '../widgets/reference_filter_bar.dart';
 import 'reference_detail_screen.dart';
@@ -100,6 +103,21 @@ class _HomeScreenState extends State<HomeScreen> {
   /// 지금 무언가를 창 위로 끌고 있는 중인지 여부입니다.
   /// 켜져 있으면 "여기 놓으세요" 안내를 덧그립니다.
   bool _isDragging = false;
+
+  /// 지금 여러 장을 고르는 중인지 여부입니다.
+  ///
+  /// ── 왜 "고른 게 하나라도 있으면 고르기 모드"로 하지 않았나 ──
+  /// 그렇게 하면 마지막 한 장의 선택을 풀었을 때 체크박스와 작업 막대가
+  /// 통째로 사라집니다. 사용자는 잘못 눌러서 모드가 꺼졌다고 느낍니다.
+  /// 그래서 "고르기 모드"와 "무엇을 골랐는지"를 따로 둡니다.
+  bool _isSelecting = false;
+
+  /// 지금 골라둔 레퍼런스들의 id입니다.
+  ///
+  /// List가 아니라 Set인 이유: Set은 같은 값이 두 번 안 들어가고,
+  /// "이게 들어있나?"를 확인하는 것이 목록이 길어져도 빠릅니다.
+  /// 카드를 그릴 때마다 확인하는 값이라 이 차이가 실제로 체감됩니다.
+  final Set<String> _selectedIds = <String>{};
 
   /// 끌어다 놓은 것을 읽어 이미지 데이터로 만들어주는 도구입니다.
   ///
@@ -209,7 +227,209 @@ class _HomeScreenState extends State<HomeScreen> {
         ..clear()
         ..addAll(paths);
       _isLoading = false;
+
+      // 화면에 안 보이게 된 것은 골라둔 목록에서도 뺍니다.
+      //
+      // 예를 들어 세 장을 골라둔 채 검색어를 바꾸면 그중 두 장이 목록에서
+      // 사라질 수 있습니다. 그대로 두면 "1장 골랐다"고 보이는데 실제로는
+      // 3장이 지워지는, 사용자가 예상할 수 없는 일이 벌어집니다.
+      _selectedIds.removeWhere((String id) {
+        return !items.any((ReferenceItem item) => item.id == id);
+      });
     });
+  }
+
+  /// 고르기 모드를 켜거나 끕니다.
+  void _toggleSelectionMode() {
+    setState(() {
+      _isSelecting = !_isSelecting;
+
+      // 모드를 끄면 골라둔 것도 함께 비웁니다.
+      // 안 비우면 다음에 모드를 켤 때 예전 선택이 되살아나 놀라게 됩니다.
+      if (!_isSelecting) {
+        _selectedIds.clear();
+      }
+    });
+  }
+
+  /// 고르기 모드를 끝내고 골라둔 것을 모두 비웁니다.
+  void _exitSelectionMode() {
+    setState(() {
+      _isSelecting = false;
+      _selectedIds.clear();
+    });
+  }
+
+  /// 카드 하나를 고르거나 고르기를 취소합니다.
+  ///
+  /// 고르기 모드가 꺼져 있을 때 불리면(카드를 길게 눌렀을 때) 모드를 켭니다.
+  void _toggleSelected(ReferenceItem item) {
+    setState(() {
+      _isSelecting = true;
+
+      if (_selectedIds.contains(item.id)) {
+        _selectedIds.remove(item.id);
+      } else {
+        _selectedIds.add(item.id);
+      }
+    });
+  }
+
+  /// 지금 보이는 것을 전부 고릅니다. 이미 전부 골랐으면 전부 풉니다.
+  void _toggleSelectAll() {
+    setState(() {
+      final bool allSelected = _selectedIds.length == _items.length;
+
+      _selectedIds.clear();
+
+      if (!allSelected) {
+        for (final ReferenceItem item in _items) {
+          _selectedIds.add(item.id);
+        }
+      }
+    });
+  }
+
+  /// 골라둔 것들을 한 폴더로 옮깁니다.
+  Future<void> _moveSelectedToFolder() async {
+    final List<TaxonomyItem> folders =
+        _taxonomyOptions[TaxonomyKind.folder] ?? <TaxonomyItem>[];
+
+    // 폴더가 하나도 없으면 고를 것이 없습니다.
+    // "폴더 없음"만 덩그러니 뜨는 대화상자보다, 무엇을 하면 되는지 알려줍니다.
+    if (folders.isEmpty) {
+      _showMessage('먼저 오른쪽 위 "분류 관리"에서 폴더를 만들어주세요.');
+      return;
+    }
+
+    final int count = _selectedIds.length;
+
+    final PickedTaxonomy? picked = await showPickTaxonomyDialog(
+      context: context,
+      kind: TaxonomyKind.folder,
+      items: folders,
+      title: '$count장을 옮길 폴더',
+
+      // "폴더 없음"을 고르면 폴더에서 빼냅니다.
+      allowNone: true,
+    );
+
+    // 대화상자를 그냥 닫았으면 아무것도 하지 않습니다.
+    if (picked == null) {
+      return;
+    }
+
+    // picked.item이 null이면 "폴더에서 빼기"입니다. 취소와는 다릅니다.
+    await widget.repository.moveManyToFolder(
+      _selectedIds.toList(),
+      picked.item?.id,
+    );
+
+    final String where = picked.item == null ? '폴더에서 빼냈습니다' : '"${picked.item!.name}"으로 옮겼습니다';
+    await _finishBulkAction('$count장을 $where.');
+  }
+
+  /// 골라둔 것들에 태그를 붙입니다.
+  Future<void> _addTagToSelected() async {
+    final List<TaxonomyItem> tags =
+        _taxonomyOptions[TaxonomyKind.tag] ?? <TaxonomyItem>[];
+
+    if (tags.isEmpty) {
+      _showMessage('먼저 오른쪽 위 "분류 관리"에서 태그를 만들어주세요.');
+      return;
+    }
+
+    final int count = _selectedIds.length;
+
+    final PickedTaxonomy? picked = await showPickTaxonomyDialog(
+      context: context,
+      kind: TaxonomyKind.tag,
+      items: tags,
+      title: '$count장에 붙일 태그',
+    );
+
+    // 태그 고르기에는 "없음"이 없으므로 item은 반드시 들어 있습니다.
+    if (picked == null || picked.item == null) {
+      return;
+    }
+
+    await widget.repository.addTaxonomyItemToMany(
+      _selectedIds.toList(),
+      picked.item!.id,
+    );
+
+    await _finishBulkAction('$count장에 "${picked.item!.name}" 태그를 붙였습니다.');
+  }
+
+  /// 골라둔 것들을 한꺼번에 지웁니다.
+  Future<void> _deleteSelected() async {
+    final int count = _selectedIds.length;
+
+    final bool confirmed = await _confirmBulkDelete(count);
+    if (!confirmed) {
+      return;
+    }
+
+    await widget.repository.deleteMany(_selectedIds.toList());
+
+    await _finishBulkAction('$count장을 지웠습니다.');
+  }
+
+  /// 여러 장을 정말 지울지 확인받습니다.
+  ///
+  /// 낱장 삭제에는 확인이 없지만 여기에는 둡니다. 한 장을 잘못 지우는 것과
+  /// 50장을 잘못 지우는 것은 되돌리는 수고가 완전히 다르기 때문입니다.
+  Future<bool> _confirmBulkDelete(int count) async {
+    final bool? result = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('레퍼런스 삭제'),
+          content: Text(
+            '고른 $count장을 지웁니다.\n\n'
+            '이미지 파일은 남지만 목록에서는 사라집니다.',
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('취소'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              style: FilledButton.styleFrom(
+                backgroundColor: Theme.of(context).colorScheme.error,
+                foregroundColor: Theme.of(context).colorScheme.onError,
+              ),
+              child: const Text('삭제'),
+            ),
+          ],
+        );
+      },
+    );
+
+    // 바깥을 눌러 닫으면 null이 옵니다. 그때는 안 지웁니다.
+    return result ?? false;
+  }
+
+  /// 일괄 작업이 끝난 뒤 목록을 새로 고치고 결과를 알려줍니다.
+  ///
+  /// 셋 다 끝나면 고르기 모드를 **끕니다.** 작업 하나가 끝났는데 선택이
+  /// 그대로 남아 있으면, 다음 작업이 방금 그 장들에 또 적용되는 줄 모르고
+  /// 두 번 실행하기 쉽습니다.
+  Future<void> _finishBulkAction(String message) async {
+    _exitSelectionMode();
+    await _loadItems();
+
+    if (!mounted) {
+      return;
+    }
+
+    _showMessage(message);
+  }
+
+  /// 화면 아래쪽에 짧은 안내를 띄웁니다.
+  void _showMessage(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
   }
 
   /// 이미지 파일을 골라서 레퍼런스로 추가합니다.
@@ -550,17 +770,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('레퍼런스 아카이브'),
-        backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
-        actions: <Widget>[
-          IconButton(
-            onPressed: _openTaxonomyManage,
-            icon: const Icon(Icons.folder_special_outlined),
-            tooltip: '분류 관리',
-          ),
-        ],
-      ),
+      appBar: _isSelecting ? _buildSelectionAppBar() : _buildNormalAppBar(),
       // CallbackShortcuts는 지정한 키 조합이 눌리면 함수를 실행합니다.
       // Focus(autofocus: true)로 감싸야 화면이 키 입력을 받습니다.
       // 안 감싸면 아무 데도 초점이 없어서 Ctrl+V가 무시됩니다.
@@ -591,19 +801,92 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        // 추가하는 중에는 null을 넣어 버튼을 잠급니다.
-        // Flutter에서는 onPressed가 null이면 버튼이 자동으로 비활성화됩니다.
-        onPressed: _isAdding ? null : _addImages,
-        icon: _isAdding
-            ? const SizedBox(
-                width: 18,
-                height: 18,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              )
-            : const Icon(Icons.add_photo_alternate_outlined),
-        label: Text(_isAdding ? '추가하는 중...' : '이미지 추가'),
+      // 고르는 중에는 화면 아래에 일괄 작업 막대가 붙습니다.
+      // bottomNavigationBar에 넣으면 목록이 그만큼 위로 줄어들어서,
+      // 떠 있는 버튼과 달리 마지막 줄의 카드를 가리지 않습니다.
+      bottomNavigationBar: _isSelecting
+          ? BulkActionBar(
+              selectedCount: _selectedIds.length,
+              onMoveToFolder: _moveSelectedToFolder,
+              onAddTag: _addTagToSelected,
+              onDelete: _deleteSelected,
+            )
+          : null,
+
+      // 고르는 중에는 추가 버튼을 숨깁니다.
+      // 아래 작업 막대와 겹쳐 보이고, 고르는 도중에 새로 추가할 일도 없습니다.
+      floatingActionButton: _isSelecting
+          ? null
+          : FloatingActionButton.extended(
+              // 추가하는 중에는 null을 넣어 버튼을 잠급니다.
+              // Flutter에서는 onPressed가 null이면 버튼이 자동으로 비활성화됩니다.
+              onPressed: _isAdding ? null : _addImages,
+              icon: _isAdding
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.add_photo_alternate_outlined),
+              label: Text(_isAdding ? '추가하는 중...' : '이미지 추가'),
+            ),
+    );
+  }
+
+  /// 평소의 위쪽 막대를 만듭니다.
+  PreferredSizeWidget _buildNormalAppBar() {
+    return AppBar(
+      title: const Text('레퍼런스 아카이브'),
+      backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+      actions: <Widget>[
+        IconButton(
+          // 보여줄 것이 없으면 고를 것도 없으므로 버튼을 잠급니다.
+          onPressed: _items.isEmpty ? null : _toggleSelectionMode,
+          icon: const Icon(Icons.check_circle_outline),
+          tooltip: '여러 장 고르기',
+        ),
+        IconButton(
+          onPressed: _openTaxonomyManage,
+          icon: const Icon(Icons.folder_special_outlined),
+          tooltip: '분류 관리',
+        ),
+      ],
+    );
+  }
+
+  /// 고르는 중일 때의 위쪽 막대를 만듭니다.
+  ///
+  /// 색과 내용을 통째로 바꿔서 "지금은 평소와 다른 모드"임을 분명히 합니다.
+  PreferredSizeWidget _buildSelectionAppBar() {
+    final ColorScheme colors = Theme.of(context).colorScheme;
+
+    final bool allSelected =
+        _items.isNotEmpty && _selectedIds.length == _items.length;
+
+    return AppBar(
+      backgroundColor: colors.primaryContainer,
+      foregroundColor: colors.onPrimaryContainer,
+
+      // 왼쪽 X 버튼으로 고르기를 끝냅니다.
+      leading: IconButton(
+        onPressed: _exitSelectionMode,
+        icon: const Icon(Icons.close),
+        tooltip: '고르기 끝내기',
       ),
+
+      title: Text(
+        _selectedIds.isEmpty ? '고를 카드를 눌러주세요' : '${_selectedIds.length}장 선택',
+      ),
+
+      actions: <Widget>[
+        IconButton(
+          onPressed: _items.isEmpty ? null : _toggleSelectAll,
+          icon: Icon(
+            allSelected ? Icons.deselect : Icons.select_all,
+          ),
+          tooltip: allSelected ? '전체 해제' : '전체 선택',
+        ),
+      ],
     );
   }
 
@@ -773,6 +1056,9 @@ class _HomeScreenState extends State<HomeScreen> {
           imagePath: _imagePaths[item.id],
           onDelete: () => _deleteItem(item),
           onTap: () => _openDetail(item),
+          isSelectionMode: _isSelecting,
+          isSelected: _selectedIds.contains(item.id),
+          onSelectToggle: () => _toggleSelected(item),
         );
       },
     );

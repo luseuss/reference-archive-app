@@ -268,7 +268,123 @@ class LocalReferenceRepository implements ReferenceRepository {
     });
   }
 
+  /// 여러 레퍼런스를 한 폴더로 옮깁니다. [folderId]가 null이면 폴더에서 빼냅니다.
+  ///
+  /// 한 줄씩 고치지 않고 **UPDATE 한 번**으로 끝냅니다.
+  /// isIn(...)은 SQL의 `WHERE id IN ('a','b','c')`가 됩니다.
+  @override
+  Future<void> moveManyToFolder(
+    List<String> referenceIds,
+    String? folderId,
+  ) async {
+    // 빈 목록으로 부르면 조건이 `WHERE id IN ()`이 되어 아무것도 안 걸립니다.
+    // 그래도 쓸데없이 데이터베이스를 건드릴 이유가 없으므로 먼저 돌아갑니다.
+    if (referenceIds.isEmpty) {
+      return;
+    }
+
+    final DateTime now = DateTime.now().toUtc();
+
+    await (_db.update(_db.references)
+          ..where(($ReferencesTable t) => t.id.isIn(referenceIds)))
+        .write(
+          ReferencesCompanion(
+            // Value<String?>(null)은 "null로 덮어써라"는 뜻입니다.
+            // 그냥 두는 것(값을 안 넘김)과 명확히 다릅니다.
+            folderId: Value<String?>(folderId),
+            updatedAt: Value<DateTime>(now),
+          ),
+        );
+  }
+
+  /// 여러 레퍼런스에 같은 태그(또는 프로젝트)를 붙입니다.
+  ///
+  /// 이미 붙어있는 것은 건너뜁니다. 그냥 다시 붙이면 붙인 시각(createdAt)이
+  /// 새로 찍혀서, 나중에 기기 간 동기화가 "방금 새로 붙은 태그"로 착각합니다.
+  @override
+  Future<void> addTaxonomyItemToMany(
+    List<String> referenceIds,
+    String taxonomyItemId,
+  ) async {
+    if (referenceIds.isEmpty) {
+      return;
+    }
+
+    final DateTime now = DateTime.now().toUtc();
+
+    // transaction = "전부 성공하거나 전부 실패하거나". 중간에 오류가 나면
+    // 일부에만 태그가 붙은 어정쩡한 상태로 남지 않습니다.
+    await _db.transaction(() async {
+      for (final String referenceId in referenceIds) {
+        final bool alreadyLinked = await _isLinked(referenceId, taxonomyItemId);
+        if (alreadyLinked) {
+          continue;
+        }
+
+        // insertOnConflictUpdate를 쓰는 이유: 예전에 뗐던 태그를 다시 붙이는
+        // 경우 그 줄이 deletedAt만 찍힌 채 표에 남아 있습니다. 그냥 insert하면
+        // "이미 있는 줄"이라며 실패하므로, 덮어쓰면서 deletedAt을 비워 되살립니다.
+        await _db
+            .into(_db.referenceTaxonomyLinks)
+            .insertOnConflictUpdate(
+              ReferenceTaxonomyLinksCompanion.insert(
+                referenceId: referenceId,
+                taxonomyItemId: taxonomyItemId,
+                createdAt: now,
+                deletedAt: const Value<DateTime?>(null),
+              ),
+            );
+
+        // 레퍼런스 본체의 updatedAt도 갱신합니다.
+        //
+        // 태그는 다른 표에 있어서 본체는 글자 하나 안 바뀌지만, 사용자 입장에서는
+        // 이 레퍼런스를 고친 것이 맞습니다. 여기서 안 갱신하면 "마지막 동기화
+        // 이후 바뀐 것"을 고를 때 이 레퍼런스가 빠져서, 다른 기기에는 태그가
+        // 안 붙은 채로 남습니다.
+        await (_db.update(_db.references)
+              ..where(($ReferencesTable t) => t.id.equals(referenceId)))
+            .write(ReferencesCompanion(updatedAt: Value<DateTime>(now)));
+      }
+    });
+  }
+
+  /// 여러 레퍼런스를 한꺼번에 지웁니다. 소프트 삭제입니다.
+  @override
+  Future<void> deleteMany(List<String> referenceIds) async {
+    if (referenceIds.isEmpty) {
+      return;
+    }
+
+    final DateTime now = DateTime.now().toUtc();
+
+    await (_db.update(_db.references)
+          ..where(($ReferencesTable t) => t.id.isIn(referenceIds)))
+        .write(
+          ReferencesCompanion(
+            deletedAt: Value<DateTime?>(now),
+            updatedAt: Value<DateTime>(now),
+          ),
+        );
+  }
+
   // ── 아래는 이 파일 안에서만 쓰는 도우미 함수들입니다 ──
+
+  /// 이 레퍼런스에 이 분류 항목이 지금 붙어 있는지 확인합니다.
+  ///
+  /// 연결 표에는 종류(태그/프로젝트)가 안 적혀 있지만, 분류 항목 id 자체가
+  /// 세상에 하나뿐이라 종류를 따로 확인할 필요가 없습니다.
+  Future<bool> _isLinked(String referenceId, String taxonomyItemId) async {
+    final ReferenceTaxonomyLinkRow? link =
+        await (_db.select(_db.referenceTaxonomyLinks)..where(
+              ($ReferenceTaxonomyLinksTable t) =>
+                  t.referenceId.equals(referenceId) &
+                  t.taxonomyItemId.equals(taxonomyItemId) &
+                  t.deletedAt.isNull(),
+            ))
+            .getSingleOrNull();
+
+    return link != null;
+  }
 
   /// 특정 종류의 연결을 [wantedIds] 목록과 똑같아지도록 맞춥니다.
   ///
