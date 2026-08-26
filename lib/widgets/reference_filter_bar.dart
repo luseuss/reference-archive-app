@@ -51,6 +51,10 @@ class ReferenceFilterBar extends StatelessWidget {
         return query.tagId;
       case TaxonomyKind.project:
         return query.projectId;
+
+      // 파트는 이 줄에서 다루지 않습니다. 사이드바에서 고릅니다.
+      case TaxonomyKind.part:
+        return null;
     }
   }
 
@@ -73,6 +77,10 @@ class ReferenceFilterBar extends StatelessWidget {
         onQueryChanged(query.copyWith(tagId: id));
       case TaxonomyKind.project:
         onQueryChanged(query.copyWith(projectId: id));
+
+      // 파트는 이 줄에서 안 바꿉니다. 사이드바가 맡습니다.
+      case TaxonomyKind.part:
+        break;
     }
   }
 
@@ -93,7 +101,9 @@ class ReferenceFilterBar extends StatelessWidget {
             children: <Widget>[
               _buildSortMenu(context),
               _buildFavoritesToggle(),
-              ...TaxonomyKind.values.map(_buildTaxonomyFilter),
+              // 파트는 빼고 나머지 넷만 여기에 둡니다.
+              // 파트는 왼쪽 사이드바에서 고르는 더 큰 갈래입니다.
+              ...filterableTaxonomyKinds.map(_buildTaxonomyFilter),
               if (query.hasAnyFilter) _buildClearButton(),
 
               // 목록에 대한 동작들입니다. 조건과 성격이 달라서 오른쪽 끝에 둡니다.
@@ -252,3 +262,12 @@ class ReferenceFilterBar extends StatelessWidget {
     );
   }
 }
+
+/// 이 줄에서 고를 수 있는 분류 종류들입니다.
+///
+/// **파트만 빠져 있습니다.** 파트는 디자인/파티클 같은 가장 큰 갈래라
+/// 왼쪽 사이드바에서 고릅니다. 여기에도 두면 같은 것을 두 군데서 고르게 되어
+/// "어느 쪽이 진짜지?" 하게 됩니다.
+final List<TaxonomyKind> filterableTaxonomyKinds = TaxonomyKind.values
+    .where((TaxonomyKind kind) => kind != TaxonomyKind.part)
+    .toList();

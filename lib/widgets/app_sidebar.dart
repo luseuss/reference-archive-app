@@ -13,6 +13,7 @@
 
 import 'package:flutter/material.dart';
 
+import '../models/taxonomy_item.dart';
 import '../theme/app_metrics.dart';
 import '../theme/app_palette.dart';
 import '../theme/app_text.dart';
@@ -31,12 +32,24 @@ class AppSidebar extends StatelessWidget {
   const AppSidebar({
     super.key,
     required this.userName,
+    required this.parts,
+    required this.selectedPartId,
+    required this.onSelectPart,
     required this.onOpenSettings,
     required this.onLogInOut,
   });
 
   /// ①에 보여줄 사용자 이름입니다.
   final String userName;
+
+  /// ②에 보여줄 파트 목록입니다.
+  final List<TaxonomyItem> parts;
+
+  /// 지금 고른 파트의 id입니다. null이면 "전체"를 보고 있는 것입니다.
+  final String? selectedPartId;
+
+  /// 파트를 골랐을 때 알려줍니다. null을 넘기면 "전체"입니다.
+  final ValueChanged<String?> onSelectPart;
 
   /// 설정을 눌렀을 때 실행할 동작입니다.
   final VoidCallback onOpenSettings;
@@ -129,11 +142,10 @@ class AppSidebar extends StatelessWidget {
     );
   }
 
-  /// ② 파트 목록입니다.
+  /// ② 파트 목록입니다. 디자인/파티클 같은 큰 갈래로 레퍼런스를 나눠 봅니다.
   ///
-  /// **아직 파트 기능이 없어서 "전체"만 있습니다.** 파트를 저장하려면
-  /// 데이터베이스 구조를 바꿔야 해서(마이그레이션) 다음 작업으로 미뤘습니다.
-  /// 지금은 모든 레퍼런스가 한곳에 있으므로 "전체"만 있는 것이 사실 그대로입니다.
+  /// 맨 위의 "전체 레퍼런스"는 파트를 안 가리는 상태입니다. 파트가 여럿일 때
+  /// 전부 훑어보려면 이게 필요합니다.
   Widget _buildPartList(AppPalette dark) {
     return Container(
       padding: const EdgeInsets.all(8),
@@ -142,16 +154,27 @@ class AppSidebar extends StatelessWidget {
         borderRadius: BorderRadius.circular(appCornerRadius),
         border: Border.all(color: dark.border),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+
+      // 파트가 많아지면 사이드바 밖으로 넘칩니다. 스크롤되게 둡니다.
+      child: ListView(
+        padding: EdgeInsets.zero,
         children: <Widget>[
           _buildNavItem(
             dark,
             icon: Icons.photo_library_outlined,
             label: '전체 레퍼런스',
-            isSelected: true,
-            onTap: () {},
+            isSelected: selectedPartId == null,
+            onTap: () => onSelectPart(null),
           ),
+
+          for (final TaxonomyItem part in parts)
+            _buildNavItem(
+              dark,
+              icon: Icons.folder_copy_outlined,
+              label: part.name,
+              isSelected: selectedPartId == part.id,
+              onTap: () => onSelectPart(part.id),
+            ),
         ],
       ),
     );

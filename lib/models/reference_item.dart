@@ -24,6 +24,7 @@ class ReferenceItem {
     this.memo,
     this.folderId,
     this.categoryId,
+    this.partId,
     this.isPinned = false,
     this.isFavorite = false,
     this.pHash,
@@ -54,6 +55,11 @@ class ReferenceItem {
 
   /// 들어있는 카테고리의 id (없으면 null)
   final String? categoryId;
+
+  /// 들어있는 파트의 id (없으면 null)
+  ///
+  /// 파트는 디자인/파티클 같은 **큰 갈래**입니다. 사이드바에서 고릅니다.
+  final String? partId;
 
   /// 목록 맨 위 고정 여부
   final bool isPinned;
@@ -95,6 +101,7 @@ class ReferenceItem {
     String? memo,
     String? folderId,
     String? categoryId,
+    String? partId,
     bool? isPinned,
     bool? isFavorite,
     String? pHash,
@@ -111,6 +118,7 @@ class ReferenceItem {
       memo: memo ?? this.memo,
       folderId: folderId ?? this.folderId,
       categoryId: categoryId ?? this.categoryId,
+      partId: partId ?? this.partId,
       isPinned: isPinned ?? this.isPinned,
       isFavorite: isFavorite ?? this.isFavorite,
       pHash: pHash ?? this.pHash,
@@ -132,6 +140,7 @@ class ReferenceItem {
       memo: memo,
       folderId: null,
       categoryId: categoryId,
+      partId: partId,
       isPinned: isPinned,
       isFavorite: isFavorite,
       pHash: pHash,
@@ -153,6 +162,7 @@ class ReferenceItem {
       memo: memo,
       folderId: folderId,
       categoryId: null,
+      partId: partId,
       isPinned: isPinned,
       isFavorite: isFavorite,
       pHash: pHash,

@@ -38,6 +38,7 @@ class ReferenceQuery {
     this.searchText = '',
     this.folderId,
     this.categoryId,
+    this.partId,
     this.tagId,
     this.projectId,
     this.favoritesOnly = false,
@@ -54,6 +55,13 @@ class ReferenceQuery {
 
   /// 이 카테고리에 든 것만 가져옵니다. null이면 거르지 않습니다.
   final String? categoryId;
+
+  /// 이 파트에 든 것만 가져옵니다. null이면 파트로 거르지 않습니다.
+  ///
+  /// 다른 필터와 성격이 다릅니다. 폴더·태그 등은 목록 위에서 잠깐 걸었다 푸는
+  /// **조건**이지만, 파트는 사이드바에서 고르는 **지금 보고 있는 자리**에 가깝습니다.
+  /// 그래서 아래 hasAnyFilter와 clearAll에서 다르게 다룹니다.
+  final String? partId;
 
   /// 이 태그가 붙은 것만 가져옵니다. null이면 거르지 않습니다.
   final String? tagId;
@@ -72,6 +80,10 @@ class ReferenceQuery {
   /// 화면에서 "조건에 맞는 게 없습니다"와 "아직 아무것도 없습니다"를
   /// 구분해서 안내하려고 씁니다. 아무것도 없는데 "조건에 맞는 게 없다"고 하면
   /// 사용자가 조건을 지우려고 헤매게 됩니다.
+  ///
+  /// **파트는 여기 안 셉니다.** 파트는 "거르는 조건"이라기보다 "지금 보고 있는
+  /// 자리"입니다. 빈 파트를 열었을 때는 "조건에 맞는 게 없다"가 아니라
+  /// "아직 아무것도 없다"가 맞는 안내입니다. (조건을 지워봐야 소용없으니까요)
   bool get hasAnyFilter {
     return searchText.trim().isNotEmpty ||
         folderId != null ||
@@ -90,6 +102,7 @@ class ReferenceQuery {
     String? searchText,
     String? folderId,
     String? categoryId,
+    String? partId,
     String? tagId,
     String? projectId,
     bool? favoritesOnly,
@@ -99,6 +112,7 @@ class ReferenceQuery {
       searchText: searchText ?? this.searchText,
       folderId: folderId ?? this.folderId,
       categoryId: categoryId ?? this.categoryId,
+      partId: partId ?? this.partId,
       tagId: tagId ?? this.tagId,
       projectId: projectId ?? this.projectId,
       favoritesOnly: favoritesOnly ?? this.favoritesOnly,
@@ -114,6 +128,7 @@ class ReferenceQuery {
       searchText: searchText,
       folderId: kind == TaxonomyKind.folder ? null : folderId,
       categoryId: kind == TaxonomyKind.category ? null : categoryId,
+      partId: kind == TaxonomyKind.part ? null : partId,
       tagId: kind == TaxonomyKind.tag ? null : tagId,
       projectId: kind == TaxonomyKind.project ? null : projectId,
       favoritesOnly: favoritesOnly,
@@ -121,8 +136,14 @@ class ReferenceQuery {
     );
   }
 
-  /// 모든 필터와 검색어를 지운 사본을 돌려줍니다. 정렬 방식은 그대로 둡니다.
+  /// 모든 필터와 검색어를 지운 사본을 돌려줍니다.
+  ///
+  /// **정렬 방식과 파트는 그대로 둡니다.**
+  ///
+  /// 파트를 안 지우는 이유: 파트는 사이드바에서 고른 "지금 보고 있는 자리"입니다.
+  /// "조건 지우기"를 눌렀는데 보고 있던 파트에서 튕겨 나가면 당황스럽습니다.
+  /// 파트를 바꾸려면 사이드바에서 다른 파트를 고르면 됩니다.
   ReferenceQuery clearAll() {
-    return ReferenceQuery(sortOrder: sortOrder);
+    return ReferenceQuery(sortOrder: sortOrder, partId: partId);
   }
 }

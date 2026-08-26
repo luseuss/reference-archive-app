@@ -89,12 +89,20 @@ void main() {
     await repository.delete(folder.id);
 
     // 저장소를 거치지 않고 데이터베이스를 직접 들여다봅니다.
-    // 진짜로 지워졌다면 줄 수가 0이어야 하지만, 소프트 삭제라 1이어야 합니다.
+    // 진짜로 지워졌다면 줄이 아예 없어야 하지만, 소프트 삭제라 남아 있어야 합니다.
     // 나중에 기기 간 동기화를 붙일 때 "지웠다"는 사실 자체가 필요하기 때문입니다.
-    final List<TaxonomyItemRow> allRows = await db.select(db.taxonomyItems).get();
+    //
+    // 폴더만 골라서 셉니다. 데이터베이스를 새로 만들면 **기본 파트가 하나
+    // 들어있어서**(스키마 v2) 전체 줄 수를 세면 그것까지 딸려옵니다.
+    final List<TaxonomyItemRow> folderRows =
+        await (db.select(db.taxonomyItems)..where(
+              ($TaxonomyItemsTable t) =>
+                  t.kind.equals(TaxonomyKind.folder.storedName),
+            ))
+            .get();
 
-    expect(allRows.length, 1);
-    expect(allRows.first.deletedAt, isNotNull);
+    expect(folderRows.length, 1);
+    expect(folderRows.first.deletedAt, isNotNull);
   });
 
   test('저장하면 updatedAt이 갱신되고 createdAt은 그대로다', () async {
