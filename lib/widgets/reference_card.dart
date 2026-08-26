@@ -11,7 +11,9 @@ import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
 import '../models/enums.dart';
 import '../models/reference_item.dart';
+import '../theme/app_metrics.dart';
 import '../theme/app_palette.dart';
+import '../theme/app_text.dart';
 import '../utils/date_format.dart';
 
 /// 레퍼런스 한 건을 보여주는 카드입니다.
@@ -191,11 +193,7 @@ class ReferenceCard extends StatelessWidget {
                 '📁 ${_nameOf(item.folderId)}',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                  color: palette.textDim,
-                ),
+                style: AppText.cardFolder.copyWith(color: palette.textDim),
               ),
             ),
 
@@ -205,11 +203,7 @@ class ReferenceCard extends StatelessWidget {
                 '🏷 ${_nameOf(item.categoryId)}',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 11.5,
-                  fontWeight: FontWeight.w700,
-                  color: palette.accent,
-                ),
+                style: AppText.cardCategory.copyWith(color: palette.accent),
               ),
             ),
 
@@ -223,11 +217,7 @@ class ReferenceCard extends StatelessWidget {
                 // 전체는 편집 화면에서 봅니다.
                 maxLines: 3,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 12.5,
-                  height: 1.5,
-                  color: palette.textDim,
-                ),
+                style: AppText.cardMemo.copyWith(color: palette.textDim),
               ),
             ),
 
@@ -268,12 +258,7 @@ class ReferenceCard extends StatelessWidget {
             // 제목이 길면 카드를 밀어내지 않고 두 줄까지만 보여줍니다.
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontSize: 14.5,
-              fontWeight: FontWeight.w700,
-              height: 1.35,
-              color: palette.text,
-            ),
+            style: AppText.cardTitle.copyWith(color: palette.text),
           ),
         ),
       ],
@@ -293,11 +278,11 @@ class ReferenceCard extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
             decoration: BoxDecoration(
               color: palette.tagBackground,
-              borderRadius: BorderRadius.circular(6),
+              borderRadius: BorderRadius.circular(tagCornerRadius),
             ),
             child: Text(
               '#$name',
-              style: TextStyle(fontSize: 11, color: palette.textDim),
+              style: AppText.tag.copyWith(color: palette.textDim),
             ),
           ),
       ],
@@ -319,7 +304,7 @@ class ReferenceCard extends StatelessWidget {
         children: <Widget>[
           Text(
             formatCardDate(item.createdAt),
-            style: TextStyle(fontSize: 11, color: palette.textDim),
+            style: AppText.meta.copyWith(color: palette.textDim),
           ),
 
           // 고르기 모드에서는 낱장 삭제 버튼을 숨깁니다.
@@ -333,8 +318,7 @@ class ReferenceCard extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
                 child: Text(
                   '삭제',
-                  style: TextStyle(
-                    fontSize: 11,
+                  style: AppText.meta.copyWith(
                     fontWeight: FontWeight.w700,
                     color: palette.textDim,
                   ),

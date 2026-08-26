@@ -8,7 +8,9 @@
 
 import 'package:flutter/material.dart';
 
+import 'app_metrics.dart';
 import 'app_palette.dart';
+import 'app_text.dart';
 
 /// 밝은 모드 테마를 만들어 돌려줍니다.
 ThemeData buildLightTheme() => _buildTheme(AppPalette.light, Brightness.light);
@@ -72,6 +74,8 @@ ThemeData _buildTheme(AppPalette palette, Brightness brightness) {
       elevation: 0,
       scrolledUnderElevation: 0,
       shape: Border(bottom: BorderSide(color: palette.border)),
+
+      titleTextStyle: AppText.screenTitle.copyWith(color: palette.text),
     ),
 
     // 카드의 그림자와 테두리는 카드 위젯에서 직접 그립니다.
@@ -95,13 +99,31 @@ ThemeData _buildTheme(AppPalette palette, Brightness brightness) {
       border: _inputBorder(palette.border),
       enabledBorder: _inputBorder(palette.border),
       focusedBorder: _inputBorder(palette.accent, width: 2),
+
+      contentPadding: const EdgeInsets.symmetric(
+        horizontal: inputPaddingHorizontal,
+        vertical: inputPaddingVertical,
+      ),
+      hintStyle: AppText.input.copyWith(color: palette.textDim),
+      labelStyle: AppText.input.copyWith(color: palette.textDim),
     ),
 
+    // ── 칩은 알약 모양, 카드 안 태그는 각진 모양 ──
+    // 기존 웹앱에서 둘은 다른 것입니다.
+    //   `.chip` (필터 버튼) — `border-radius: 99px` 완전히 둥근 알약
+    //   `.tag`  (카드 안 태그) — `border-radius: 6px` 살짝만 둥근 사각형
+    // 헷갈려서 같은 값을 쓰면 필터 줄이 원본과 다르게 보입니다.
     chipTheme: ChipThemeData(
-      backgroundColor: palette.tagBackground,
+      backgroundColor: palette.surface,
+      selectedColor: palette.accent,
       side: BorderSide(color: palette.border),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(8),
+      labelStyle: AppText.chip.copyWith(color: palette.textDim),
+      secondaryLabelStyle: AppText.chip.copyWith(color: palette.accentText),
+      checkmarkColor: palette.accentText,
+      shape: const StadiumBorder(),
+      padding: const EdgeInsets.symmetric(
+        horizontal: chipPaddingHorizontal,
+        vertical: chipPaddingVertical,
       ),
     ),
 
@@ -110,7 +132,7 @@ ThemeData _buildTheme(AppPalette palette, Brightness brightness) {
     snackBarTheme: SnackBarThemeData(
       behavior: SnackBarBehavior.floating,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(inputCornerRadius),
       ),
     ),
 
@@ -118,13 +140,48 @@ ThemeData _buildTheme(AppPalette palette, Brightness brightness) {
       backgroundColor: palette.accent,
       foregroundColor: palette.accentText,
     ),
+
+    // ── 버튼 세 종류를 웹앱과 같은 모양으로 맞춥니다 ──
+    // 웹앱은 모든 버튼이 `border-radius: 9px; padding: 9px 14px; font-weight: 600`
+    // 으로 똑같고, 배경색만 다릅니다. Flutter는 버튼 종류마다 기본값이 달라서
+    // 그냥 두면 화면마다 버튼 모양이 미묘하게 어긋납니다.
+    filledButtonTheme: FilledButtonThemeData(style: _buttonStyle()),
+    textButtonTheme: TextButtonThemeData(style: _buttonStyle()),
+    outlinedButtonTheme: OutlinedButtonThemeData(
+      style: _buttonStyle().copyWith(
+        side: WidgetStatePropertyAll<BorderSide>(
+          BorderSide(color: palette.border),
+        ),
+      ),
+    ),
+  );
+}
+
+/// 버튼 세 종류가 함께 쓰는 모양입니다. (둥글기·여백·글자)
+///
+/// 색은 여기서 정하지 않습니다. 버튼 종류마다 다르고, 그건 Flutter가
+/// colorScheme을 보고 알아서 정해줍니다.
+ButtonStyle _buttonStyle() {
+  return ButtonStyle(
+    shape: WidgetStatePropertyAll<OutlinedBorder>(
+      RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(buttonCornerRadius),
+      ),
+    ),
+    padding: const WidgetStatePropertyAll<EdgeInsets>(
+      EdgeInsets.symmetric(
+        horizontal: buttonPaddingHorizontal,
+        vertical: buttonPaddingVertical,
+      ),
+    ),
+    textStyle: const WidgetStatePropertyAll<TextStyle>(AppText.button),
   );
 }
 
 /// 입력창 테두리를 만듭니다. 모서리 둥글기를 앱 전체와 맞춥니다.
 OutlineInputBorder _inputBorder(Color color, {double width = 1}) {
   return OutlineInputBorder(
-    borderRadius: BorderRadius.circular(appCornerRadius),
+    borderRadius: BorderRadius.circular(inputCornerRadius),
     borderSide: BorderSide(color: color, width: width),
   );
 }
