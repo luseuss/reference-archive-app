@@ -98,7 +98,7 @@ void main() {
     expect(find.text('(제목 없음)'), findsOneWidget);
   });
 
-  testWidgets('휴지통 버튼을 누르면 목록에서 사라진다', (WidgetTester tester) async {
+  testWidgets('삭제 버튼을 누르면 목록에서 사라진다', (WidgetTester tester) async {
     await saveReference(title: '지울 사진');
 
     await tester.pumpWidget(makeApp());
@@ -107,7 +107,9 @@ void main() {
     expect(find.text('지울 사진'), findsOneWidget);
 
     // 실제로 삭제 버튼을 눌러봅니다.
-    await tester.tap(find.byIcon(Icons.delete_outline));
+    // 기존 웹앱과 모양을 맞추면서 휴지통 아이콘이 "삭제" 글자 버튼으로 바뀌고,
+    // 자리도 카드 맨 아래 날짜 옆으로 옮겨졌습니다.
+    await tester.tap(find.text('삭제'));
     await tester.pumpAndSettle();
 
     // 목록에서 사라지고 빈 화면 안내가 다시 나와야 합니다.
