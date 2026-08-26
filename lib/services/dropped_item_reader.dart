@@ -19,6 +19,7 @@ import 'package:super_clipboard/super_clipboard.dart';
 import 'package:super_native_extensions/raw_clipboard.dart' as raw;
 
 import 'image_source.dart';
+import 'youtube_url.dart';
 
 /// 끌어다 놓기로 받을 수 있는 이미지 형식들입니다.
 ///
@@ -148,6 +149,29 @@ class DroppedItemReader {
     debugPrint('[드롭] 실패 — 넘어온 형식: ${reader.platformFormats}');
 
     return const ImageFetchResult.failure('이미지를 찾지 못했습니다. 이미지를 복사해서 붙여넣어 보세요.');
+  }
+
+  /// 떨어진 것이 유튜브 영상 주소인지 보고, 맞으면 영상 번호를 돌려줍니다.
+  ///
+  /// ── 왜 read()보다 먼저 물어봐야 하나 ──
+  /// 브라우저에서 유튜브 링크를 끌어오면 그냥 "주소"로 넘어옵니다. 그걸 read()에
+  /// 넘기면 이미지인 줄 알고 내려받는데, 유튜브 페이지는 HTML이라 "그림이 아니다"로
+  /// 실패합니다. 사용자는 링크를 끌었을 뿐인데 이유 없이 안 되는 것처럼 보입니다.
+  ///
+  /// 그래서 화면 코드가 read()를 부르기 전에 이걸 먼저 물어봅니다.
+  Future<String?> youtubeVideoIdOf(DataReader reader) async {
+    if (!reader.canProvide(Formats.uri)) {
+      return null;
+    }
+
+    final NamedUri? named = await _readValue<NamedUri>(reader, Formats.uri);
+    final String? url = named?.uri.toString();
+
+    if (url == null) {
+      return null;
+    }
+
+    return youtubeVideoIdFrom(url);
   }
 
   /// 사이트가 자체 형식으로 끼워 넣은 데이터에서 이미지 주소를 찾습니다.

@@ -18,6 +18,7 @@ import 'package:reference_archive_app/utils/id_generator.dart';
 
 import '../fakes/fake_image_source.dart';
 import '../fakes/fake_image_storage.dart';
+import '../fakes/fake_youtube_info_source.dart';
 
 void main() {
   late AppDatabase db;
@@ -89,6 +90,7 @@ void main() {
       taxonomyRepository: taxonomyRepository,
       imageStorage: FakeImageStorage(),
       imageSource: FakeImageSource(),
+      youtubeInfoSource: FakeYoutubeInfoSource(),
     );
   }
 

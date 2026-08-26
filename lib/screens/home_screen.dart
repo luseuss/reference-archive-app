@@ -30,13 +30,17 @@ import '../repositories/taxonomy_repository.dart';
 import '../services/dropped_item_reader.dart';
 import '../services/image_source.dart';
 import '../services/image_storage.dart';
+import '../services/youtube_info_source.dart';
+import '../services/youtube_url.dart';
 import '../utils/id_generator.dart';
+import '../widgets/add_youtube_dialog.dart';
 import '../widgets/bulk_action_bar.dart';
 import '../widgets/pick_taxonomy_dialog.dart';
 import '../widgets/reference_card.dart';
 import '../widgets/reference_filter_bar.dart';
 import 'reference_detail_screen.dart';
 import 'taxonomy_manage_screen.dart';
+import 'youtube_player_screen.dart';
 
 /// 레퍼런스 목록 화면입니다.
 ///
@@ -49,6 +53,7 @@ class HomeScreen extends StatefulWidget {
     required this.taxonomyRepository,
     required this.imageStorage,
     required this.imageSource,
+    required this.youtubeInfoSource,
   });
 
   /// 레퍼런스를 읽고 쓰는 통로입니다.
@@ -60,6 +65,9 @@ class HomeScreen extends StatefulWidget {
 
   /// 이미지 파일을 저장하고 경로를 알려주는 도구입니다.
   final ImageStorage imageStorage;
+
+  /// 유튜브에서 제목과 썸네일을 가져오는 도구입니다.
+  final YoutubeInfoSource youtubeInfoSource;
 
   /// 주소나 클립보드에서 이미지를 가져오는 도구입니다.
   final ImageSource imageSource;
@@ -432,6 +440,120 @@ class _HomeScreenState extends State<HomeScreen> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
   }
 
+  /// 유튜브 주소를 입력받아 레퍼런스로 추가합니다.
+  Future<void> _addYoutube() async {
+    // 클립보드에 이미 유튜브 주소가 있으면 입력창에 채워서 띄웁니다.
+    // 방금 복사해온 것을 또 붙여넣게 하는 것은 번거롭기만 합니다.
+    final String? clipboardText = await widget.imageSource.readClipboardText();
+
+    String? prefill;
+    if (clipboardText != null && isYoutubeVideoUrl(clipboardText)) {
+      prefill = clipboardText.trim();
+    }
+
+    // 클립보드를 읽는 사이에 화면이 닫혔을 수 있습니다.
+    if (!mounted) {
+      return;
+    }
+
+    final String? videoId = await showAddYoutubeDialog(
+      context: context,
+      initialUrl: prefill,
+    );
+
+    // 취소했으면 아무것도 하지 않습니다.
+    if (videoId == null) {
+      return;
+    }
+
+    await _addYoutubeById(videoId);
+  }
+
+  /// 영상 번호로 유튜브 레퍼런스를 추가하고 결과를 알려줍니다.
+  ///
+  /// 대화상자·붙여넣기·끌어다 놓기가 전부 여기로 모입니다.
+  /// 들어오는 길은 셋이지만 저장하는 방식은 하나여야 합니다.
+  Future<void> _addYoutubeById(String videoId) async {
+    if (_isAdding) {
+      return;
+    }
+
+    setState(() {
+      _isAdding = true;
+    });
+
+    final bool ok = await _saveYoutubeReference(videoId);
+
+    await _finishAdding(
+      ok ? 1 : 0,
+      ok ? 0 : 1,
+      ok ? null : '유튜브 영상을 추가하지 못했습니다.',
+      successMessage: '유튜브 영상을 추가했습니다.',
+    );
+  }
+
+  /// 유튜브 영상 하나를 레퍼런스로 저장합니다.
+  ///
+  /// ── 썸네일을 왜 내려받아 저장하나 ──
+  /// 화면에 띄울 때마다 img.youtube.com에서 가져오게 할 수도 있습니다.
+  /// 하지만 그러면 **인터넷이 없을 때 목록이 텅 빈 회색 칸으로 보입니다.**
+  /// 이 앱은 "내 컴퓨터에 모아두는" 것이 핵심이라, 이미지와 똑같이 파일로
+  /// 저장해둡니다. 그러면 비행기 안에서도 목록은 그대로 보입니다.
+  ///
+  /// 제목이나 썸네일을 못 가져와도 **저장은 합니다.** 영상 번호만 있으면
+  /// 나중에 재생할 수 있고, 제목은 편집 화면에서 직접 적을 수 있습니다.
+  ///
+  /// 성공하면 true, 실패하면 false를 돌려줍니다.
+  Future<bool> _saveYoutubeReference(String videoId) async {
+    try {
+      final YoutubeVideoInfo info = await widget.youtubeInfoSource.fetch(
+        videoId,
+      );
+
+      // 썸네일은 있으면 저장하고, 없으면 없는 대로 넘어갑니다.
+      String? savedFileName;
+      final Uint8List? thumbnail = info.thumbnailBytes;
+      if (thumbnail != null) {
+        savedFileName = await widget.imageStorage.saveImage(thumbnail);
+      }
+
+      final DateTime now = DateTime.now().toUtc();
+      await widget.repository.save(
+        ReferenceItem(
+          id: newId(),
+          type: ReferenceType.youtube,
+          title: info.title,
+          fileName: savedFileName,
+          youtubeVideoId: videoId,
+          createdAt: now,
+          updatedAt: now,
+        ),
+      );
+      return true;
+    } catch (error) {
+      debugPrint('유튜브 저장 실패: $error');
+      return false;
+    }
+  }
+
+  /// 유튜브 재생 화면을 엽니다.
+  Future<void> _playYoutube(ReferenceItem item) async {
+    final String? videoId = item.youtubeVideoId;
+
+    // 유튜브가 아닌 카드에는 재생 버튼이 없으므로 보통 여기 걸리지 않습니다.
+    // 예전 데이터가 어딘가 어긋나 있어도 앱이 죽지는 않게 확인합니다.
+    if (videoId == null) {
+      return;
+    }
+
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (BuildContext context) =>
+            YoutubePlayerScreen(videoId: videoId, title: item.title),
+      ),
+    );
+  }
+
   /// 이미지 파일을 골라서 레퍼런스로 추가합니다.
   Future<void> _addImages() async {
     // 파일 고르기 창을 띄웁니다. 여러 장을 한 번에 고를 수 있습니다.
@@ -564,6 +686,21 @@ class _HomeScreenState extends State<HomeScreen> {
         continue;
       }
 
+      // 유튜브 링크를 끌어온 것인지 **먼저** 봅니다.
+      // 그냥 read()에 넘기면 이미지인 줄 알고 내려받다가 실패합니다.
+      // (자세한 이유는 DroppedItemReader.youtubeVideoIdOf() 설명 참고)
+      final String? videoId = await _droppedItemReader.youtubeVideoIdOf(reader);
+      if (videoId != null) {
+        final bool savedVideo = await _saveYoutubeReference(videoId);
+        if (savedVideo) {
+          savedCount++;
+        } else {
+          failedCount++;
+          lastError = '유튜브 영상을 추가하지 못했습니다.';
+        }
+        continue;
+      }
+
       final ImageFetchResult fetched = await _droppedItemReader.read(reader);
 
       if (!fetched.isSuccess) {
@@ -621,6 +758,21 @@ class _HomeScreenState extends State<HomeScreen> {
 
     if (!fetched.isSuccess) {
       final String? text = await widget.imageSource.readClipboardText();
+
+      // 유튜브 주소면 이미지로 내려받으려 하지 말고 영상으로 저장합니다.
+      // 유튜브 페이지를 내려받아 봐야 HTML이라 "그림이 아니다"로 실패합니다.
+      final String? videoId = text == null ? null : youtubeVideoIdFrom(text);
+      if (videoId != null) {
+        final bool savedVideo = await _saveYoutubeReference(videoId);
+        await _finishAdding(
+          savedVideo ? 1 : 0,
+          savedVideo ? 0 : 1,
+          savedVideo ? null : '유튜브 영상을 추가하지 못했습니다.',
+          successMessage: '유튜브 영상을 추가했습니다.',
+        );
+        return;
+      }
+
       if (text != null && looksLikeUrl(text)) {
         triedUrl = true;
         fetched = await widget.imageSource.fetchFromUrl(text.trim());
@@ -652,11 +804,14 @@ class _HomeScreenState extends State<HomeScreen> {
   /// 추가 작업이 끝난 뒤 목록을 새로 고치고 결과를 알려줍니다.
   ///
   /// 파일 고르기·끌어다 놓기·붙여넣기가 끝날 때 공통으로 하는 일입니다.
+  /// [successMessage]를 주면 성공했을 때 그 문구를 대신 보여줍니다.
+  /// 유튜브는 "1장 추가했습니다"가 어색해서 따로 문구를 넘깁니다.
   Future<void> _finishAdding(
     int savedCount,
     int failedCount,
-    String? errorMessage,
-  ) async {
+    String? errorMessage, {
+    String? successMessage,
+  }) async {
     await _loadItems();
 
     if (!mounted) {
@@ -666,6 +821,11 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() {
       _isAdding = false;
     });
+
+    if (successMessage != null && failedCount == 0) {
+      _showMessage(successMessage);
+      return;
+    }
 
     _showResultMessage(savedCount, failedCount, errorMessage: errorMessage);
   }
@@ -815,21 +975,45 @@ class _HomeScreenState extends State<HomeScreen> {
 
       // 고르는 중에는 추가 버튼을 숨깁니다.
       // 아래 작업 막대와 겹쳐 보이고, 고르는 도중에 새로 추가할 일도 없습니다.
-      floatingActionButton: _isSelecting
-          ? null
-          : FloatingActionButton.extended(
-              // 추가하는 중에는 null을 넣어 버튼을 잠급니다.
-              // Flutter에서는 onPressed가 null이면 버튼이 자동으로 비활성화됩니다.
-              onPressed: _isAdding ? null : _addImages,
-              icon: _isAdding
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.add_photo_alternate_outlined),
-              label: Text(_isAdding ? '추가하는 중...' : '이미지 추가'),
-            ),
+      floatingActionButton: _isSelecting ? null : _buildAddButtons(),
+    );
+  }
+
+  /// 오른쪽 아래의 추가 버튼들을 만듭니다.
+  ///
+  /// 유튜브는 작은 버튼으로 이미지 버튼 위에 얹습니다.
+  /// 메뉴 안에 감추지 않은 이유: 한 번 더 눌러야 나오는 기능은 잘 안 쓰게 됩니다.
+  /// 이미지 쪽을 큰 버튼으로 둔 것은 그쪽이 더 자주 쓰이기 때문입니다.
+  Widget _buildAddButtons() {
+    // 추가하는 중에는 null을 넣어 버튼을 잠급니다.
+    // Flutter에서는 onPressed가 null이면 버튼이 자동으로 비활성화됩니다.
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: <Widget>[
+        FloatingActionButton.small(
+          heroTag: 'addYoutube',
+          onPressed: _isAdding ? null : _addYoutube,
+          tooltip: '유튜브 영상 추가',
+          child: const Icon(Icons.smart_display_outlined),
+        ),
+        const SizedBox(height: 12),
+        FloatingActionButton.extended(
+          // heroTag를 서로 다르게 줘야 합니다. 화면에 떠 있는 버튼이 둘 이상인데
+          // 이름표가 같으면, 화면을 넘나들 때 Flutter가 어느 버튼을 이어서
+          // 움직여야 할지 몰라 오류를 냅니다.
+          heroTag: 'addImages',
+          onPressed: _isAdding ? null : _addImages,
+          icon: _isAdding
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.add_photo_alternate_outlined),
+          label: Text(_isAdding ? '추가하는 중...' : '이미지 추가'),
+        ),
+      ],
     );
   }
 
@@ -1059,6 +1243,7 @@ class _HomeScreenState extends State<HomeScreen> {
           isSelectionMode: _isSelecting,
           isSelected: _selectedIds.contains(item.id),
           onSelectToggle: () => _toggleSelected(item),
+          onPlay: () => _playYoutube(item),
         );
       },
     );

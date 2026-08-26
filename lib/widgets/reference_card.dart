@@ -21,6 +21,7 @@ class ReferenceCard extends StatelessWidget {
     required this.isSelectionMode,
     required this.isSelected,
     required this.onSelectToggle,
+    required this.onPlay,
   });
 
   /// 보여줄 레퍼런스
@@ -55,6 +56,12 @@ class ReferenceCard extends StatelessWidget {
 
   /// 이 카드를 고르거나 고르기를 취소할 때 실행할 동작입니다.
   final VoidCallback onSelectToggle;
+
+  /// 재생 버튼을 눌렀을 때 실행할 동작입니다. (유튜브 카드에만 보입니다)
+  ///
+  /// 카드 본체를 누르면 편집 화면, 재생 버튼을 누르면 재생 화면으로 갈라집니다.
+  /// 삭제 버튼이 카드 안에 있으면서 자기 동작을 갖는 것과 같은 방식입니다.
+  final VoidCallback onPlay;
 
   /// 카드의 생김새를 만들어 돌려줍니다.
   @override
@@ -134,49 +141,88 @@ class ReferenceCard extends StatelessWidget {
     );
   }
 
-  /// 카드의 그림 부분을 만듭니다. 고르기 모드에서는 체크박스를 위에 얹습니다.
+  /// 카드의 그림 부분을 만듭니다.
+  ///
+  /// 상황에 따라 그림 위에 두 가지가 얹힙니다.
+  ///   - 유튜브면 재생 버튼 (누르면 편집 화면이 아니라 바로 재생)
+  ///   - 고르기 모드면 체크박스
   Widget _buildThumbnailArea(ColorScheme colors) {
-    // 고르는 중이 아니면 그림만 있으면 됩니다.
-    if (!isSelectionMode) {
+    final bool isYoutube = item.type == ReferenceType.youtube;
+
+    // 아무것도 얹을 게 없으면 그림만 돌려줍니다.
+    if (!isSelectionMode && !isYoutube) {
       return _buildThumbnail(colors);
     }
 
-    // Stack = 위젯을 겹쳐 쌓는 것입니다. 그림 위에 체크박스를 올립니다.
+    // Stack = 위젯을 겹쳐 쌓는 것입니다.
     return Stack(
       children: <Widget>[
         Positioned.fill(child: _buildThumbnail(colors)),
 
-        Positioned(
-          top: 4,
-          left: 4,
-          child: Container(
-            // 밝은 사진 위에 흰 체크박스가 놓이면 안 보입니다.
-            // 반투명 바탕을 깔아 어떤 그림 위에서도 보이게 합니다.
-            decoration: BoxDecoration(
-              color: colors.surface.withValues(alpha: 0.85),
-              shape: BoxShape.circle,
-            ),
-            child: Checkbox(
-              value: isSelected,
-
-              // 체크박스를 눌렀을 때도 카드를 눌렀을 때와 똑같이 동작합니다.
-              // 값 자체는 안 쓰지만 Checkbox가 넘겨주기 때문에 받아만 둡니다.
-              onChanged: (bool? _) => onSelectToggle(),
+        // 재생 버튼은 고르기 모드가 아닐 때만 보입니다.
+        // 여러 장 고르는 중에 영상이 재생되기 시작하면 곤란합니다.
+        if (isYoutube && !isSelectionMode)
+          Positioned.fill(
+            child: Center(
+              child: Material(
+                // 투명한 Material 위에 InkWell을 두면 누를 때 물결이 나옵니다.
+                color: Colors.transparent,
+                shape: const CircleBorder(),
+                clipBehavior: Clip.antiAlias,
+                child: InkWell(
+                  onTap: onPlay,
+                  child: Padding(
+                    padding: const EdgeInsets.all(6),
+                    child: Icon(
+                      Icons.play_circle_fill,
+                      size: 48,
+                      // 썸네일이 밝든 어둡든 보이도록 흰색에 그림자를 줍니다.
+                      color: Colors.white.withValues(alpha: 0.92),
+                      shadows: const <Shadow>[
+                        Shadow(color: Colors.black54, blurRadius: 10),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
             ),
           ),
-        ),
+
+        if (isSelectionMode)
+          Positioned(
+            top: 4,
+            left: 4,
+            child: Container(
+              // 밝은 사진 위에 흰 체크박스가 놓이면 안 보입니다.
+              // 반투명 바탕을 깔아 어떤 그림 위에서도 보이게 합니다.
+              decoration: BoxDecoration(
+                color: colors.surface.withValues(alpha: 0.85),
+                shape: BoxShape.circle,
+              ),
+              child: Checkbox(
+                value: isSelected,
+
+                // 체크박스를 눌렀을 때도 카드를 눌렀을 때와 똑같이 동작합니다.
+                // 값 자체는 안 쓰지만 Checkbox가 넘겨주기 때문에 받아만 둡니다.
+                onChanged: (bool? _) => onSelectToggle(),
+              ),
+            ),
+          ),
       ],
     );
   }
 
   /// 카드의 그림만 만듭니다.
+  ///
+  /// 유튜브도 이미지와 같은 길을 지납니다. 썸네일을 **내려받아 파일로 저장해두기**
+  /// 때문입니다. 그래서 인터넷이 끊겨도 목록은 그대로 보입니다.
   Widget _buildThumbnail(ColorScheme colors) {
-    // 유튜브는 3단계에서 붙입니다. 지금은 자리만 표시해둡니다.
-    if (item.type == ReferenceType.youtube) {
-      return _buildPlaceholder(colors, Icons.play_circle_outline);
+    // 경로를 아직 못 구했거나 파일 이름이 없으면 자리표시자를 보여줍니다.
+    // 유튜브인데 썸네일을 못 받아온 경우도 여기로 옵니다.
+    if (item.type == ReferenceType.youtube && imagePath == null) {
+      return _buildPlaceholder(colors, Icons.smart_display_outlined);
     }
 
-    // 경로를 아직 못 구했거나 파일 이름이 없으면 자리표시자를 보여줍니다.
     if (imagePath == null) {
       return _buildPlaceholder(colors, Icons.image_outlined);
     }

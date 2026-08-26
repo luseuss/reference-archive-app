@@ -47,6 +47,8 @@ dependencies:
   super_drag_and_drop: 0.9.1
   super_clipboard: ^0.9.1
   super_native_extensions: ^0.9.1
+  flutter_inappwebview: ^6.1.5
+  url_launcher: ^6.3.2
 
 dev_dependencies:
   flutter_test:

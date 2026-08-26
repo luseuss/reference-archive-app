@@ -17,6 +17,7 @@ import 'package:reference_archive_app/repositories/local_taxonomy_repository.dar
 
 import '../fakes/fake_image_source.dart';
 import '../fakes/fake_image_storage.dart';
+import '../fakes/fake_youtube_info_source.dart';
 
 void main() {
   late AppDatabase db;
@@ -24,6 +25,7 @@ void main() {
   late LocalTaxonomyRepository taxonomyRepository;
   late FakeImageSource imageSource;
   late FakeImageStorage imageStorage;
+  late FakeYoutubeInfoSource youtubeInfoSource;
 
   setUp(() {
     db = AppDatabase.forTesting(NativeDatabase.memory());
@@ -31,6 +33,7 @@ void main() {
     taxonomyRepository = LocalTaxonomyRepository(db);
     imageSource = FakeImageSource();
     imageStorage = FakeImageStorage();
+    youtubeInfoSource = FakeYoutubeInfoSource();
   });
 
   tearDown(() async {
@@ -44,6 +47,7 @@ void main() {
       taxonomyRepository: taxonomyRepository,
       imageStorage: imageStorage,
       imageSource: imageSource,
+      youtubeInfoSource: youtubeInfoSource,
     );
   }
 
