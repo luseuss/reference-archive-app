@@ -36,6 +36,9 @@ import '../services/image_storage.dart';
 import '../services/local_player_server.dart';
 import '../services/youtube_info_source.dart';
 import '../services/youtube_url.dart';
+import '../theme/app_metrics.dart';
+import '../theme/app_palette.dart';
+import '../theme/app_text.dart';
 import '../utils/id_generator.dart';
 import '../widgets/add_youtube_dialog.dart';
 import '../widgets/bulk_action_bar.dart';
@@ -1334,34 +1337,34 @@ class _HomeScreenState extends State<HomeScreen> {
   /// 반대로 하나도 없는데 "조건에 맞는 게 없다"고 하면 있지도 않은 조건을
   /// 지우려고 헤매게 됩니다.
   Widget _buildEmptyState() {
-    final ColorScheme colors = Theme.of(context).colorScheme;
-    final TextTheme textStyles = Theme.of(context).textTheme;
+    final AppPalette palette = AppPalette.of(context);
 
     final bool isFiltered = _query.hasAnyFilter;
 
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.all(screenPaddingHorizontal),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: <Widget>[
             Icon(
               isFiltered ? Icons.search_off : Icons.photo_library_outlined,
               size: 64,
-              color: colors.primary,
+
+              // 아이콘까지 강조색이면 시선을 너무 끕니다. 안내는 거들 뿐이라
+              // 옅게 두고, 눌러야 할 버튼만 또렷하게 남깁니다.
+              color: palette.textDim,
             ),
             const SizedBox(height: 24),
             Text(
               isFiltered ? '조건에 맞는 레퍼런스가 없습니다' : '아직 모아둔 레퍼런스가 없습니다',
-              style: textStyles.titleMedium,
+              style: AppText.emptyTitle.copyWith(color: palette.text),
               textAlign: TextAlign.center,
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 6),
             Text(
               isFiltered ? '검색어나 필터를 바꿔보세요.' : '오른쪽 아래 버튼으로 이미지를 추가해보세요.',
-              style: textStyles.bodyMedium?.copyWith(
-                color: colors.onSurfaceVariant,
-              ),
+              style: AppText.emptyBody.copyWith(color: palette.textDim),
               textAlign: TextAlign.center,
             ),
             if (isFiltered) ...<Widget>[
@@ -1401,9 +1404,9 @@ class _HomeScreenState extends State<HomeScreen> {
       // 만들지 않아도 되어서 데스크톱과 모바일을 함께 지원하기 좋습니다.
       //
       // 기존 웹앱은 1240px에서 4칸이었습니다. 300px로 잡으면 얼추 같아집니다.
-      maxCrossAxisExtent: 300,
-      crossAxisSpacing: 16,
-      mainAxisSpacing: 16,
+      maxCrossAxisExtent: gridMaxCrossAxisExtent,
+      crossAxisSpacing: gridSpacing,
+      mainAxisSpacing: gridSpacing,
 
       itemCount: _items.length,
       itemBuilder: (BuildContext context, int index) {

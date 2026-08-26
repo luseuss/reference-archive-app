@@ -175,5 +175,3 @@ class AppPalette {
   );
 }
 
-/// 카드와 입력창의 모서리 둥글기입니다. (웹앱의 `--radius: 14px`)
-const double appCornerRadius = 14;
