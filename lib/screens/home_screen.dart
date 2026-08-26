@@ -22,6 +22,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 
 import '../models/enums.dart';
 import '../models/reference_item.dart';
@@ -1165,9 +1166,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
   /// 평소의 위쪽 막대를 만듭니다.
   PreferredSizeWidget _buildNormalAppBar() {
+    // 색은 지정하지 않습니다. 테마(app_theme.dart)에 정해둔 것을 씁니다.
+    // 여기서 따로 정하면 나중에 앱 색을 바꿀 때 이 줄만 안 바뀌어 튑니다.
     return AppBar(
       title: const Text('레퍼런스 아카이브'),
-      backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
       actions: <Widget>[
         IconButton(
           // 보여줄 것이 없으면 고를 것도 없으므로 버튼을 잠급니다.
@@ -1363,7 +1365,14 @@ class _HomeScreenState extends State<HomeScreen> {
 
   /// 레퍼런스를 격자로 보여줍니다.
   Widget _buildGrid() {
-    return GridView.builder(
+    // ── 왜 메이슨리(벽돌 쌓기) 격자인가 ──
+    // 보통의 격자는 칸 크기가 정해져 있어서 사진을 그 크기에 맞춰 **잘라냅니다.**
+    // 레퍼런스를 모으는 앱에서 사진을 네모로 잘라버리면 구도가 사라집니다.
+    //
+    // 메이슨리는 칸의 **너비만** 정하고 높이는 사진이 정합니다. 그래서 세로
+    // 사진은 길쭉하게, 가로 사진은 납작하게 원본 비율 그대로 쌓입니다.
+    // 기존 웹앱이 `column-count`로 하던 것과 같은 모양입니다.
+    return MasonryGridView.extent(
       // 아래쪽 여백을 크게 준 이유: 안 그러면 마지막 줄의 카드가
       // 오른쪽 아래 떠 있는 추가 버튼에 가려집니다.
       padding: const EdgeInsets.fromLTRB(12, 12, 12, 88),
@@ -1372,12 +1381,12 @@ class _HomeScreenState extends State<HomeScreen> {
       // 개수를 고정하지 않고 너비를 정하면, 창을 넓히면 칸이 늘어나고
       // 폰처럼 좁은 화면에서는 저절로 줄어듭니다. 화면 크기별로 따로
       // 만들지 않아도 되어서 데스크톱과 모바일을 함께 지원하기 좋습니다.
-      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-        maxCrossAxisExtent: 220,
-        childAspectRatio: 0.85,
-        crossAxisSpacing: 12,
-        mainAxisSpacing: 12,
-      ),
+      //
+      // 기존 웹앱은 1240px에서 4칸이었습니다. 300px로 잡으면 얼추 같아집니다.
+      maxCrossAxisExtent: 300,
+      crossAxisSpacing: 16,
+      mainAxisSpacing: 16,
+
       itemCount: _items.length,
       itemBuilder: (BuildContext context, int index) {
         final ReferenceItem item = _items[index];
