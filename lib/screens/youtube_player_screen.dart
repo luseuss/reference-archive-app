@@ -131,9 +131,26 @@ class _YoutubePlayerScreenState extends State<YoutubePlayerScreen> {
   }
 
   /// 유튜브 재생기를 담은 웹뷰를 만듭니다.
+  ///
+  /// ── 주소를 여는 게 아니라 HTML을 띄우는 이유 (오류 153) ──
+  /// embed 주소를 웹뷰의 맨 위 페이지로 직접 열면 유튜브가
+  /// **"오류 153 — 플레이어 구성 오류"** 를 냅니다. 요청에 "어느 페이지에
+  /// 끼워져 있는지"를 알려주는 값이 없기 때문입니다.
+  ///
+  /// 그래서 iframe이 든 HTML을 직접 만들어 띄우고, [baseUrl]로 그 페이지가
+  /// 유튜브 주소에 있는 것처럼 알려줍니다. 자세한 설명은
+  /// youtube_url.dart의 `youtubePlayerHtml()`에 적어뒀습니다.
   Widget _buildWebView() {
     return InAppWebView(
-      initialUrlRequest: URLRequest(url: WebUri(youtubeEmbedUrl(widget.videoId))),
+      initialData: InAppWebViewInitialData(
+        data: youtubePlayerHtml(widget.videoId),
+        mimeType: 'text/html',
+        encoding: 'utf-8',
+
+        // 이 페이지가 어디에 있는 것으로 칠지입니다. 이 값이 참조 주소가 되어
+        // 유튜브가 정상적인 끼워넣기로 인정합니다. **이걸 빼면 오류 153입니다.**
+        baseUrl: WebUri('https://www.youtube.com'),
+      ),
 
       initialSettings: InAppWebViewSettings(
         // 이 값이 true면 "사용자가 직접 누르기 전에는 재생 금지"가 됩니다.

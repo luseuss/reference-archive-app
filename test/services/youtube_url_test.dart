@@ -151,6 +151,24 @@ void main() {
       expect(url, contains('playsinline=1'));
     });
 
+    test('재생기 HTML은 embed 주소를 iframe 안에 넣는다', () {
+      // ── 이 테스트가 지키는 것 (실제로 겪은 문제) ──
+      // 처음에는 embed 주소를 웹뷰의 맨 위 페이지로 그대로 열었습니다.
+      // 그랬더니 유튜브가 "오류 153 — 플레이어 구성 오류"를 냈습니다.
+      // 요청에 "어느 페이지에 끼워져 있는지"가 없어서입니다.
+      //
+      // 그래서 iframe에 담게 바꿨습니다. 누군가 나중에 "굳이 HTML까지 만들 필요
+      // 있나" 하고 되돌리면 재생이 통째로 깨지므로 여기서 못 박아둡니다.
+      final String html = youtubePlayerHtml(id);
+
+      expect(html, contains('<iframe'));
+      expect(html, contains(youtubeEmbedUrl(id)));
+      // 전체화면 버튼이 동작하려면 이 값이 있어야 합니다.
+      expect(html, contains('allowfullscreen'));
+      // 자동재생도 iframe에 허용을 적어줘야 먹습니다.
+      expect(html, contains('autoplay'));
+    });
+
     test('썸네일 주소는 두 가지를 만들 수 있다', () {
       expect(
         youtubeThumbnailUrl(id),

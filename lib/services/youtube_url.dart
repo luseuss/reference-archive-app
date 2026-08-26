@@ -112,6 +112,48 @@ String youtubeEmbedUrl(String videoId) {
       '?autoplay=1&rel=0&playsinline=1';
 }
 
+/// 앱 안 웹뷰에 띄울 재생기 HTML을 만듭니다.
+///
+/// ── 왜 embed 주소를 그냥 열면 안 되는가 (오류 153) ──
+/// embed 주소를 웹뷰의 **맨 위 페이지로 직접** 열면, 그 요청에는 "어느 페이지에
+/// 끼워져 있는지"를 알려주는 값(Referer)이 없습니다. 유튜브는 그걸 정상적인
+/// 끼워넣기로 보지 않고 이렇게 거부합니다.
+///
+///   오류 153 — 플레이어 구성 오류
+///
+/// 그래서 embed 주소를 **`<iframe>` 안에** 넣고, 그 iframe을 담은 페이지를
+/// 유튜브 주소를 기준으로 띄웁니다. (웹뷰 쪽에서 baseUrl로 지정)
+/// 그러면 참조 주소가 제대로 붙어서 재생기가 정상 동작합니다.
+///
+/// 기존 웹앱이 잘 되던 이유도 같습니다. 거기서는 애초에 iframe이었고,
+/// 페이지 주소가 참조 주소 역할을 해줬습니다.
+///
+/// [videoId]는 이 파일의 `youtubeVideoIdFrom()`을 거쳐 **영문·숫자·`-`·`_` 11글자**로
+/// 확인된 값만 들어옵니다. 그래서 HTML에 그대로 끼워 넣어도 안전합니다.
+/// 확인을 거치지 않은 글자를 여기 넣으면 안 됩니다.
+String youtubePlayerHtml(String videoId) {
+  return '''
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<style>
+  /* 재생기가 창을 꽉 채우고, 둘레에 흰 여백이 생기지 않게 합니다. */
+  html, body { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; }
+  iframe { border: 0; width: 100%; height: 100%; display: block; }
+</style>
+</head>
+<body>
+<iframe
+  src="${youtubeEmbedUrl(videoId)}"
+  allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
+  allowfullscreen></iframe>
+</body>
+</html>
+''';
+}
+
 /// 영상 번호로 썸네일(미리보기 그림) 주소를 만듭니다.
 ///
 /// [preferHighest]가 true면 가장 큰 그림을 요청합니다. 다만 이 그림은
