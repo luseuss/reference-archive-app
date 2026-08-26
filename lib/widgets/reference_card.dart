@@ -204,32 +204,7 @@ class ReferenceCard extends StatelessWidget {
 
         // 재생 버튼은 고르기 모드가 아닐 때만 보입니다.
         // 여러 장 고르는 중에 영상이 재생되기 시작하면 곤란합니다.
-        if (isYoutube && !isSelectionMode)
-          Positioned.fill(
-            child: Center(
-              child: Material(
-                // 투명한 Material 위에 InkWell을 두면 누를 때 물결이 나옵니다.
-                color: Colors.transparent,
-                shape: const CircleBorder(),
-                clipBehavior: Clip.antiAlias,
-                child: InkWell(
-                  onTap: onPlay,
-                  child: Padding(
-                    padding: const EdgeInsets.all(6),
-                    child: Icon(
-                      Icons.play_circle_fill,
-                      size: 48,
-                      // 썸네일이 밝든 어둡든 보이도록 흰색에 그림자를 줍니다.
-                      color: Colors.white.withValues(alpha: 0.92),
-                      shadows: const <Shadow>[
-                        Shadow(color: Colors.black54, blurRadius: 10),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
+        if (isYoutube && !isSelectionMode) _buildPlayButton(),
 
         if (isSelectionMode)
           Positioned(
@@ -253,6 +228,48 @@ class ReferenceCard extends StatelessWidget {
           ),
       ],
     );
+  }
+
+  /// 눌러서 크게 보는 재생 버튼입니다.
+  ///
+  /// ── 미리보기 중에는 작아져서 구석으로 갑니다 ──
+  /// 평소에는 "이건 영상이다"를 알리는 표시라 가운데 크게 있는 편이 좋습니다.
+  /// 그런데 미리보기가 도는 동안에도 가운데 그대로 있으면 **영상 한가운데를
+  /// 가려서** 정작 보려던 것을 못 보게 됩니다.
+  ///
+  /// 그렇다고 아예 숨기면 크게 보러 가는 길이 사라집니다. 그래서 작게 줄여
+  /// 오른쪽 아래로 옮깁니다. 왼쪽 위는 체크박스 자리라 비워둡니다.
+  Widget _buildPlayButton() {
+    // 미리보기 중에는 작게, 평소에는 크게.
+    final double iconSize = isPreviewPlaying ? 28 : 48;
+
+    final Widget button = Material(
+      // 투명한 Material 위에 InkWell을 두면 누를 때 물결이 나옵니다.
+      color: Colors.transparent,
+      shape: const CircleBorder(),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onPlay,
+        child: Padding(
+          padding: const EdgeInsets.all(6),
+          child: Icon(
+            Icons.play_circle_fill,
+            size: iconSize,
+            // 썸네일이 밝든 어둡든 보이도록 흰색에 그림자를 줍니다.
+            color: Colors.white.withValues(alpha: 0.92),
+            shadows: const <Shadow>[
+              Shadow(color: Colors.black54, blurRadius: 10),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    if (isPreviewPlaying) {
+      return Positioned(right: 2, bottom: 2, child: button);
+    }
+
+    return Positioned.fill(child: Center(child: button));
   }
 
   /// 호버했을 때 썸네일 위에 겹치는 미리보기 영상입니다.

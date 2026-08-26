@@ -48,9 +48,9 @@ import 'youtube_player_screen.dart';
 /// 마우스를 올린 뒤 미리보기를 시작하기까지 기다리는 시간입니다.
 ///
 /// 짧으면 목록을 훑을 때 지나가는 영상이 줄줄이 켜지고, 길면 "왜 안 나오지?"
-/// 하게 됩니다. 0.4초는 "스쳐 지나감"과 "보려고 멈춤"이 갈리는 지점입니다.
+/// 하게 됩니다. 처음엔 0.4초로 뒀는데 써보니 답답해서 0.2초로 줄였습니다.
 /// 너무 부산스럽거나 굼뜨면 이 값을 고치세요.
-const Duration hoverPreviewDelay = Duration(milliseconds: 400);
+const Duration hoverPreviewDelay = Duration(milliseconds: 200);
 
 /// 이 기기에서 호버 미리보기를 쓸 수 있는지 여부입니다.
 ///
@@ -683,6 +683,14 @@ class _HomeScreenState extends State<HomeScreen> {
     if (videoId == null) {
       return;
     }
+
+    // 크게 보러 가기 전에 미리보기를 끕니다.
+    //
+    // 재생 버튼을 누르는 시점에는 마우스가 카드 위에 있으므로 미리보기가 돌고
+    // 있습니다. 그대로 두면 **뒤에서 같은 영상이 하나 더 돌아갑니다.** 보이지도
+    // 않는 영상을 계속 받아오는 셈이고, 웹뷰도 두 개가 됩니다.
+    _hoverTimer?.cancel();
+    _stopPreview();
 
     await Navigator.of(context).push<void>(
       MaterialPageRoute<void>(
