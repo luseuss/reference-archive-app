@@ -800,9 +800,9 @@ application/x-pinterest-closeup-image
 | 핀터레스트 원본 승격 규칙 | `lib/services/image_source.dart`의 `upgradePinterestUrl()` |
 | 자체 데이터에서 주소 찾는 규칙 | 같은 파일 `findImageUrlInText()` |
 | 깨진 글자 되돌리기 | 같은 파일 `repairMangledHtml()` |
-| 드롭에서 읽는 순서 | `lib/screens/home_screen.dart`의 `_readDroppedItem()` |
-| 받을 이미지 형식 목록 | 같은 파일 맨 위 `_droppableImageFormats` |
-| 붙여넣기 단축키 | 같은 파일 `build()` 안 `CallbackShortcuts` |
+| 드롭에서 읽는 순서 | `lib/services/dropped_item_reader.dart`의 `read()` **(PR #8에서 화면에서 이리로 옮김)** |
+| 받을 이미지 형식 목록 | 같은 파일 맨 위 `droppableImageFormats` / `dropRegionFormats` **(PR #8에서 옮김)** |
+| 붙여넣기 단축키 | `lib/screens/home_screen.dart`의 `build()` 안 `CallbackShortcuts` |
 
 **안 되는 사이트가 생겼을 때**: 디버그로 실행하면
 `[드롭] 실패 — 넘어온 형식: [...]` 이 찍힙니다. 그 목록을 보면 무엇이
@@ -835,3 +835,175 @@ application/x-pinterest-closeup-image
 - **사이트에 따라 안 될 수 있습니다.** 아무것도 안 넘겨주는 사이트가 있습니다.
   그때는 "이미지 복사 → 붙여넣기"로 안내합니다.
 - **모바일 공유 시트는 아직 없습니다.** 완전히 다른 코드 경로라 별도 작업입니다.
+
+---
+
+## PR #8 — 일괄 선택 (폴더 이동 / 태그 추가 / 삭제) + 드롭 코드 분리
+
+**2단계(정리 체계)의 마지막 항목입니다. 이걸로 2단계가 전부 끝났습니다.**
+
+커밋을 둘로 나눴습니다. 앞의 것은 정리만 하고 동작은 안 바꿉니다.
+
+| 커밋 | 내용 |
+|---|---|
+| `5b7355b` | 끌어다 놓기 코드를 화면에서 떼어냄 (동작 변화 없음) |
+| `c9f3d71` | 일괄 선택 기능 |
+
+### 1. 정리 — 끌어다 놓기 코드 분리 (`5b7355b`)
+
+`home_screen.dart`가 975줄까지 커졌습니다. `CLAUDE.md`의 "300줄 넘으면 나누기" 기준을
+한참 넘었는데, **늘어난 대부분이 PR #7에서 붙인 사이트별 예외 처리**였습니다.
+목록 화면 코드를 찾으려면 핀터레스트 우회법을 헤치고 지나가야 하는 상태였습니다.
+
+그 부분을 `lib/services/dropped_item_reader.dart`로 옮겼습니다. **위치만 옮겼고
+로직은 한 줄도 안 바꿨습니다.** 기존 테스트 178개가 그대로 통과하는 것으로 확인했습니다.
+
+- `_droppableImageFormats` → `droppableImageFormats` (공개)
+- `_readDroppedItem()` → `DroppedItemReader.read()`
+- `_findUrlInCustomData()` / `_readValue()` / `_readFileBytes()` → 같은 클래스 안으로
+
+덤으로 `dropRegionFormats`를 새로 만들었습니다. `DropRegion`이 "이 형식들을 받겠다"고
+선언하는 목록인데, 원래는 화면에 있고 그걸 **읽는** 코드는 다른 데 있었습니다.
+따로 있으면 한쪽만 고쳤을 때 **받아는 놓고 읽지 못하는 형식**이 생깁니다.
+이제 둘이 같은 파일에 붙어 있습니다.
+
+**결과**: `home_screen.dart` 975줄 → 771줄.
+
+### 2. 일괄 선택 (`c9f3d71`)
+
+**쓰는 법**
+
+1. 오른쪽 위 ✓ 버튼, 또는 카드를 **길게 누르기**
+2. 카드를 눌러 고르면 위쪽에 "3장 선택"이 뜸
+3. 아래 막대에서 **폴더 이동 / 태그 추가 / 삭제**
+4. X 버튼으로 고르기 끝내기
+
+**새 파일**
+
+- `lib/widgets/bulk_action_bar.dart` — 아래쪽 작업 막대 (버튼만 그리고 실제 일은 안 함)
+- `lib/widgets/pick_taxonomy_dialog.dart` — "어느 폴더로?" / "어느 태그를?" 고르는 대화상자
+
+**저장소에 함수 3개 추가** (`reference_repository.dart` + `local_reference_repository.dart`)
+
+화면에서 `for` 문을 돌며 `save()`를 여러 번 부르지 않고 따로 만들었습니다. 이유 셋:
+① 100장을 옮길 때 데이터베이스를 100번 오가지 않고 한 번에 끝남
+② 50장째에서 오류가 나도 절반만 옮겨진 어정쩡한 상태가 안 됨
+③ 나중에 서버를 붙일 때 "한 번의 요청"으로 보낼 수 있음 (설계 원칙 3)
+
+| 함수 | 하는 일 |
+|---|---|
+| `moveManyToFolder(ids, folderId)` | 폴더로 옮김. **`null`을 넘기면 폴더에서 빼냄** |
+| `addTaxonomyItemToMany(ids, taxonomyItemId)` | 태그를 **더함**. 갈아치우지 않음 |
+| `deleteMany(ids)` | 소프트 삭제 |
+
+### 왜 이렇게 했는지 (겉으로 안 보이는 판단들)
+
+**"고른 게 하나라도 있으면 고르기 모드"로 하지 않았습니다.**
+그렇게 하면 마지막 한 장의 선택을 풀었을 때 체크박스와 아래 막대가 통째로 사라집니다.
+사용자는 잘못 눌러서 모드가 꺼졌다고 느낍니다. 그래서 `_isSelecting`(모드)과
+`_selectedIds`(무엇을 골랐는지)를 따로 뒀습니다.
+
+**안 보이게 된 것은 선택에서 뺍니다.**
+세 장을 골라둔 채 검색어를 바꾸면 그중 두 장이 목록에서 사라질 수 있습니다.
+그대로 두면 화면에는 "1장 골랐다"고 보이는데 **실제로는 3장이 지워집니다.**
+`_loadItems()`의 `_selectedIds.removeWhere(...)`가 이걸 막습니다.
+
+**이미 붙어있는 태그는 다시 안 붙입니다.**
+그냥 `insertOnConflictUpdate`로 덮어쓰면 붙인 시각(`createdAt`)이 새로 찍힙니다.
+그러면 아무것도 안 바뀌었는데 **나중에 기기 간 동기화가 "방금 새로 붙은 태그"로 착각합니다.**
+`_isLinked()`로 먼저 확인하고 건너뜁니다. `_replaceLinks()`가 같은 이유로 이미
+"실제로 달라진 것만 고치는" 방식이었는데, 그 원칙을 그대로 지켰습니다.
+
+**태그를 붙이면 레퍼런스 본체의 `updatedAt`도 갱신합니다.**
+태그는 다른 표에 있어서 본체는 글자 하나 안 바뀝니다. 하지만 여기서 갱신을 안 하면
+"마지막 동기화 이후 바뀐 항목"을 고를 때 이 레퍼런스가 빠져서, **다른 기기에는 태그가
+안 붙은 채로 남습니다.**
+
+**일괄 삭제에만 확인을 받습니다.**
+낱장 삭제에는 확인이 없습니다. 한 장을 잘못 지우는 것과 50장을 잘못 지우는 것은
+되돌리는 수고가 완전히 다르기 때문입니다.
+
+**"폴더 없음"과 "취소"를 구분해야 했습니다.**
+대화상자를 그냥 닫은 것도 `null`, "폴더에서 빼줘"도 `null`이면 화면이 둘을 구분할 수
+없습니다. 그래서 `PickedTaxonomy`라는 작은 클래스로 감쌌습니다 —
+**취소는 결과 자체가 `null`, "없음"은 결과 안의 `item`이 `null`.**
+
+**태그는 "붙이기"만 하고 "갈아치우기"는 안 합니다.**
+여러 장에 같은 태그를 다는 일은 흔하지만, "고른 것들의 태그를 통째로 바꾸자"는
+실수하기 쉽습니다. 통째로 바꾸는 건 편집 화면에서 한 장씩 할 수 있습니다.
+
+**작업이 끝나면 고르기 모드를 끕니다.**
+선택이 그대로 남아 있으면, 다음 작업이 방금 그 장들에 또 적용되는 줄 모르고
+두 번 실행하기 쉽습니다.
+
+### 나중에 이 부분을 고치려면 어디를 보면 되나
+
+| 고치고 싶은 것 | 봐야 할 곳 |
+|---|---|
+| 고르기 모드 전체 동작 | `lib/screens/home_screen.dart`의 `_isSelecting`, `_selectedIds`, `_toggleSelected()` |
+| 위쪽 막대(선택 중) 모양 | 같은 파일 `_buildSelectionAppBar()` |
+| 아래 작업 막대 버튼 | `lib/widgets/bulk_action_bar.dart` |
+| 폴더·태그 고르는 대화상자 | `lib/widgets/pick_taxonomy_dialog.dart` |
+| 삭제 확인 문구 | `home_screen.dart`의 `_confirmBulkDelete()` |
+| 실제로 데이터를 고치는 부분 | `lib/repositories/local_reference_repository.dart`의 `moveManyToFolder()` / `addTaxonomyItemToMany()` / `deleteMany()` |
+| 카드의 체크박스·선택 테두리 | `lib/widgets/reference_card.dart`의 `_buildThumbnailArea()`, `build()`의 `shape` |
+| 길게 누르기 동작 | 같은 파일 `InkWell`의 `onLongPress` |
+
+### 새로 나온 개념
+
+- **`Set`** — `List`와 달리 ① 같은 값이 두 번 안 들어가고 ② "이게 들어있나?" 확인이 빠릅니다.
+  카드를 그릴 때마다 확인하는 값이라 이 차이가 실제로 체감됩니다. (`_selectedIds`)
+- **`late`** — "지금 말고 처음 쓸 때 만들어라". `DroppedItemReader`를 만들려면
+  `widget.imageSource`가 필요한데, 값을 적어두는 시점에는 아직 `widget`이 준비되기 전입니다.
+- **`bottomNavigationBar`** — 화면 맨 아래 자리. 떠 있는 버튼(FAB)과 달리
+  **목록 영역을 그만큼 줄여주기 때문에** 마지막 줄 카드를 안 가립니다.
+- **`Stack` / `Positioned`** — 위젯을 겹쳐 쌓기. 사진 위에 체크박스를 올리는 데 썼습니다.
+
+### 어떻게 테스트했나
+
+- `flutter analyze` — 문제 없음
+- `flutter test` — **205건 전부 통과** (기존 178건 + 새로 27건)
+- `flutter build windows` 성공
+- **의뢰인이 실제 앱에서 직접 확인 완료** (`flutter run -d windows`)
+
+새 테스트 27건:
+
+`test/repositories/reference_bulk_test.dart` (12건) — 데이터가 맞게 고쳐지는지
+- 고른 것들만 바뀌고 안 고른 건 그대로인지
+- `null`을 넘기면 폴더에서 빠지는지 (`copyWith`로는 안 되는 경로)
+- 원래 있던 태그를 지우지 않고 더하는지
+- **이미 붙어있으면 붙인 시각을 새로 안 찍는지** (동기화 관련, 겉으로 안 보임)
+- 예전에 뗐던 태그를 다시 붙일 수 있는지 (`deletedAt`만 찍힌 줄이 남아 있는 경우)
+- 태그를 붙이면 레퍼런스의 `updatedAt`도 갱신되는지
+- 소프트 삭제가 맞는지 (`deletedAt`만 찍히고 줄은 남는지)
+- 시각이 UTC인지
+
+`test/screens/home_bulk_select_test.dart` (15건) — 화면과 제대로 연결됐는지
+- 고르기 버튼 / 길게 누르기로 모드 진입
+- **고르기 모드에서 카드를 눌러도 편집 화면이 안 열리는지** — 이게 안 되면
+  여러 장 고르기가 아예 불가능합니다
+- **체크박스를 직접 눌러도 한 번만 골라지는지** — 체크박스는 카드(`InkWell`) 안에
+  있습니다. 둘 다 반응하면 두 번 뒤집혀서 **아무 일도 안 일어난 것처럼 보입니다.**
+  실제로는 `Checkbox`가 탭을 흡수해서 괜찮았지만, 나중에 카드 구조를 바꿀 때
+  깨지기 쉬운 부분이라 테스트로 못 박아뒀습니다
+- 전체 선택 / 전체 해제
+- 폴더 이동 · 태그 추가 · 삭제가 실제 데이터에 반영되는지
+- **취소했을 때 정말 아무것도 안 바뀌는지** (폴더 이동 취소, 삭제 취소)
+- "폴더 없음"과 "취소"가 구분되는지
+- 폴더/태그가 하나도 없을 때 무엇을 하면 되는지 알려주는지
+- 아무것도 안 골랐을 때 버튼이 잠기는지
+- 검색으로 안 보이게 된 것이 선택에서 빠지는지
+
+### 한계 / 남은 것
+
+- **`home_screen.dart`가 다시 1066줄이 됐습니다.** 정리로 200줄을 뺐지만 기능이
+  290줄 붙었습니다. 다음에 나눌 후보는 **이미지 가져오기 부분**
+  (`_addImages` / `_handleDrop` / `_pasteFromClipboard` / `_saveImageBytes` / `_finishAdding`)
+  으로, `lib/services/reference_importer.dart`로 묶으면 200줄쯤 빠집니다.
+  이번 PR에 같이 넣으면 봐야 할 것이 너무 많아져서 미뤘습니다.
+- **지운 것을 앱에서 되살리는 방법이 아직 없습니다.** 데이터는 `deletedAt`만 찍혀
+  남아 있으므로, 나중에 휴지통 화면을 붙이면 복구할 수 있습니다.
+- **카테고리·프로젝트 일괄 지정은 없습니다.** 저장소의 `addTaxonomyItemToMany()`는
+  종류를 안 가리므로 프로젝트에도 그대로 쓸 수 있습니다. 화면에 버튼만 붙이면 됩니다.
+  버튼이 넷이 되면 아래 막대가 좁은 화면에서 답답해져서 일단 둘만 뒀습니다.
+- **길게 누르기의 손맛**은 자동 테스트로 확인할 수 없습니다. 동작만 검증했습니다.
