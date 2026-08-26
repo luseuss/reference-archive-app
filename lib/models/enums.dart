@@ -54,7 +54,14 @@ enum TaxonomyKind {
   tag('tag', '태그'),
 
   /// 프로젝트 — 레퍼런스 하나가 여러 프로젝트에 속할 수 있습니다.
-  project('project', '프로젝트');
+  project('project', '프로젝트'),
+
+  /// 파트 — 디자인/파티클 같은 **큰 갈래**입니다. 하나만 가질 수 있습니다.
+  ///
+  /// 다른 넷과 자리가 다릅니다. 폴더·카테고리·태그·프로젝트는 목록 위쪽에서
+  /// 고르지만, 파트는 **왼쪽 사이드바**에서 고릅니다. 가장 큰 갈래라
+  /// 늘 보이는 자리에 두기로 했습니다.
+  part('part', '파트');
 
   const TaxonomyKind(this.storedName, this.displayName);
 

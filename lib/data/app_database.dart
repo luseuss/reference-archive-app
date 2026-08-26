@@ -10,6 +10,8 @@ import 'package:drift/drift.dart';
 import 'package:drift_flutter/drift_flutter.dart';
 import 'package:path_provider/path_provider.dart';
 
+import '../models/enums.dart';
+import '../models/taxonomy_item.dart';
 import 'tables.dart';
 
 // 코드 생성기가 만들어주는 파일입니다. 빨간 줄이 떠도 build_runner를 돌리면 사라집니다.
@@ -37,26 +39,36 @@ class AppDatabase extends _$AppDatabase {
   /// 표를 추가하거나 칸을 바꿀 때마다 이 숫자를 1 올리고, 아래 migration에
   /// "그때 무엇을 해야 하는지"를 적어야 합니다. 안 그러면 **기존 사용자의 앱이
   /// 업데이트 후 켜지지 않습니다.** (새로 설치한 사람은 멀쩡해서 놓치기 쉬운 실수입니다.)
+  /// ── 버전 기록 ──
+  ///   1 — 처음 만든 구조
+  ///   2 — References에 partId 추가 (파트 기능). PR #16
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
 
   /// 데이터베이스를 처음 만들 때, 그리고 구조가 바뀌었을 때 무엇을 할지 정합니다.
   @override
   MigrationStrategy get migration {
     return MigrationStrategy(
-      // 앱을 처음 설치했을 때: 정의된 표를 전부 만듭니다.
+      // 앱을 처음 설치했을 때: 정의된 표를 전부 만들고 기본 파트를 하나 넣습니다.
       onCreate: (Migrator m) async {
         await m.createAll();
+        await _createDefaultPart();
       },
 
-      // 앱을 업데이트해서 schemaVersion이 올라갔을 때 할 일을 여기에 적습니다.
-      // 지금은 버전 1뿐이라 할 일이 없습니다.
+      // 앱을 업데이트해서 schemaVersion이 올라갔을 때 할 일입니다.
       //
-      // 예시 — 나중에 표를 하나 추가하며 버전을 2로 올린다면:
-      //   if (from < 2) {
-      //     await m.createTable(scenes);
-      //   }
-      onUpgrade: (Migrator m, int from, int to) async {},
+      // **여기를 빠뜨리면 새로 설치한 사람은 멀쩡한데 기존 사용자의 앱만
+      // 안 켜집니다.** 개발하는 사람은 대개 새로 설치한 쪽이라 놓치기 쉽습니다.
+      onUpgrade: (Migrator m, int from, int to) async {
+        // from = 지금 기기에 있는 버전, to = 새 버전.
+        //
+        // `if (from < 2)`로 쓰는 이유: 한참 업데이트를 안 한 사용자는 1에서
+        // 곧장 3, 4로 건너뜁니다. `== 1`로 적으면 그런 사람이 이 단계를
+        // 통째로 건너뛰게 됩니다. 부등호로 적으면 필요한 단계가 차례로 다 실행됩니다.
+        if (from < 2) {
+          await _upgradeToVersion2(m);
+        }
+      },
 
       // 데이터베이스를 열 때마다 실행됩니다.
       beforeOpen: (OpeningDetails details) async {
@@ -64,6 +76,47 @@ class AppDatabase extends _$AppDatabase {
         // 켜두면 "존재하지 않는 폴더에 들어있는 레퍼런스" 같은 깨진 데이터를 막아줍니다.
         await customStatement('PRAGMA foreign_keys = ON');
       },
+    );
+  }
+
+  /// 버전 1 → 2. 파트 기능을 위한 준비입니다.
+  ///
+  /// 세 가지를 순서대로 합니다.
+  ///   1. References에 partId 칸을 추가합니다.
+  ///   2. 기본 파트를 만듭니다.
+  ///   3. **이미 있던 레퍼런스를 전부 기본 파트에 넣습니다.**
+  ///
+  /// 3번을 빼먹으면 업데이트한 사용자의 레퍼런스가 **어느 파트에도 안 속해서
+  /// 사이드바에서 아무 파트를 골라도 안 보이게** 됩니다. 데이터가 사라진 것처럼
+  /// 보이는데 실제로는 멀쩡히 있어서, 원인을 찾기 아주 어려운 종류의 문제입니다.
+  Future<void> _upgradeToVersion2(Migrator m) async {
+    await m.addColumn(references, references.partId);
+
+    await _createDefaultPart();
+
+    // partId가 비어 있는 것 = 이번 업데이트 전에 넣어둔 레퍼런스입니다.
+    await (update(references)
+          ..where(($ReferencesTable t) => t.partId.isNull()))
+        .write(const ReferencesCompanion(partId: Value<String>(defaultPartId)));
+  }
+
+  /// 기본 파트를 만듭니다. 이미 있으면 아무 일도 하지 않습니다.
+  ///
+  /// `insertOnConflictUpdate`가 아니라 `DoNothing`인 이유: 사용자가 기본 파트의
+  /// **이름을 바꿔뒀을 수 있습니다.** 덮어쓰면 앱을 켤 때마다 이름이 '기본'으로
+  /// 되돌아갑니다.
+  Future<void> _createDefaultPart() async {
+    final DateTime now = DateTime.now().toUtc();
+
+    await into(taxonomyItems).insert(
+      TaxonomyItemsCompanion.insert(
+        id: defaultPartId,
+        kind: TaxonomyKind.part.storedName,
+        name: defaultPartName,
+        createdAt: now,
+        updatedAt: now,
+      ),
+      mode: InsertMode.insertOrIgnore,
     );
   }
 }

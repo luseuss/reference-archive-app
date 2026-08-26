@@ -55,6 +55,15 @@ class References extends Table {
   /// 어느 카테고리에 들어있는지. 카테고리도 하나만 가질 수 있습니다.
   TextColumn get categoryId => text().nullable()();
 
+  /// 어느 파트에 들어있는지. (디자인/파티클 등 큰 갈래)
+  ///
+  /// 파트도 하나만 가질 수 있어서 폴더·카테고리처럼 여기에 직접 담습니다.
+  ///
+  /// nullable인 이유: 이 칸은 나중에 추가됐습니다(스키마 v2). 이미 저장돼 있던
+  /// 레퍼런스에는 값이 없으므로 빈 칸을 허용해야 합니다. 마이그레이션에서
+  /// 전부 기본 파트로 채우지만, 그래도 구조상은 비어 있을 수 있어야 합니다.
+  TextColumn get partId => text().nullable()();
+
   /// 목록 맨 위에 고정할지 여부입니다. 정렬 방식과 무관하게 항상 위에 옵니다.
   BoolColumn get isPinned => boolean().withDefault(const Constant(false))();
 

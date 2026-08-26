@@ -73,6 +73,14 @@ class LocalReferenceRepository implements ReferenceRepository {
       statement.where(($ReferencesTable t) => t.categoryId.equals(categoryId));
     }
 
+    // ── 파트 필터 ──
+    // 사이드바에서 고른 파트입니다. 다른 필터보다 앞선 갈래라서,
+    // 파트를 고르면 그 안에서만 검색·폴더·태그가 동작합니다.
+    final String? partId = query.partId;
+    if (partId != null) {
+      statement.where(($ReferencesTable t) => t.partId.equals(partId));
+    }
+
     // ── 즐겨찾기 필터 ──
     if (query.favoritesOnly) {
       statement.where(($ReferencesTable t) => t.isFavorite.equals(true));
@@ -200,6 +208,7 @@ class LocalReferenceRepository implements ReferenceRepository {
               memo: Value<String?>(item.memo),
               folderId: Value<String?>(item.folderId),
               categoryId: Value<String?>(item.categoryId),
+              partId: Value<String?>(item.partId),
               isPinned: Value<bool>(item.isPinned),
               isFavorite: Value<bool>(item.isFavorite),
               pHash: Value<String?>(item.pHash),
@@ -444,6 +453,7 @@ class LocalReferenceRepository implements ReferenceRepository {
       memo: row.memo,
       folderId: row.folderId,
       categoryId: row.categoryId,
+      partId: row.partId,
       isPinned: row.isPinned,
       isFavorite: row.isFavorite,
       pHash: row.pHash,

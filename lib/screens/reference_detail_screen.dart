@@ -55,6 +55,7 @@ class _ReferenceDetailScreenState extends State<ReferenceDetailScreen> {
   /// 저장을 누르기 전까지는 데이터베이스에 반영되지 않습니다.
   String? _folderId;
   String? _categoryId;
+  String? _partId;
   List<String> _tagIds = <String>[];
   List<String> _projectIds = <String>[];
   bool _isFavorite = false;
@@ -83,6 +84,7 @@ class _ReferenceDetailScreenState extends State<ReferenceDetailScreen> {
     _memoController = TextEditingController(text: widget.item.memo ?? '');
     _folderId = widget.item.folderId;
     _categoryId = widget.item.categoryId;
+    _partId = widget.item.partId;
     _tagIds = List<String>.from(widget.item.tagIds);
     _projectIds = List<String>.from(widget.item.projectIds);
     _isFavorite = widget.item.isFavorite;
@@ -183,6 +185,7 @@ class _ReferenceDetailScreenState extends State<ReferenceDetailScreen> {
       memo: memoText.isEmpty ? null : memoText,
       folderId: _folderId,
       categoryId: _categoryId,
+      partId: _partId,
       tagIds: _tagIds,
       projectIds: _projectIds,
       isFavorite: _isFavorite,
@@ -256,6 +259,23 @@ class _ReferenceDetailScreenState extends State<ReferenceDetailScreen> {
           ),
         ),
         const SizedBox(height: 24),
+
+        // 파트를 맨 위에 둡니다. 폴더·카테고리보다 큰 갈래라서
+        // 위에서 아래로 좁혀지는 순서가 자연스럽습니다.
+        TaxonomySingleField(
+          kind: TaxonomyKind.part,
+          options: _taxonomyOptions[TaxonomyKind.part] ?? <TaxonomyItem>[],
+          selectedId: _partId,
+          repository: widget.taxonomyRepository,
+          onChanged: (String? id) => setState(() => _partId = id),
+          onCreated: (TaxonomyItem created) async {
+            await _reloadOptionsFor(TaxonomyKind.part);
+            if (mounted) {
+              setState(() => _partId = created.id);
+            }
+          },
+        ),
+        const SizedBox(height: 16),
 
         TaxonomySingleField(
           kind: TaxonomyKind.folder,

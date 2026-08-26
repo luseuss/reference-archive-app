@@ -137,6 +137,9 @@ class _HomeScreenState extends State<HomeScreen> {
   Map<TaxonomyKind, List<TaxonomyItem>> _taxonomyOptions =
       <TaxonomyKind, List<TaxonomyItem>>{};
 
+  /// 지금 사이드바에서 고른 파트의 id입니다. null이면 "전체"를 보는 중입니다.
+  String? _selectedPartId;
+
   /// 분류 항목 id를 이름으로 바꿔주는 표입니다. (id → 이름)
   ///
   /// 카드에는 폴더·카테고리·태그가 **id로만** 들어있어서 그대로는 못 보여줍니다.
@@ -212,6 +215,13 @@ class _HomeScreenState extends State<HomeScreen> {
     imageSource: widget.imageSource,
     youtubeInfoSource: widget.youtubeInfoSource,
   );
+
+  /// 새로 넣는 레퍼런스를 어느 파트에 넣을지 정합니다.
+  ///
+  /// 사이드바에서 파트를 고르고 있으면 그 파트에, "전체"를 보고 있으면
+  /// 기본 파트에 넣습니다. "전체"는 자리가 아니라 보기 방식이라
+  /// 거기에 넣을 수는 없기 때문입니다.
+  String get _partIdForNewItems => _selectedPartId ?? defaultPartId;
 
   /// 화면이 처음 만들어질 때 딱 한 번 실행됩니다.
   @override
@@ -345,6 +355,19 @@ class _HomeScreenState extends State<HomeScreen> {
 
   /// 조건을 바꾸고 목록을 다시 불러옵니다.
   void _applyQuery(ReferenceQuery query) {
+    // 검색어가 조건 쪽에서 바뀌었으면 입력창도 맞춰줍니다.
+    //
+    // ── 왜 필요한가 ──
+    // "조건 지우기"를 누르면 검색어까지 지워집니다. 그런데 입력창은 화면이
+    // 갖고 있어서, 여기서 안 맞춰주면 **입력창에는 글자가 그대로 남은 채
+    // 목록만 전부 나오는** 어긋난 상태가 됩니다. 사용자는 검색이 고장난 줄 압니다.
+    //
+    // (검색창이 필터 줄에서 위쪽 머리줄로 옮겨가면서 생긴 문제입니다.
+    //  예전에는 필터 줄이 입력창을 직접 갖고 있어서 자기가 지웠습니다)
+    if (query.searchText != _searchController.text) {
+      _searchController.text = query.searchText;
+    }
+
     setState(() {
       _query = query;
     });
@@ -639,7 +662,9 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
-    await _runImport(() => _importer.importYoutube(videoId));
+    await _runImport(
+      () => _importer.importYoutube(videoId, partId: _partIdForNewItems),
+    );
   }
 
   /// 유튜브 재생 화면을 엽니다.
@@ -822,10 +847,18 @@ class _HomeScreenState extends State<HomeScreen> {
       body: CallbackShortcuts(
         bindings: <ShortcutActivator, VoidCallback>{
           const SingleActivator(LogicalKeyboardKey.keyV, control: true):
-              () => _runImport(_importer.importFromClipboard),
+              () => _runImport(
+                () => _importer.importFromClipboard(
+                  partId: _partIdForNewItems,
+                ),
+              ),
           // macOS는 Ctrl 대신 Command를 씁니다.
           const SingleActivator(LogicalKeyboardKey.keyV, meta: true):
-              () => _runImport(_importer.importFromClipboard),
+              () => _runImport(
+                () => _importer.importFromClipboard(
+                  partId: _partIdForNewItems,
+                ),
+              ),
         },
         child: Focus(
           autofocus: true,
@@ -859,9 +892,37 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildSidebar() {
     return AppSidebar(
       userName: widget.settings.userName,
+      parts: _taxonomyOptions[TaxonomyKind.part] ?? <TaxonomyItem>[],
+      selectedPartId: _selectedPartId,
+      onSelectPart: _selectPart,
       onOpenSettings: _openSettings,
       onLogInOut: _showLoginNotReady,
     );
+  }
+
+  /// 사이드바에서 파트를 골랐을 때 실행됩니다. null이면 "전체"입니다.
+  void _selectPart(String? partId) {
+    // 좁은 창이면 사이드바가 서랍으로 열려 있습니다. 고른 뒤 닫아줍니다.
+    // 안 닫으면 서랍에 가려서 결과가 안 보입니다.
+    if (_scaffoldKey.currentState?.isDrawerOpen ?? false) {
+      Navigator.of(context).pop();
+    }
+
+    // 파트를 옮기면 고르던 것을 놓습니다.
+    // 안 보이게 된 것을 골라둔 채로 두면 엉뚱한 것에 작업하게 됩니다.
+    _exitSelectionMode();
+
+    setState(() {
+      _selectedPartId = partId;
+    });
+
+    // clearFilter가 아니라 copyWith로 넣습니다. null을 넣어야 하는 경우
+    // ("전체")는 clearFilter(part)로 처리합니다.
+    if (partId == null) {
+      _applyQuery(_query.clearFilter(TaxonomyKind.part));
+    } else {
+      _applyQuery(_query.copyWith(partId: partId));
+    }
   }
 
   /// 오른쪽 본문을 만듭니다. (④⑤⑥)
@@ -879,7 +940,11 @@ class _HomeScreenState extends State<HomeScreen> {
               _applyQuery(_query.copyWith(searchText: ''));
             },
             isAdding: _isAdding,
-            onAddImages: () => _runImport(_importer.importFromFilePicker),
+            onAddImages: () => _runImport(
+              () => _importer.importFromFilePicker(
+                partId: _partIdForNewItems,
+              ),
+            ),
             onAddYoutube: _addYoutube,
 
             // 사이드바가 이미 펼쳐져 있으면 메뉴 버튼이 필요 없습니다.
@@ -997,7 +1062,9 @@ class _HomeScreenState extends State<HomeScreen> {
       },
       onPerformDrop: (PerformDropEvent event) async {
         setState(() => _isDragging = false);
-        await _runImport(() => _importer.importFromDrop(event));
+        await _runImport(
+          () => _importer.importFromDrop(event, partId: _partIdForNewItems),
+        );
       },
       child: Stack(
         children: <Widget>[

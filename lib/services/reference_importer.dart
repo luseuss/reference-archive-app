@@ -100,7 +100,7 @@ class ReferenceImporter {
   );
 
   /// 파일 고르기 창을 띄워 이미지를 들여옵니다.
-  Future<ImportOutcome> importFromFilePicker() async {
+  Future<ImportOutcome> importFromFilePicker({required String partId}) async {
     // 여러 장을 한 번에 고를 수 있습니다. 사용자가 취소하면 null이 돌아옵니다.
     //
     // withData: true를 주면 파일 내용을 메모리에 함께 담아줍니다.
@@ -121,7 +121,7 @@ class ReferenceImporter {
     int failedCount = 0;
 
     for (final PlatformFile file in picked.files) {
-      final bool ok = await _saveOneFile(file);
+      final bool ok = await _saveOneFile(file, partId);
       if (ok) {
         savedCount++;
       } else {
@@ -137,7 +137,10 @@ class ReferenceImporter {
   /// ── 브라우저에서 끌면 무엇이 오는가 ──
   /// 상황마다 다릅니다. 무엇이 오는지 가려내는 일은 DroppedItemReader가 합니다.
   /// 여기서는 그 결과를 저장하는 일만 합니다.
-  Future<ImportOutcome> importFromDrop(PerformDropEvent event) async {
+  Future<ImportOutcome> importFromDrop(
+    PerformDropEvent event, {
+    required String partId,
+  }) async {
     int savedCount = 0;
     int failedCount = 0;
     String? lastError;
@@ -154,7 +157,7 @@ class ReferenceImporter {
       // (자세한 이유는 DroppedItemReader.youtubeVideoIdOf() 설명 참고)
       final String? videoId = await _droppedItemReader.youtubeVideoIdOf(reader);
       if (videoId != null) {
-        final bool savedVideo = await saveYoutube(videoId);
+        final bool savedVideo = await saveYoutube(videoId, partId: partId);
         if (savedVideo) {
           savedCount++;
         } else {
@@ -174,6 +177,7 @@ class ReferenceImporter {
 
       final bool ok = await _saveImageBytes(
         fetched.bytes!,
+        partId: partId,
         title: fetched.suggestedTitle,
       );
       if (ok) {
@@ -204,7 +208,7 @@ class ReferenceImporter {
   ///   3. 글자가 **이미지 주소**면 내려받습니다. (브라우저에서 "이미지 주소 복사")
   ///
   /// 사용자는 둘 중 무엇을 복사했는지 신경 쓰지 않아도 되게 하려는 것입니다.
-  Future<ImportOutcome> importFromClipboard() async {
+  Future<ImportOutcome> importFromClipboard({required String partId}) async {
     ImageFetchResult fetched = await imageSource.fetchFromClipboard();
 
     // 주소를 실제로 받아보려 시도했는지 기록합니다.
@@ -222,7 +226,7 @@ class ReferenceImporter {
       // 유튜브 페이지를 내려받아 봐야 HTML이라 "그림이 아니다"로 실패합니다.
       final String? videoId = text == null ? null : youtubeVideoIdFrom(text);
       if (videoId != null) {
-        return importYoutube(videoId);
+        return importYoutube(videoId, partId: partId);
       }
 
       if (text != null && looksLikeUrl(text)) {
@@ -245,6 +249,7 @@ class ReferenceImporter {
 
     final bool ok = await _saveImageBytes(
       fetched.bytes!,
+      partId: partId,
       title: fetched.suggestedTitle,
     );
 
@@ -256,8 +261,11 @@ class ReferenceImporter {
   }
 
   /// 영상 번호로 유튜브 레퍼런스를 들여옵니다.
-  Future<ImportOutcome> importYoutube(String videoId) async {
-    final bool ok = await saveYoutube(videoId);
+  Future<ImportOutcome> importYoutube(
+    String videoId, {
+    required String partId,
+  }) async {
+    final bool ok = await saveYoutube(videoId, partId: partId);
 
     return ImportOutcome(
       savedCount: ok ? 1 : 0,
@@ -292,7 +300,7 @@ class ReferenceImporter {
   /// 나중에 재생할 수 있고, 제목은 편집 화면에서 직접 적을 수 있습니다.
   ///
   /// 성공하면 true, 실패하면 false를 돌려줍니다.
-  Future<bool> saveYoutube(String videoId) async {
+  Future<bool> saveYoutube(String videoId, {required String partId}) async {
     try {
       final YoutubeVideoInfo info = await youtubeInfoSource.fetch(videoId);
 
@@ -310,6 +318,7 @@ class ReferenceImporter {
           type: ReferenceType.youtube,
           title: info.title,
           fileName: savedFileName,
+          partId: partId,
           youtubeVideoId: videoId,
           createdAt: now,
           updatedAt: now,
@@ -325,7 +334,7 @@ class ReferenceImporter {
   // ── 아래는 이 파일 안에서만 쓰는 도우미들입니다 ──
 
   /// 고른 파일 하나를 줄여서 저장하고 레퍼런스로 등록합니다.
-  Future<bool> _saveOneFile(PlatformFile file) async {
+  Future<bool> _saveOneFile(PlatformFile file, String partId) async {
     final String originalName = file.name;
     try {
       // withData: true로 골랐으므로 bytes에 내용이 들어있습니다.
@@ -340,7 +349,11 @@ class ReferenceImporter {
         bytes = await File(path).readAsBytes();
       }
 
-      return await _saveImageBytes(bytes, title: _stripExtension(originalName));
+      return await _saveImageBytes(
+        bytes,
+        partId: partId,
+        title: _stripExtension(originalName),
+      );
     } catch (error) {
       // 파일 하나가 실패해도 나머지는 계속 처리되도록 여기서 잡습니다.
       // 사진 10장 중 1장이 깨졌다고 9장까지 못 넣으면 곤란합니다.
@@ -354,7 +367,11 @@ class ReferenceImporter {
   /// **파일 고르기·끌어다 놓기·붙여넣기가 전부 이 함수로 모입니다.**
   /// 가져오는 경로는 셋이지만 저장하는 방식은 하나여야, 어느 쪽으로 넣든
   /// 똑같이 리사이즈되고 똑같이 기록됩니다.
-  Future<bool> _saveImageBytes(Uint8List bytes, {String? title}) async {
+  Future<bool> _saveImageBytes(
+    Uint8List bytes, {
+    required String partId,
+    String? title,
+  }) async {
     try {
       final String? savedFileName = await imageStorage.saveImage(bytes);
 
@@ -372,6 +389,7 @@ class ReferenceImporter {
           // 목록에서는 "(제목 없음)"으로 보이고 편집 화면에서 고칠 수 있습니다.
           title: title ?? '',
           fileName: savedFileName,
+          partId: partId,
           createdAt: now,
           updatedAt: now,
         ),

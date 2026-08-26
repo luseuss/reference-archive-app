@@ -90,6 +90,15 @@ class $ReferencesTable extends References
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _partIdMeta = const VerificationMeta('partId');
+  @override
+  late final GeneratedColumn<String> partId = GeneratedColumn<String>(
+    'part_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _isPinnedMeta = const VerificationMeta(
     'isPinned',
   );
@@ -172,6 +181,7 @@ class $ReferencesTable extends References
     memo,
     folderId,
     categoryId,
+    partId,
     isPinned,
     isFavorite,
     pHash,
@@ -241,6 +251,12 @@ class $ReferencesTable extends References
       context.handle(
         _categoryIdMeta,
         categoryId.isAcceptableOrUnknown(data['category_id']!, _categoryIdMeta),
+      );
+    }
+    if (data.containsKey('part_id')) {
+      context.handle(
+        _partIdMeta,
+        partId.isAcceptableOrUnknown(data['part_id']!, _partIdMeta),
       );
     }
     if (data.containsKey('is_pinned')) {
@@ -324,6 +340,10 @@ class $ReferencesTable extends References
         DriftSqlType.string,
         data['${effectivePrefix}category_id'],
       ),
+      partId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}part_id'],
+      ),
       isPinned: attachedDatabase.typeMapping.read(
         DriftSqlType.bool,
         data['${effectivePrefix}is_pinned'],
@@ -386,6 +406,15 @@ class ReferenceRow extends DataClass implements Insertable<ReferenceRow> {
   /// 어느 카테고리에 들어있는지. 카테고리도 하나만 가질 수 있습니다.
   final String? categoryId;
 
+  /// 어느 파트에 들어있는지. (디자인/파티클 등 큰 갈래)
+  ///
+  /// 파트도 하나만 가질 수 있어서 폴더·카테고리처럼 여기에 직접 담습니다.
+  ///
+  /// nullable인 이유: 이 칸은 나중에 추가됐습니다(스키마 v2). 이미 저장돼 있던
+  /// 레퍼런스에는 값이 없으므로 빈 칸을 허용해야 합니다. 마이그레이션에서
+  /// 전부 기본 파트로 채우지만, 그래도 구조상은 비어 있을 수 있어야 합니다.
+  final String? partId;
+
   /// 목록 맨 위에 고정할지 여부입니다. 정렬 방식과 무관하게 항상 위에 옵니다.
   final bool isPinned;
 
@@ -415,6 +444,7 @@ class ReferenceRow extends DataClass implements Insertable<ReferenceRow> {
     this.memo,
     this.folderId,
     this.categoryId,
+    this.partId,
     required this.isPinned,
     required this.isFavorite,
     this.pHash,
@@ -442,6 +472,9 @@ class ReferenceRow extends DataClass implements Insertable<ReferenceRow> {
     }
     if (!nullToAbsent || categoryId != null) {
       map['category_id'] = Variable<String>(categoryId);
+    }
+    if (!nullToAbsent || partId != null) {
+      map['part_id'] = Variable<String>(partId);
     }
     map['is_pinned'] = Variable<bool>(isPinned);
     map['is_favorite'] = Variable<bool>(isFavorite);
@@ -474,6 +507,9 @@ class ReferenceRow extends DataClass implements Insertable<ReferenceRow> {
       categoryId: categoryId == null && nullToAbsent
           ? const Value.absent()
           : Value(categoryId),
+      partId: partId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(partId),
       isPinned: Value(isPinned),
       isFavorite: Value(isFavorite),
       pHash: pHash == null && nullToAbsent
@@ -501,6 +537,7 @@ class ReferenceRow extends DataClass implements Insertable<ReferenceRow> {
       memo: serializer.fromJson<String?>(json['memo']),
       folderId: serializer.fromJson<String?>(json['folderId']),
       categoryId: serializer.fromJson<String?>(json['categoryId']),
+      partId: serializer.fromJson<String?>(json['partId']),
       isPinned: serializer.fromJson<bool>(json['isPinned']),
       isFavorite: serializer.fromJson<bool>(json['isFavorite']),
       pHash: serializer.fromJson<String?>(json['pHash']),
@@ -521,6 +558,7 @@ class ReferenceRow extends DataClass implements Insertable<ReferenceRow> {
       'memo': serializer.toJson<String?>(memo),
       'folderId': serializer.toJson<String?>(folderId),
       'categoryId': serializer.toJson<String?>(categoryId),
+      'partId': serializer.toJson<String?>(partId),
       'isPinned': serializer.toJson<bool>(isPinned),
       'isFavorite': serializer.toJson<bool>(isFavorite),
       'pHash': serializer.toJson<String?>(pHash),
@@ -539,6 +577,7 @@ class ReferenceRow extends DataClass implements Insertable<ReferenceRow> {
     Value<String?> memo = const Value.absent(),
     Value<String?> folderId = const Value.absent(),
     Value<String?> categoryId = const Value.absent(),
+    Value<String?> partId = const Value.absent(),
     bool? isPinned,
     bool? isFavorite,
     Value<String?> pHash = const Value.absent(),
@@ -556,6 +595,7 @@ class ReferenceRow extends DataClass implements Insertable<ReferenceRow> {
     memo: memo.present ? memo.value : this.memo,
     folderId: folderId.present ? folderId.value : this.folderId,
     categoryId: categoryId.present ? categoryId.value : this.categoryId,
+    partId: partId.present ? partId.value : this.partId,
     isPinned: isPinned ?? this.isPinned,
     isFavorite: isFavorite ?? this.isFavorite,
     pHash: pHash.present ? pHash.value : this.pHash,
@@ -577,6 +617,7 @@ class ReferenceRow extends DataClass implements Insertable<ReferenceRow> {
       categoryId: data.categoryId.present
           ? data.categoryId.value
           : this.categoryId,
+      partId: data.partId.present ? data.partId.value : this.partId,
       isPinned: data.isPinned.present ? data.isPinned.value : this.isPinned,
       isFavorite: data.isFavorite.present
           ? data.isFavorite.value
@@ -599,6 +640,7 @@ class ReferenceRow extends DataClass implements Insertable<ReferenceRow> {
           ..write('memo: $memo, ')
           ..write('folderId: $folderId, ')
           ..write('categoryId: $categoryId, ')
+          ..write('partId: $partId, ')
           ..write('isPinned: $isPinned, ')
           ..write('isFavorite: $isFavorite, ')
           ..write('pHash: $pHash, ')
@@ -619,6 +661,7 @@ class ReferenceRow extends DataClass implements Insertable<ReferenceRow> {
     memo,
     folderId,
     categoryId,
+    partId,
     isPinned,
     isFavorite,
     pHash,
@@ -638,6 +681,7 @@ class ReferenceRow extends DataClass implements Insertable<ReferenceRow> {
           other.memo == this.memo &&
           other.folderId == this.folderId &&
           other.categoryId == this.categoryId &&
+          other.partId == this.partId &&
           other.isPinned == this.isPinned &&
           other.isFavorite == this.isFavorite &&
           other.pHash == this.pHash &&
@@ -655,6 +699,7 @@ class ReferencesCompanion extends UpdateCompanion<ReferenceRow> {
   final Value<String?> memo;
   final Value<String?> folderId;
   final Value<String?> categoryId;
+  final Value<String?> partId;
   final Value<bool> isPinned;
   final Value<bool> isFavorite;
   final Value<String?> pHash;
@@ -671,6 +716,7 @@ class ReferencesCompanion extends UpdateCompanion<ReferenceRow> {
     this.memo = const Value.absent(),
     this.folderId = const Value.absent(),
     this.categoryId = const Value.absent(),
+    this.partId = const Value.absent(),
     this.isPinned = const Value.absent(),
     this.isFavorite = const Value.absent(),
     this.pHash = const Value.absent(),
@@ -688,6 +734,7 @@ class ReferencesCompanion extends UpdateCompanion<ReferenceRow> {
     this.memo = const Value.absent(),
     this.folderId = const Value.absent(),
     this.categoryId = const Value.absent(),
+    this.partId = const Value.absent(),
     this.isPinned = const Value.absent(),
     this.isFavorite = const Value.absent(),
     this.pHash = const Value.absent(),
@@ -708,6 +755,7 @@ class ReferencesCompanion extends UpdateCompanion<ReferenceRow> {
     Expression<String>? memo,
     Expression<String>? folderId,
     Expression<String>? categoryId,
+    Expression<String>? partId,
     Expression<bool>? isPinned,
     Expression<bool>? isFavorite,
     Expression<String>? pHash,
@@ -725,6 +773,7 @@ class ReferencesCompanion extends UpdateCompanion<ReferenceRow> {
       if (memo != null) 'memo': memo,
       if (folderId != null) 'folder_id': folderId,
       if (categoryId != null) 'category_id': categoryId,
+      if (partId != null) 'part_id': partId,
       if (isPinned != null) 'is_pinned': isPinned,
       if (isFavorite != null) 'is_favorite': isFavorite,
       if (pHash != null) 'p_hash': pHash,
@@ -744,6 +793,7 @@ class ReferencesCompanion extends UpdateCompanion<ReferenceRow> {
     Value<String?>? memo,
     Value<String?>? folderId,
     Value<String?>? categoryId,
+    Value<String?>? partId,
     Value<bool>? isPinned,
     Value<bool>? isFavorite,
     Value<String?>? pHash,
@@ -761,6 +811,7 @@ class ReferencesCompanion extends UpdateCompanion<ReferenceRow> {
       memo: memo ?? this.memo,
       folderId: folderId ?? this.folderId,
       categoryId: categoryId ?? this.categoryId,
+      partId: partId ?? this.partId,
       isPinned: isPinned ?? this.isPinned,
       isFavorite: isFavorite ?? this.isFavorite,
       pHash: pHash ?? this.pHash,
@@ -798,6 +849,9 @@ class ReferencesCompanion extends UpdateCompanion<ReferenceRow> {
     if (categoryId.present) {
       map['category_id'] = Variable<String>(categoryId.value);
     }
+    if (partId.present) {
+      map['part_id'] = Variable<String>(partId.value);
+    }
     if (isPinned.present) {
       map['is_pinned'] = Variable<bool>(isPinned.value);
     }
@@ -833,6 +887,7 @@ class ReferencesCompanion extends UpdateCompanion<ReferenceRow> {
           ..write('memo: $memo, ')
           ..write('folderId: $folderId, ')
           ..write('categoryId: $categoryId, ')
+          ..write('partId: $partId, ')
           ..write('isPinned: $isPinned, ')
           ..write('isFavorite: $isFavorite, ')
           ..write('pHash: $pHash, ')
@@ -1639,6 +1694,7 @@ typedef $$ReferencesTableCreateCompanionBuilder = ReferencesCompanion Function({
   Value<String?> memo,
   Value<String?> folderId,
   Value<String?> categoryId,
+  Value<String?> partId,
   Value<bool> isPinned,
   Value<bool> isFavorite,
   Value<String?> pHash,
@@ -1656,6 +1712,7 @@ typedef $$ReferencesTableUpdateCompanionBuilder = ReferencesCompanion Function({
   Value<String?> memo,
   Value<String?> folderId,
   Value<String?> categoryId,
+  Value<String?> partId,
   Value<bool> isPinned,
   Value<bool> isFavorite,
   Value<String?> pHash,
@@ -1711,6 +1768,11 @@ class $$ReferencesTableFilterComposer
 
   ColumnFilters<String> get categoryId => $composableBuilder(
     column: $table.categoryId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get partId => $composableBuilder(
+    column: $table.partId,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -1794,6 +1856,11 @@ class $$ReferencesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get partId => $composableBuilder(
+    column: $table.partId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<bool> get isPinned => $composableBuilder(
     column: $table.isPinned,
     builder: (column) => ColumnOrderings(column),
@@ -1862,6 +1929,9 @@ class $$ReferencesTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumn<String> get partId =>
+      $composableBuilder(column: $table.partId, builder: (column) => column);
+
   GeneratedColumn<bool> get isPinned =>
       $composableBuilder(column: $table.isPinned, builder: (column) => column);
 
@@ -1922,6 +1992,7 @@ class $$ReferencesTableTableManager
                 Value<String?> memo = const Value.absent(),
                 Value<String?> folderId = const Value.absent(),
                 Value<String?> categoryId = const Value.absent(),
+                Value<String?> partId = const Value.absent(),
                 Value<bool> isPinned = const Value.absent(),
                 Value<bool> isFavorite = const Value.absent(),
                 Value<String?> pHash = const Value.absent(),
@@ -1938,6 +2009,7 @@ class $$ReferencesTableTableManager
                 memo: memo,
                 folderId: folderId,
                 categoryId: categoryId,
+                partId: partId,
                 isPinned: isPinned,
                 isFavorite: isFavorite,
                 pHash: pHash,
@@ -1956,6 +2028,7 @@ class $$ReferencesTableTableManager
                 Value<String?> memo = const Value.absent(),
                 Value<String?> folderId = const Value.absent(),
                 Value<String?> categoryId = const Value.absent(),
+                Value<String?> partId = const Value.absent(),
                 Value<bool> isPinned = const Value.absent(),
                 Value<bool> isFavorite = const Value.absent(),
                 Value<String?> pHash = const Value.absent(),
@@ -1972,6 +2045,7 @@ class $$ReferencesTableTableManager
                 memo: memo,
                 folderId: folderId,
                 categoryId: categoryId,
+                partId: partId,
                 isPinned: isPinned,
                 isFavorite: isFavorite,
                 pHash: pHash,
