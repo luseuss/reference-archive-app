@@ -29,6 +29,7 @@ import 'services/image_source.dart';
 import 'services/image_storage.dart';
 import 'services/local_image_storage.dart';
 import 'services/network_image_source.dart';
+import 'services/youtube_info_source.dart';
 
 /// 앱을 실행합니다. Dart 프로그램은 언제나 main() 함수부터 시작합니다.
 void main() {
@@ -44,6 +45,7 @@ void main() {
       taxonomyRepository: LocalTaxonomyRepository(database),
       imageStorage: LocalImageStorage(),
       imageSource: NetworkImageSource(),
+      youtubeInfoSource: NetworkYoutubeInfoSource(),
     ),
   );
 }
@@ -56,6 +58,7 @@ class ReferenceArchiveApp extends StatelessWidget {
     required this.taxonomyRepository,
     required this.imageStorage,
     required this.imageSource,
+    required this.youtubeInfoSource,
   });
 
   /// 레퍼런스를 읽고 쓰는 통로입니다.
@@ -70,6 +73,9 @@ class ReferenceArchiveApp extends StatelessWidget {
 
   /// 이미지 파일을 저장하고 경로를 알려주는 도구입니다.
   final ImageStorage imageStorage;
+
+  /// 유튜브에서 제목과 썸네일을 가져오는 도구입니다.
+  final YoutubeInfoSource youtubeInfoSource;
 
   /// 주소나 클립보드에서 이미지를 가져오는 도구입니다.
   final ImageSource imageSource;
@@ -98,6 +104,7 @@ class ReferenceArchiveApp extends StatelessWidget {
         taxonomyRepository: taxonomyRepository,
         imageStorage: imageStorage,
         imageSource: imageSource,
+        youtubeInfoSource: youtubeInfoSource,
       ),
     );
   }

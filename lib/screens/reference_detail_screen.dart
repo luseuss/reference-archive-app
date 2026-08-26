@@ -21,6 +21,7 @@ import '../repositories/taxonomy_repository.dart';
 import '../services/image_storage.dart';
 import '../widgets/taxonomy_multi_field.dart';
 import '../widgets/taxonomy_single_field.dart';
+import 'youtube_player_screen.dart';
 
 /// 레퍼런스 상세/편집 화면입니다.
 class ReferenceDetailScreen extends StatefulWidget {
@@ -334,17 +335,40 @@ class _ReferenceDetailScreenState extends State<ReferenceDetailScreen> {
     );
   }
 
-  /// 화면 위쪽의 이미지 미리보기입니다.
+  /// 유튜브 재생 화면을 엽니다.
+  ///
+  /// 편집 화면에서도 바로 볼 수 있어야 합니다. 안 그러면 "이게 무슨 영상이었지?"를
+  /// 확인하려고 목록으로 나갔다 다시 들어와야 합니다.
+  Future<void> _playYoutube() async {
+    final String? videoId = widget.item.youtubeVideoId;
+    if (videoId == null) {
+      return;
+    }
+
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (BuildContext context) => YoutubePlayerScreen(
+          videoId: videoId,
+          // 저장된 제목이 아니라 지금 입력창에 있는 제목을 보여줍니다.
+          // 제목을 고치는 중이라면 고친 쪽이 사용자가 기대하는 값입니다.
+          title: _titleController.text.trim(),
+        ),
+      ),
+    );
+  }
+
+  /// 화면 위쪽의 미리보기입니다. 유튜브면 그 위에 재생 버튼이 얹힙니다.
   Widget _buildPreview() {
     final ColorScheme colors = Theme.of(context).colorScheme;
 
+    final bool isYoutube = widget.item.type == ReferenceType.youtube;
+
     Widget content;
-    if (widget.item.type == ReferenceType.youtube || _imagePath == null) {
-      // 유튜브는 3단계에서 붙입니다. 지금은 자리만 표시합니다.
+    if (_imagePath == null) {
+      // 이미지는 파일이 아직 없는 경우이고,
+      // 유튜브는 썸네일을 못 받아온 경우입니다. (인터넷이 없었거나 비공개 영상)
       content = Icon(
-        widget.item.type == ReferenceType.youtube
-            ? Icons.play_circle_outline
-            : Icons.image_outlined,
+        isYoutube ? Icons.play_circle_outline : Icons.image_outlined,
         size: 48,
         color: colors.onSurfaceVariant,
       );
@@ -370,7 +394,34 @@ class _ReferenceDetailScreenState extends State<ReferenceDetailScreen> {
         borderRadius: BorderRadius.circular(12),
       ),
       clipBehavior: Clip.antiAlias,
-      child: Center(child: content),
+      child: isYoutube
+          // 유튜브는 미리보기 위에 재생 버튼을 겹쳐서, 눌러 바로 볼 수 있게 합니다.
+          ? Stack(
+              children: <Widget>[
+                Positioned.fill(child: Center(child: content)),
+                Positioned.fill(
+                  child: Material(
+                    // 투명한 Material 위에 InkWell을 두면 누를 때 물결이 나옵니다.
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: _playYoutube,
+                      child: Center(
+                        child: Icon(
+                          Icons.play_circle_fill,
+                          size: 72,
+                          // 썸네일이 밝든 어둡든 보이도록 흰색에 그림자를 줍니다.
+                          color: Colors.white.withValues(alpha: 0.92),
+                          shadows: const <Shadow>[
+                            Shadow(color: Colors.black54, blurRadius: 12),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            )
+          : Center(child: content),
     );
   }
 }
