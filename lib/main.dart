@@ -25,8 +25,10 @@ import 'repositories/local_taxonomy_repository.dart';
 import 'repositories/reference_repository.dart';
 import 'repositories/taxonomy_repository.dart';
 import 'screens/home_screen.dart';
+import 'services/image_source.dart';
 import 'services/image_storage.dart';
 import 'services/local_image_storage.dart';
+import 'services/network_image_source.dart';
 
 /// 앱을 실행합니다. Dart 프로그램은 언제나 main() 함수부터 시작합니다.
 void main() {
@@ -41,6 +43,7 @@ void main() {
       referenceRepository: LocalReferenceRepository(database),
       taxonomyRepository: LocalTaxonomyRepository(database),
       imageStorage: LocalImageStorage(),
+      imageSource: NetworkImageSource(),
     ),
   );
 }
@@ -52,6 +55,7 @@ class ReferenceArchiveApp extends StatelessWidget {
     required this.referenceRepository,
     required this.taxonomyRepository,
     required this.imageStorage,
+    required this.imageSource,
   });
 
   /// 레퍼런스를 읽고 쓰는 통로입니다.
@@ -66,6 +70,9 @@ class ReferenceArchiveApp extends StatelessWidget {
 
   /// 이미지 파일을 저장하고 경로를 알려주는 도구입니다.
   final ImageStorage imageStorage;
+
+  /// 주소나 클립보드에서 이미지를 가져오는 도구입니다.
+  final ImageSource imageSource;
 
   /// 앱의 화면 구조를 만들어 돌려줍니다.
   /// Flutter는 화면을 새로 그려야 할 때마다 이 build() 함수를 다시 호출합니다.
@@ -90,6 +97,7 @@ class ReferenceArchiveApp extends StatelessWidget {
         repository: referenceRepository,
         taxonomyRepository: taxonomyRepository,
         imageStorage: imageStorage,
+        imageSource: imageSource,
       ),
     );
   }
