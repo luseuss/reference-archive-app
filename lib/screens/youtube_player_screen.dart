@@ -18,6 +18,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../services/local_player_server.dart';
 import '../services/youtube_url.dart';
 
 /// 유튜브 영상을 앱 안에서 재생하는 화면입니다.
@@ -44,6 +45,52 @@ class _YoutubePlayerScreenState extends State<YoutubePlayerScreen> {
 
   /// 웹뷰를 띄우지 못했을 때의 이유입니다. 문제가 없으면 null입니다.
   String? _errorMessage;
+
+  /// 재생기 페이지를 띄워주는 임시 서버입니다.
+  ///
+  /// 이게 왜 필요한지는 local_player_server.dart 맨 위에 적어뒀습니다.
+  /// 한 줄로 줄이면: **유튜브 재생기는 진짜 주소를 가진 페이지 안에 있어야 합니다.**
+  final LocalPlayerServer _playerServer = LocalPlayerServer();
+
+  /// 웹뷰가 열어야 할 주소입니다. 서버가 아직 안 켜졌으면 null입니다.
+  String? _playerUrl;
+
+  /// 화면이 처음 만들어질 때 임시 서버를 켭니다.
+  @override
+  void initState() {
+    super.initState();
+    _startServer();
+  }
+
+  /// 화면이 사라질 때 임시 서버를 끕니다.
+  ///
+  /// 안 끄면 영상을 볼 때마다 서버가 하나씩 쌓입니다.
+  @override
+  void dispose() {
+    _playerServer.stop();
+    super.dispose();
+  }
+
+  /// 재생기 페이지를 담은 임시 서버를 켜고 그 주소를 기억해둡니다.
+  Future<void> _startServer() async {
+    final String? url = await _playerServer.start(
+      youtubePlayerHtml(widget.videoId),
+    );
+
+    // 서버를 켜는 사이에 사용자가 화면을 닫았을 수 있습니다.
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _playerUrl = url;
+
+      // 서버를 못 켰으면 앱 안에서는 볼 수 없습니다. 브라우저로 안내합니다.
+      if (url == null) {
+        _errorMessage = '재생기를 준비하지 못했습니다.';
+      }
+    });
+  }
 
   /// 이 환경에서 앱 안 재생이 되는지 여부입니다.
   ///
@@ -114,10 +161,16 @@ class _YoutubePlayerScreenState extends State<YoutubePlayerScreen> {
       return _buildFallback(_errorMessage!);
     }
 
+    // 임시 서버가 아직 안 켜졌으면 잠깐 기다립니다. 보통 순식간입니다.
+    final String? url = _playerUrl;
+    if (url == null) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
     // Stack으로 재생기 위에 "불러오는 중" 표시를 겹칩니다.
     return Stack(
       children: <Widget>[
-        Positioned.fill(child: _buildWebView()),
+        Positioned.fill(child: _buildWebView(url)),
 
         if (_isLoading)
           const Positioned.fill(
@@ -132,25 +185,16 @@ class _YoutubePlayerScreenState extends State<YoutubePlayerScreen> {
 
   /// 유튜브 재생기를 담은 웹뷰를 만듭니다.
   ///
-  /// ── 주소를 여는 게 아니라 HTML을 띄우는 이유 (오류 153) ──
-  /// embed 주소를 웹뷰의 맨 위 페이지로 직접 열면 유튜브가
-  /// **"오류 153 — 플레이어 구성 오류"** 를 냅니다. 요청에 "어느 페이지에
-  /// 끼워져 있는지"를 알려주는 값이 없기 때문입니다.
+  /// ── 왜 임시 서버 주소를 여는가 (오류 153) ──
+  /// 유튜브 재생기는 "어느 페이지에 끼워져 있는지"를 확인합니다.
+  /// 그래서 **진짜 주소를 가진 페이지** 안에 있어야 합니다.
   ///
-  /// 그래서 iframe이 든 HTML을 직접 만들어 띄우고, [baseUrl]로 그 페이지가
-  /// 유튜브 주소에 있는 것처럼 알려줍니다. 자세한 설명은
-  /// youtube_url.dart의 `youtubePlayerHtml()`에 적어뒀습니다.
-  Widget _buildWebView() {
+  /// HTML을 직접 넘기는 방법(`initialData`)은 Windows에서 통하지 않습니다.
+  /// 플러그인 소스를 확인한 결과 baseUrl을 아예 읽지 않습니다.
+  /// 자세한 경위는 local_player_server.dart 맨 위에 적어뒀습니다.
+  Widget _buildWebView(String url) {
     return InAppWebView(
-      initialData: InAppWebViewInitialData(
-        data: youtubePlayerHtml(widget.videoId),
-        mimeType: 'text/html',
-        encoding: 'utf-8',
-
-        // 이 페이지가 어디에 있는 것으로 칠지입니다. 이 값이 참조 주소가 되어
-        // 유튜브가 정상적인 끼워넣기로 인정합니다. **이걸 빼면 오류 153입니다.**
-        baseUrl: WebUri('https://www.youtube.com'),
-      ),
+      initialUrlRequest: URLRequest(url: WebUri(url)),
 
       initialSettings: InAppWebViewSettings(
         // 이 값이 true면 "사용자가 직접 누르기 전에는 재생 금지"가 됩니다.
@@ -168,6 +212,11 @@ class _YoutubePlayerScreenState extends State<YoutubePlayerScreen> {
       ),
 
       onLoadStop: (InAppWebViewController controller, WebUri? url) {
+        // ── 진단용 기록 ──
+        // 재생이 안 될 때 원인을 짚으려면 "웹뷰가 실제로 어느 주소를 열었는지"가
+        // 가장 중요합니다. 유튜브는 이 주소를 보고 재생기를 내줄지 정합니다.
+        debugPrint('[재생기] 페이지 열림: $url');
+
         if (!mounted) {
           return;
         }
@@ -176,11 +225,32 @@ class _YoutubePlayerScreenState extends State<YoutubePlayerScreen> {
         });
       },
 
+      // 유튜브 재생기가 스스로 남기는 말을 그대로 옮겨 적습니다.
+      // "오류 153" 같은 것은 웹뷰 오류가 아니라 **유튜브 페이지 안에서** 나므로,
+      // 아래 onReceivedError로는 안 잡히고 이쪽으로만 보입니다.
+      onConsoleMessage:
+          (InAppWebViewController controller, ConsoleMessage message) {
+            debugPrint('[재생기/유튜브] ${message.message}');
+          },
+
       onReceivedError: (
         InAppWebViewController controller,
         WebResourceRequest request,
         WebResourceError error,
       ) {
+        debugPrint('[재생기] 오류(${request.url}): ${error.description}');
+
+        // ── 페이지 전체가 실패한 경우에만 오류 화면으로 바꿉니다 ──
+        // 유튜브 페이지는 광고·통계 같은 곁다리 요청을 잔뜩 보내는데,
+        // 그중 하나가 막혀도 영상은 멀쩡히 나옵니다. 그걸로 재생기를
+        // 오류 화면으로 덮어버리면 볼 수 있는 영상을 못 보게 됩니다.
+        // `== false`로 비교하는 이유: 이 값은 "모름"(null)일 수도 있습니다.
+        // 모를 때는 넘어가지 않고 오류로 다룹니다. 진짜 실패를 조용히
+        // 삼키는 것보다, 곁다리 실패를 한 번 더 보여주는 편이 낫습니다.
+        if (request.isForMainFrame == false) {
+          return;
+        }
+
         if (!mounted) {
           return;
         }
