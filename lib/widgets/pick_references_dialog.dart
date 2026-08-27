@@ -14,6 +14,7 @@ import 'package:flutter/material.dart';
 import '../models/reference_item.dart';
 import '../repositories/reference_repository.dart';
 import '../services/image_storage.dart';
+import '../services/reference_lookup.dart';
 import '../theme/app_metrics.dart';
 import '../theme/app_text.dart';
 
@@ -57,11 +58,11 @@ class _PickReferencesDialog extends StatefulWidget {
 }
 
 class _PickReferencesDialogState extends State<_PickReferencesDialog> {
-  /// 고를 수 있는 레퍼런스 전부입니다.
-  List<ReferenceItem> _items = <ReferenceItem>[];
-
-  /// 레퍼런스 번호 → 이미지 파일의 전체 경로
-  final Map<String, String> _imagePaths = <String, String>{};
+  /// 고를 수 있는 레퍼런스와 그 그림 경로입니다.
+  ///
+  /// 무드보드 판(board_screen.dart)도 같은 것을 씁니다.
+  /// (services/reference_lookup.dart 설명 참고)
+  ReferenceLookup _lookup = const ReferenceLookup.empty();
 
   /// 지금까지 고른 레퍼런스의 번호들입니다.
   ///
@@ -97,17 +98,10 @@ class _PickReferencesDialogState extends State<_PickReferencesDialog> {
 
   /// 레퍼런스 목록과 그림 경로를 읽어옵니다.
   Future<void> _loadItems() async {
-    final List<ReferenceItem> items = await widget.repository.getAll();
-
-    // 그림 경로는 미리 한 번에 구해둡니다. 칸을 그리는 도중에 구하면
-    // 스크롤할 때마다 파일 경로를 묻게 되어 목록이 버벅입니다.
-    final Map<String, String> paths = <String, String>{};
-    for (final ReferenceItem item in items) {
-      final String? fileName = item.fileName;
-      if (fileName != null) {
-        paths[item.id] = await widget.imageStorage.getFullPath(fileName);
-      }
-    }
+    final ReferenceLookup lookup = await ReferenceLookup.load(
+      repository: widget.repository,
+      imageStorage: widget.imageStorage,
+    );
 
     // 기다리는 사이에 사용자가 대화상자를 닫았을 수 있습니다.
     // 그때 setState를 부르면 "없는 화면을 고치려 한다"며 오류가 납니다.
@@ -116,10 +110,7 @@ class _PickReferencesDialogState extends State<_PickReferencesDialog> {
     }
 
     setState(() {
-      _items = items;
-      _imagePaths
-        ..clear()
-        ..addAll(paths);
+      _lookup = lookup;
       _isLoading = false;
     });
   }
@@ -136,10 +127,10 @@ class _PickReferencesDialogState extends State<_PickReferencesDialog> {
   List<ReferenceItem> _visibleItems() {
     final String keyword = _searchText.trim().toLowerCase();
     if (keyword.isEmpty) {
-      return _items;
+      return _lookup.items;
     }
 
-    return _items
+    return _lookup.items
         .where(
           (ReferenceItem item) => item.title.toLowerCase().contains(keyword),
         )
@@ -192,7 +183,7 @@ class _PickReferencesDialogState extends State<_PickReferencesDialog> {
       return const Center(child: CircularProgressIndicator());
     }
 
-    if (_items.isEmpty) {
+    if (_lookup.items.isEmpty) {
       return const Center(
         child: Text(
           '아직 모아둔 레퍼런스가 없습니다.\n먼저 목록에서 이미지를 추가해주세요.',
@@ -325,7 +316,7 @@ class _PickReferencesDialogState extends State<_PickReferencesDialog> {
   /// 칸 크기가 들쭉날쭉하면 훑어보기 어렵기 때문입니다. 구도를 봐야 하는
   /// 무드보드 판에서는 반대로 원본 비율을 지킵니다.
   Widget _buildThumbnail(ReferenceItem item, ColorScheme colors) {
-    final String? path = _imagePaths[item.id];
+    final String? path = _lookup.imagePaths[item.id];
 
     if (path == null) {
       return Container(

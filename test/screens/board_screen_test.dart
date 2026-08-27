@@ -21,7 +21,7 @@ import 'package:reference_archive_app/repositories/local_reference_repository.da
 import 'package:reference_archive_app/screens/board_screen.dart';
 import 'package:reference_archive_app/theme/app_metrics.dart';
 import 'package:reference_archive_app/utils/id_generator.dart';
-import 'package:reference_archive_app/widgets/board_canvas.dart';
+import 'package:reference_archive_app/widgets/board_viewport.dart';
 import 'package:reference_archive_app/widgets/board_card_view.dart';
 
 import '../fakes/fake_image_storage.dart';
@@ -114,15 +114,17 @@ void main() {
     return card;
   }
 
-  /// 판이 지금 몇 배로 줄어서 그려지고 있는지 알아냅니다.
+  /// 판이 지금 몇 배로 확대·축소되어 그려지고 있는지 알아냅니다.
   ///
   /// 판(1920×1200)은 창 크기에 맞춰 줄여서 보여줍니다. 그래서 화면에서 100픽셀
   /// 끌면 판 위에서는 그보다 **더 많이** 움직입니다. 저장된 값을 확인하려면
   /// 이 비율을 알아야 합니다.
+  ///
+  /// 배율은 BoardViewport가 정하므로, 실제로 그려진 크기를 재서 되짚습니다.
   double shownScale(WidgetTester tester) {
     final Size shown = tester.getSize(
       find.descendant(
-        of: find.byType(BoardCanvas),
+        of: find.byType(BoardViewport),
         matching: find.byType(FittedBox),
       ),
     );
@@ -270,5 +272,102 @@ void main() {
     final List<ReferenceItem> items = await referenceRepository.getAll();
     expect(items.length, 1);
     expect(items.first.title, '노을');
+  });
+
+  /// 카드의 크기 조절 손잡이를 [dx]만큼 오른쪽으로 끕니다. (화면 좌표 기준)
+  ///
+  /// 손잡이는 마우스를 올렸을 때만 나타나므로, 진짜 마우스처럼 움직이는
+  /// 포인터를 만들어 카드 위로 옮긴 뒤 끕니다.
+  Future<void> dragResizeHandle(WidgetTester tester, double dx) async {
+    final TestGesture mouse = await tester.createGesture(
+      kind: PointerDeviceKind.mouse,
+    );
+    await mouse.addPointer(location: Offset.zero);
+    addTearDown(mouse.removePointer);
+
+    await mouse.moveTo(tester.getCenter(find.byType(BoardCardView)));
+    await tester.pumpAndSettle();
+
+    final Offset handle = tester.getCenter(find.byIcon(Icons.open_in_full));
+    await mouse.moveTo(handle);
+    await tester.pumpAndSettle();
+
+    await mouse.down(handle);
+    await tester.pump();
+
+    // 두 번에 나눠 움직입니다. 한 번에 끝내면 "그냥 누른 것"과 구분되는
+    // 최소 거리를 못 넘길 수 있습니다.
+    await mouse.moveBy(Offset(dx / 2, 0));
+    await tester.pump();
+    await mouse.moveBy(Offset(dx / 2, 0));
+    await tester.pump();
+
+    await mouse.up();
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets('손잡이를 끌면 카드가 커지고 그 크기가 저장된다', (WidgetTester tester) async {
+    final String referenceId = await saveReference('노을');
+    final BoardCard card = await putCardOnBoard(referenceId: referenceId);
+
+    await openBoard(tester);
+
+    final double scale = shownScale(tester);
+    await dragResizeHandle(tester, 60);
+
+    final BoardCard saved = await reloadCard(card.id);
+
+    // 화면에서 60픽셀 끌었으니 판 위에서는 60 / 배율 만큼 늘어납니다.
+    expect(saved.width, closeTo(defaultBoardCardWidth + 60 / scale, 2));
+  });
+
+  testWidgets('크기를 바꿔도 가로세로 비율은 그대로다', (WidgetTester tester) async {
+    // ── 이게 이 기능에서 가장 중요합니다 ──
+    // 가로만 늘어나고 세로가 그대로면 그림이 찌그러집니다. 무드보드는 그림을
+    // 있는 그대로 보려고 만든 판이라, 찌그러진 그림이 놓이면 만든 이유가 없어집니다.
+    final String referenceId = await saveReference('노을');
+    final BoardCard card = await putCardOnBoard(referenceId: referenceId);
+
+    await openBoard(tester);
+
+    // 그림 파일이 없어서 4:3 자리표시자가 뜹니다. 그래서 처음 비율은 0.75입니다.
+    await dragResizeHandle(tester, 80);
+
+    final BoardCard saved = await reloadCard(card.id);
+
+    expect(saved.height, isNotNull, reason: '크기를 바꾸면 높이가 채워져야 합니다');
+    expect(saved.height! / saved.width, closeTo(3 / 4, 0.02));
+  });
+
+  testWidgets('너무 작게는 못 줄인다', (WidgetTester tester) async {
+    // 더 작아지면 손잡이와 내리기 버튼이 카드보다 커져서 잡을 수가 없습니다.
+    final String referenceId = await saveReference('노을');
+    final BoardCard card = await putCardOnBoard(referenceId: referenceId);
+
+    await openBoard(tester);
+
+    await dragResizeHandle(tester, -1000);
+
+    final BoardCard saved = await reloadCard(card.id);
+    expect(saved.width, minBoardCardWidth);
+  });
+
+  testWidgets('손잡이를 끌어도 카드가 움직이지는 않는다', (WidgetTester tester) async {
+    // 손잡이의 끌기와 카드 옮기기가 섞이면, 크기를 바꾸려다 카드가 딸려갑니다.
+    // 손잡이가 카드보다 안쪽에 있어서 Flutter가 손잡이를 먼저 챙겨줍니다.
+    final String referenceId = await saveReference('노을');
+    final BoardCard card = await putCardOnBoard(
+      referenceId: referenceId,
+      x: 300,
+      y: 200,
+    );
+
+    await openBoard(tester);
+
+    await dragResizeHandle(tester, 60);
+
+    final BoardCard saved = await reloadCard(card.id);
+    expect(saved.x, 300);
+    expect(saved.y, 200);
   });
 }
