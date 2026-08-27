@@ -48,8 +48,8 @@ void main() {
 
   /// 판을 넓은 화면에서 엽니다.
   ///
-  /// 좁게 두면 판(2560×1600)이 거의 안 보여서, 카드를 끄는 시늉을 해도
-  /// 화면 밖이라 잡히지 않습니다.
+  /// 판은 창 크기에 맞춰 줄여서 그려집니다. 창이 아주 좁으면 카드도 함께
+  /// 작아져서, 끄는 시늉을 할 자리가 몇 픽셀밖에 안 남습니다.
   void useWideScreen(WidgetTester tester) {
     tester.view.physicalSize = const Size(1400, 1000);
     tester.view.devicePixelRatio = 1.0;
