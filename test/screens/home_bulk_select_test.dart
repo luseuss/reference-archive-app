@@ -14,6 +14,7 @@ import 'package:reference_archive_app/main.dart';
 import 'package:reference_archive_app/models/enums.dart';
 import 'package:reference_archive_app/models/reference_item.dart';
 import 'package:reference_archive_app/models/taxonomy_item.dart';
+import 'package:reference_archive_app/repositories/local_board_repository.dart';
 import 'package:reference_archive_app/repositories/local_reference_repository.dart';
 import 'package:reference_archive_app/repositories/local_taxonomy_repository.dart';
 import 'package:reference_archive_app/services/app_settings.dart';
@@ -54,6 +55,7 @@ void main() {
     return ReferenceArchiveApp(
       referenceRepository: repository,
       taxonomyRepository: taxonomyRepository,
+      boardRepository: LocalBoardRepository(db),
       imageStorage: FakeImageStorage(),
       imageSource: FakeImageSource(),
       youtubeInfoSource: FakeYoutubeInfoSource(),

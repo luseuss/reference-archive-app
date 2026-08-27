@@ -20,6 +20,8 @@
 import 'package:flutter/material.dart';
 
 import 'data/app_database.dart';
+import 'repositories/board_repository.dart';
+import 'repositories/local_board_repository.dart';
 import 'repositories/local_reference_repository.dart';
 import 'repositories/local_taxonomy_repository.dart';
 import 'repositories/reference_repository.dart';
@@ -49,6 +51,7 @@ void main() async {
   runApp(
     ReferenceArchiveApp(
       referenceRepository: LocalReferenceRepository(database),
+      boardRepository: LocalBoardRepository(database),
       taxonomyRepository: LocalTaxonomyRepository(database),
       imageStorage: LocalImageStorage(),
       imageSource: NetworkImageSource(),
@@ -64,6 +67,7 @@ class ReferenceArchiveApp extends StatelessWidget {
     super.key,
     required this.referenceRepository,
     required this.taxonomyRepository,
+    required this.boardRepository,
     required this.imageStorage,
     required this.imageSource,
     required this.youtubeInfoSource,
@@ -79,6 +83,9 @@ class ReferenceArchiveApp extends StatelessWidget {
 
   /// 폴더·카테고리·태그·프로젝트를 읽고 쓰는 통로입니다.
   final TaxonomyRepository taxonomyRepository;
+
+  /// 무드보드와 카드 배치를 읽고 쓰는 통로입니다.
+  final BoardRepository boardRepository;
 
   /// 이미지 파일을 저장하고 경로를 알려주는 도구입니다.
   final ImageStorage imageStorage;
@@ -120,6 +127,7 @@ class ReferenceArchiveApp extends StatelessWidget {
           home: HomeScreen(
             repository: referenceRepository,
             taxonomyRepository: taxonomyRepository,
+            boardRepository: boardRepository,
             imageStorage: imageStorage,
             imageSource: imageSource,
             youtubeInfoSource: youtubeInfoSource,

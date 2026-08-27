@@ -10,6 +10,12 @@ import 'package:drift/drift.dart';
 import 'package:drift_flutter/drift_flutter.dart';
 import 'package:path_provider/path_provider.dart';
 
+// board.dart는 이 파일에서 직접 쓰지 않습니다. 그런데도 가져오는 이유:
+// 코드 생성기가 만드는 app_database.g.dart는 이 파일의 "part"라서 **이 파일이
+// 가져온 것만 볼 수 있습니다.** BoardCards 표의 기본값(defaultBoardCardWidth)이
+// 생성된 코드에 그대로 들어가므로, 여기서 가져오지 않으면 "그런 이름 없다"는
+// 오류가 납니다. 지우면 앱이 안 켜집니다.
+import '../models/board.dart';
 import '../models/enums.dart';
 import '../models/taxonomy_item.dart';
 import 'tables.dart';
@@ -22,7 +28,13 @@ part 'app_database.g.dart';
 /// @DriftDatabase에 적은 표들이 이 데이터베이스에 들어갑니다.
 /// 표를 새로 추가하면 여기 tables 목록에도 넣어야 합니다.
 @DriftDatabase(
-  tables: <Type>[References, TaxonomyItems, ReferenceTaxonomyLinks],
+  tables: <Type>[
+    References,
+    TaxonomyItems,
+    ReferenceTaxonomyLinks,
+    Boards,
+    BoardCards,
+  ],
 )
 class AppDatabase extends _$AppDatabase {
   /// 실제 파일에 저장되는 데이터베이스를 엽니다. 앱에서 쓰는 방식입니다.
@@ -42,8 +54,9 @@ class AppDatabase extends _$AppDatabase {
   /// ── 버전 기록 ──
   ///   1 — 처음 만든 구조
   ///   2 — References에 partId 추가 (파트 기능). PR #16
+  ///   3 — Boards, BoardCards 표 추가 (무드보드). PR #17
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   /// 데이터베이스를 처음 만들 때, 그리고 구조가 바뀌었을 때 무엇을 할지 정합니다.
   @override
@@ -67,6 +80,12 @@ class AppDatabase extends _$AppDatabase {
         // 통째로 건너뛰게 됩니다. 부등호로 적으면 필요한 단계가 차례로 다 실행됩니다.
         if (from < 2) {
           await _upgradeToVersion2(m);
+        }
+
+        // `if (from < 3)`도 마찬가지입니다. 버전 1에 머물러 있던 사용자는
+        // 위의 2단계를 먼저 거친 뒤 여기까지 이어서 실행됩니다.
+        if (from < 3) {
+          await _upgradeToVersion3(m);
         }
       },
 
@@ -98,6 +117,21 @@ class AppDatabase extends _$AppDatabase {
     await (update(references)
           ..where(($ReferencesTable t) => t.partId.isNull()))
         .write(const ReferencesCompanion(partId: Value<String>(defaultPartId)));
+  }
+
+  /// 버전 2 → 3. 무드보드를 위한 표 두 개를 만듭니다.
+  ///
+  /// 이번에는 **기존 데이터를 손대지 않습니다.** 새 표를 만들기만 하면 끝입니다.
+  /// 파트를 붙일 때(v2)는 이미 있던 레퍼런스를 기본 파트에 넣어줘야 했지만,
+  /// 무드보드는 사용자가 직접 만들기 전에는 하나도 없는 것이 맞는 상태입니다.
+  /// 빈 무드보드를 자동으로 만들어두면 만든 적 없는 것이 목록에 있어서 오히려 헷갈립니다.
+  ///
+  /// createTable은 표 하나를 만듭니다. onCreate의 createAll()이 "정의된 표 전부"를
+  /// 만드는 것과 달리, 여기서는 **이번에 새로 생긴 표만** 콕 집어 만들어야 합니다.
+  /// createAll()을 부르면 이미 있는 References 표를 또 만들려다 오류가 납니다.
+  Future<void> _upgradeToVersion3(Migrator m) async {
+    await m.createTable(boards);
+    await m.createTable(boardCards);
   }
 
   /// 기본 파트를 만듭니다. 이미 있으면 아무 일도 하지 않습니다.

@@ -19,6 +19,8 @@
 
 import 'package:drift/drift.dart';
 
+import '../models/board.dart';
+
 /// 레퍼런스 한 건(이미지 또는 유튜브 영상)을 담는 표입니다.
 ///
 /// @DataClassName은 "이 표의 한 줄"을 나타내는 클래스 이름을 정합니다.
@@ -144,4 +146,96 @@ class ReferenceTaxonomyLinks extends Table {
 
   @override
   Set<Column> get primaryKey => <Column>{referenceId, taxonomyItemId};
+}
+
+/// 무드보드 한 개(씬)를 담는 표입니다.
+///
+/// 무드보드 = 레퍼런스를 격자가 아니라 **원하는 자리에 자유롭게 늘어놓는 판**입니다.
+/// 목록은 컴퓨터가 정한 순서대로 줄을 세우지만, 무드보드는 사람이 직접
+/// "이건 여기, 저건 저기"로 배치해서 분위기를 잡아보는 곳입니다.
+///
+/// 이 표에는 판 자체(이름 등)만 들어갑니다. 판 위에 무엇이 어디 놓였는지는
+/// 아래의 BoardCards 표가 담습니다.
+@DataClassName('BoardRow')
+class Boards extends Table {
+  /// 고유 번호(UUID v4 문자열)
+  TextColumn get id => text()();
+
+  /// 사용자가 붙인 이름입니다. 예: "겨울 무드", "3화 배경 톤"
+  TextColumn get name => text()();
+
+  /// 만든 시각 (UTC)
+  DateTimeColumn get createdAt => dateTime()();
+
+  /// 마지막으로 고친 시각 (UTC)
+  DateTimeColumn get updatedAt => dateTime()();
+
+  /// 지운 시각 (UTC). 비어 있으면 살아있는 항목입니다.
+  DateTimeColumn get deletedAt => dateTime().nullable()();
+
+  @override
+  Set<Column> get primaryKey => <Column>{id};
+}
+
+/// 무드보드 위에 놓인 카드 한 장을 담는 표입니다.
+///
+/// "어느 판(boardId)에, 어느 레퍼런스(referenceId)를, 어디에(x, y) 놓았는가"를 적어둡니다.
+///
+/// ── References 표에 x, y를 넣지 않은 이유 ──
+/// 같은 레퍼런스를 여러 판에 올릴 수 있어야 하고, 판마다 놓인 자리가 다릅니다.
+/// References에 자리를 적으면 레퍼런스 하나당 자리도 하나뿐이라 판을 두 개 만들 수 없습니다.
+///
+/// ── id를 따로 두는 이유 (ReferenceTaxonomyLinks는 안 뒀는데) ──
+/// 태그 연결은 (레퍼런스, 태그) 짝이 하나뿐이라 짝 자체를 열쇠로 썼습니다.
+/// 하지만 무드보드에서는 **같은 사진을 한 판에 두 번 올리는 것이 말이 됩니다**
+/// (같은 색감을 좌우에 나란히 두고 비교하는 등). 그래서 배치마다 고유 번호를 줍니다.
+@DataClassName('BoardCardRow')
+class BoardCards extends Table {
+  /// 이 배치의 고유 번호(UUID v4 문자열)
+  TextColumn get id => text()();
+
+  /// 어느 무드보드에 놓였는지
+  TextColumn get boardId => text()();
+
+  /// 어느 레퍼런스인지
+  TextColumn get referenceId => text()();
+
+  /// 판 위에서의 가로 위치입니다. 판의 왼쪽 끝이 0입니다.
+  ///
+  /// 화면 좌표가 아니라 **판 좌표**입니다. 창 크기를 바꿔도 카드가 제자리에
+  /// 있어야 하므로, 화면에서 몇 픽셀인지를 저장하면 안 됩니다.
+  RealColumn get x => real()();
+
+  /// 판 위에서의 세로 위치입니다. 판의 위쪽 끝이 0입니다.
+  RealColumn get y => real()();
+
+  /// 카드의 가로 크기입니다.
+  RealColumn get width =>
+      real().withDefault(const Constant(defaultBoardCardWidth))();
+
+  /// 카드의 세로 크기입니다. **비어 있으면 "그림 비율대로 알아서"** 라는 뜻입니다.
+  ///
+  /// 처음 올린 카드는 여기가 비어 있어서 원본 비율 그대로 보입니다.
+  /// 사용자가 직접 크기를 조절하면(2단계에서 붙일 기능) 그때 값이 채워집니다.
+  /// 0을 기본값으로 두지 않은 이유: 0은 "높이가 0"인지 "아직 안 정했다"인지
+  /// 구분할 수 없습니다. 빈 칸은 그 구분이 분명합니다.
+  RealColumn get height => real().nullable()();
+
+  /// 카드가 겹쳤을 때 누가 위로 오는지 정하는 값입니다. 클수록 위입니다.
+  ///
+  /// 무드보드는 카드가 겹치는 것이 정상입니다. 겹칠 때 순서가 없으면
+  /// 아래 깔린 카드를 영영 집을 수 없게 됩니다.
+  IntColumn get zOrder => integer().withDefault(const Constant(0))();
+
+  /// 판에 올린 시각 (UTC)
+  DateTimeColumn get createdAt => dateTime()();
+
+  /// 마지막으로 옮기거나 고친 시각 (UTC)
+  DateTimeColumn get updatedAt => dateTime()();
+
+  /// 판에서 내린 시각 (UTC). 비어 있으면 아직 판 위에 있습니다.
+  DateTimeColumn get deletedAt => dateTime().nullable()();
+
+  @override
+  Set<Column> get primaryKey => <Column>{id};
 }

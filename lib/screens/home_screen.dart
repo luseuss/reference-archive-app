@@ -25,6 +25,7 @@ import '../models/enums.dart';
 import '../models/reference_item.dart';
 import '../models/reference_query.dart';
 import '../models/taxonomy_item.dart';
+import '../repositories/board_repository.dart';
 import '../repositories/reference_repository.dart';
 import '../repositories/taxonomy_repository.dart';
 import '../services/app_settings.dart';
@@ -45,6 +46,7 @@ import '../widgets/main_header.dart';
 import '../widgets/pick_taxonomy_dialog.dart';
 import '../widgets/reference_card.dart';
 import '../widgets/reference_filter_bar.dart';
+import 'board_list_screen.dart';
 import 'reference_detail_screen.dart';
 import 'settings_screen.dart';
 import 'taxonomy_manage_screen.dart';
@@ -76,6 +78,7 @@ class HomeScreen extends StatefulWidget {
     super.key,
     required this.repository,
     required this.taxonomyRepository,
+    required this.boardRepository,
     required this.imageStorage,
     required this.imageSource,
     required this.youtubeInfoSource,
@@ -88,6 +91,10 @@ class HomeScreen extends StatefulWidget {
   /// 폴더·카테고리·태그·프로젝트를 읽고 쓰는 통로입니다.
   /// 이 화면에서 직접 쓰지는 않고 편집 화면으로 넘겨줍니다.
   final TaxonomyRepository taxonomyRepository;
+
+  /// 무드보드와 카드 배치를 읽고 쓰는 통로입니다.
+  /// 이 화면에서 직접 쓰지는 않고 무드보드 화면으로 넘겨줍니다.
+  final BoardRepository boardRepository;
 
   /// 이미지 파일을 저장하고 경로를 알려주는 도구입니다.
   final ImageStorage imageStorage;
@@ -895,6 +902,7 @@ class _HomeScreenState extends State<HomeScreen> {
       parts: _taxonomyOptions[TaxonomyKind.part] ?? <TaxonomyItem>[],
       selectedPartId: _selectedPartId,
       onSelectPart: _selectPart,
+      onOpenBoards: _openBoards,
       onOpenSettings: _openSettings,
       onLogInOut: _showLoginNotReady,
     );
@@ -971,6 +979,33 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+
+  /// 무드보드 목록 화면을 엽니다.
+  ///
+  /// ── 미리보기를 먼저 멈추는 이유 ──
+  /// 유튜브 미리보기가 도는 채로 다른 화면을 덮으면, 안 보이는 곳에서 영상이
+  /// 계속 재생됩니다. 소리는 꺼져 있지만 자원을 계속 씁니다.
+  /// (호버 미리보기를 만들 때 앱이 꺼지던 문제도 이 자리와 관련이 있었습니다)
+  Future<void> _openBoards() async {
+    _stopPreview();
+
+    // 좁은 창이면 사이드바가 서랍으로 열려 있으므로 먼저 닫습니다.
+    // 안 닫으면 무드보드 화면 위에 서랍이 겹쳐 보입니다.
+    final NavigatorState navigator = Navigator.of(context);
+    if (_scaffoldKey.currentState?.isDrawerOpen ?? false) {
+      navigator.pop();
+    }
+
+    await navigator.push<void>(
+      MaterialPageRoute<void>(
+        builder: (BuildContext context) => BoardListScreen(
+          boardRepository: widget.boardRepository,
+          referenceRepository: widget.repository,
+          imageStorage: widget.imageStorage,
+        ),
+      ),
+    );
+  }
   /// 설정 화면을 엽니다.
   Future<void> _openSettings() async {
     // 좁은 창이면 사이드바가 서랍으로 열려 있으므로 먼저 닫습니다.

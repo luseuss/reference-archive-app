@@ -13,8 +13,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:reference_archive_app/data/app_database.dart';
 import 'package:reference_archive_app/main.dart';
+import 'package:reference_archive_app/repositories/local_board_repository.dart';
 import 'package:reference_archive_app/repositories/local_reference_repository.dart';
 import 'package:reference_archive_app/repositories/local_taxonomy_repository.dart';
+import 'package:reference_archive_app/screens/board_list_screen.dart';
 import 'package:reference_archive_app/screens/settings_screen.dart';
 import 'package:reference_archive_app/services/app_settings.dart';
 import 'package:reference_archive_app/widgets/app_sidebar.dart';
@@ -61,6 +63,7 @@ void main() {
     return ReferenceArchiveApp(
       referenceRepository: repository,
       taxonomyRepository: taxonomyRepository,
+      boardRepository: LocalBoardRepository(db),
       imageStorage: FakeImageStorage(),
       imageSource: FakeImageSource(),
       youtubeInfoSource: FakeYoutubeInfoSource(),
@@ -168,6 +171,16 @@ void main() {
       expect(app.themeMode, ThemeMode.dark);
     });
 
+    testWidgets('사이드바에서 무드보드 목록으로 갈 수 있다', (WidgetTester tester) async {
+      // 무드보드는 파트 목록과 성격이 달라서 한 칸 띄워 따로 뒀습니다.
+      // 그 자리가 실제로 무드보드 화면으로 이어지는지 확인합니다.
+      await openApp(tester, size: wide);
+
+      await tester.tap(find.text('무드보드'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(BoardListScreen), findsOneWidget);
+    });
     testWidgets('로그인은 아직 없다고 알려준다', (WidgetTester tester) async {
       // 눌렀는데 아무 일도 안 일어나면 고장난 줄 압니다.
       await openApp(tester, size: wide);
