@@ -18,6 +18,7 @@
 // 앱을 안 띄우고 숫자만으로 확인할 수 있습니다. (test/utils/board_snap_test.dart)
 
 
+import 'dart:math';
 import 'dart:ui';
 
 import '../theme/app_metrics.dart';
@@ -101,24 +102,58 @@ _AxisSnap _snapAxis({
   return _AxisSnap.none;
 }
 
+/// 두 네모가 **서로 얼마나 떨어져 있는지**를 한 축에서 잽니다. 겹치면 0입니다.
+double _gap(double aStart, double aEnd, double bStart, double bEnd) {
+  return max(0, max(bStart - aEnd, aStart - bEnd));
+}
+
 /// 가로 방향으로 붙을 수 있는 자리들을 모읍니다.
 ///
 /// 카드 하나마다 **왼쪽 / 가운데 / 오른쪽** 셋을 냅니다. 가운데를 넣어야
 /// "가운데 맞추기"가 됩니다. 가장자리만 있으면 두 카드의 중심을 못 맞춥니다.
-List<double> snapCandidatesX(List<Rect> others) {
+///
+/// ── 세로로 너무 먼 카드는 뺍니다 ──
+/// 안 빼면 저 멀리 아래에 있는 카드가 **바로 옆 카드를 이깁니다.** 숫자만
+/// 보면 더 가까울 수 있기 때문입니다. 사용자 눈에는 엉뚱한 데 붙는 것으로
+/// 보입니다. (app_metrics.dart의 boardSnapNeighborRange 설명 참고)
+List<double> snapCandidatesX(Rect moving, List<Rect> others) {
   final List<double> candidates = <double>[];
+
   for (final Rect rect in others) {
-    candidates.addAll(<double>[rect.left, rect.center.dx, rect.right]);
+    final double gap = _gap(
+      moving.top,
+      moving.bottom,
+      rect.top,
+      rect.bottom,
+    );
+
+    if (gap <= boardSnapNeighborRange) {
+      candidates.addAll(<double>[rect.left, rect.center.dx, rect.right]);
+    }
   }
+
   return candidates;
 }
 
 /// 세로 방향으로 붙을 수 있는 자리들을 모읍니다. (위 / 가운데 / 아래)
-List<double> snapCandidatesY(List<Rect> others) {
+///
+/// 가로로 너무 먼 카드는 뺍니다. 위의 snapCandidatesX와 같은 이유입니다.
+List<double> snapCandidatesY(Rect moving, List<Rect> others) {
   final List<double> candidates = <double>[];
+
   for (final Rect rect in others) {
-    candidates.addAll(<double>[rect.top, rect.center.dy, rect.bottom]);
+    final double gap = _gap(
+      moving.left,
+      moving.right,
+      rect.left,
+      rect.right,
+    );
+
+    if (gap <= boardSnapNeighborRange) {
+      candidates.addAll(<double>[rect.top, rect.center.dy, rect.bottom]);
+    }
   }
+
   return candidates;
 }
 
@@ -135,14 +170,14 @@ BoardSnapResult snapMovingCard({
 }) {
   final _AxisSnap x = _snapAxis(
     points: <double>[moving.left, moving.center.dx, moving.right],
-    candidates: snapCandidatesX(others),
+    candidates: snapCandidatesX(moving, others),
     gridBase: moving.left,
     useGrid: useGrid,
   );
 
   final _AxisSnap y = _snapAxis(
     points: <double>[moving.top, moving.center.dy, moving.bottom],
-    candidates: snapCandidatesY(others),
+    candidates: snapCandidatesY(moving, others),
     gridBase: moving.top,
     useGrid: useGrid,
   );
@@ -172,7 +207,7 @@ BoardSnapResult snapResizingCard({
 }) {
   final _AxisSnap x = _snapAxis(
     points: <double>[resizing.right],
-    candidates: snapCandidatesX(others),
+    candidates: snapCandidatesX(resizing, others),
     gridBase: resizing.right,
     useGrid: useGrid,
   );

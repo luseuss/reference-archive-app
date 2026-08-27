@@ -102,6 +102,16 @@ class _BoardScreenState extends State<BoardScreen> {
   /// 기억하지 않습니다 — 판을 나갔다 오면 꺼집니다. 기존 웹앱과 같습니다.
   bool _gridSnap = false;
 
+  /// 카드들이 **실제로 몇 픽셀로 그려졌는지**입니다. (카드 번호 → 높이)
+  ///
+  /// 카드 높이는 보통 저장돼 있지 않고 그림 비율이 정합니다. 그래서 판은
+  /// 카드가 세로로 얼마나 긴지 모릅니다. 각 카드가 그려진 뒤에 자기를 재서
+  /// 알려주면 여기 모입니다. (board_card_view.dart의 onMeasured)
+  ///
+  /// **저장하지 않습니다.** 기기·창 크기에 따라 달라지는 값이고, 다시 그리면
+  /// 또 알려주기 때문입니다.
+  final Map<String, double> _measuredHeights = <String, double>{};
+
   /// 스냅 안내선을 그릴 자리입니다. 안 붙었으면 null입니다.
   double? _guideX;
   double? _guideY;
@@ -216,6 +226,7 @@ class _BoardScreenState extends State<BoardScreen> {
       delta,
       snap: _snapEnabled,
       useGrid: _gridSnap,
+      measuredHeights: _measuredHeights,
     );
 
     setState(() {
@@ -267,6 +278,7 @@ class _BoardScreenState extends State<BoardScreen> {
       movedSoFar: _resizeDelta,
       snap: _snapEnabled,
       useGrid: _gridSnap,
+      measuredHeights: _measuredHeights,
     );
 
     setState(() {
@@ -300,6 +312,16 @@ class _BoardScreenState extends State<BoardScreen> {
   /// `HardwareKeyboard`는 지금 눌려 있는 키를 바로 알려주는 Flutter의
   /// 기본 장치입니다. 키 입력을 받는 위젯을 따로 만들지 않아도 됩니다.
   bool get _snapEnabled => !HardwareKeyboard.instance.isAltPressed;
+
+  /// 카드가 자기 크기를 알려왔을 때 받아둡니다.
+  ///
+  /// ── setState를 안 부릅니다 ──
+  /// 이 값은 **스냅 계산에만** 쓰이고 화면 생김새를 바꾸지 않습니다.
+  /// 여기서 다시 그리라고 하면, 그리는 도중에 또 알려오고 또 그리는
+  /// 되돌이가 생길 수 있습니다.
+  void _onCardMeasured(BoardCard card, Size size) {
+    _measuredHeights[card.id] = size.height;
+  }
 
   /// 안내선을 지웁니다. 끌기가 끝나면 부릅니다.
   ///
@@ -412,6 +434,7 @@ class _BoardScreenState extends State<BoardScreen> {
         onDragStart: _onDragStart,
         onDragUpdate: _onDragUpdate,
         onDragEnd: _onDragEnd,
+        onMeasured: _onCardMeasured,
         onResizeStart: _onResizeStart,
         onResizeUpdate: _onResizeUpdate,
         onResizeEnd: _onResizeEnd,

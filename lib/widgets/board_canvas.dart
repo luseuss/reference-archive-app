@@ -35,6 +35,7 @@ class BoardCanvas extends StatelessWidget {
     required this.onDragStart,
     required this.onDragUpdate,
     required this.onDragEnd,
+    required this.onMeasured,
     required this.onResizeStart,
     required this.onResizeUpdate,
     required this.onResizeEnd,
@@ -98,6 +99,12 @@ class BoardCanvas extends StatelessWidget {
   /// 카드 높이는 보통 비어 있습니다(= 그림 비율대로). 그래서 "지금 높이가 얼마인지"는
   /// 저장된 값만 봐서는 알 수 없고, **실제로 그려진 것을 재봐야** 알 수 있습니다.
   /// 그 재는 일은 카드 자신만 할 수 있어서 여기서 알려줍니다.
+  /// 카드가 **실제로 몇 픽셀로 그려졌는지** 알려줍니다.
+  ///
+  /// 스냅이 눈에 보이는 자리에 붙으려면 이 값이 필요합니다.
+  /// (board_card_view.dart의 onMeasured 설명 참고)
+  final void Function(BoardCard card, Size size) onMeasured;
+
   final void Function(BoardCard card, Size currentSize) onResizeStart;
 
   /// 크기 조절 손잡이를 끄는 동안 움직인 만큼을 알려줍니다. (판 좌표)
@@ -187,6 +194,7 @@ class BoardCanvas extends StatelessWidget {
           imagePath: imagePaths[card.referenceId],
           isActive: activeCardId == card.id,
           onRemove: () => onRemoveCard(card),
+          onMeasured: (Size size) => onMeasured(card, size),
           onResizeStart: (Size currentSize) => onResizeStart(card, currentSize),
           onResizeUpdate: (Offset delta) => onResizeUpdate(card, delta),
           onResizeEnd: () => onResizeEnd(card),

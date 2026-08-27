@@ -34,13 +34,36 @@ void main() {
     );
   }
 
-  group('카드 높이 어림잡기', () {
+  group('카드 높이 구하기', () {
     test('직접 정해둔 높이가 있으면 그 값을 쓴다', () {
-      expect(estimatedBoardCardHeight(makeCard(height: 500)), 500);
+      expect(boardCardHeight(makeCard(height: 500)), 500);
     });
 
-    test('정해둔 높이가 없으면 4:3으로 어림잡는다', () {
-      expect(estimatedBoardCardHeight(makeCard(width: 200)), 150);
+    test('재서 알려준 값이 있으면 그 값을 쓴다', () {
+      // ── 이게 스냅에 아주 중요합니다 ──
+      // 카드 높이는 보통 저장돼 있지 않고 그림 비율이 정합니다. 어림값에
+      // 기대면 세로 스냅이 **눈에 보이지도 않는 자리**에 붙습니다.
+      final BoardCard card = makeCard(width: 200);
+
+      expect(
+        boardCardHeight(card, measuredHeights: <String, double>{card.id: 267}),
+        267,
+      );
+    });
+
+    test('직접 정해둔 높이가 잰 값보다 우선한다', () {
+      // 사용자가 직접 조절한 크기가 가장 확실합니다.
+      final BoardCard card = makeCard(width: 200, height: 500);
+
+      expect(
+        boardCardHeight(card, measuredHeights: <String, double>{card.id: 267}),
+        500,
+      );
+    });
+
+    test('둘 다 없으면 4:3으로 어림잡는다', () {
+      // 그림이 아직 안 읽힌 짧은 순간에만 여기까지 옵니다.
+      expect(boardCardHeight(makeCard(width: 200)), 150);
     });
   });
 

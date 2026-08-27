@@ -100,6 +100,11 @@ BoardCardsUpdate moveCard(
   Offset delta, {
   bool snap = true,
   bool useGrid = false,
+
+  /// 화면에 그려진 카드들이 재서 알려준 실제 높이입니다.
+  /// 스냅이 눈에 보이는 자리에 붙으려면 이게 있어야 합니다.
+  /// (board_layout.dart의 boardCardHeight 설명 참고)
+  Map<String, double> measuredHeights = const <String, double>{},
 }) {
   final int index = indexOfCard(cards, cardId);
   if (index == -1) {
@@ -119,9 +124,9 @@ BoardCardsUpdate moveCard(
 
   if (snap) {
     final BoardSnapResult result = snapMovingCard(
-      moving: boardCardRect(moved),
+      moving: boardCardRect(moved, measuredHeights: measuredHeights),
       // 자기 자신은 후보에서 빼야 합니다. 자기한테 붙으면 안 움직입니다.
-      others: _rectsExcept(cards, cardId),
+      others: _rectsExcept(cards, cardId, measuredHeights),
       useGrid: useGrid,
     );
 
@@ -172,6 +177,11 @@ BoardCardsUpdate resizeCard(
   required Offset movedSoFar,
   bool snap = true,
   bool useGrid = false,
+
+  /// 화면에 그려진 카드들이 재서 알려준 실제 높이입니다.
+  /// 스냅이 눈에 보이는 자리에 붙으려면 이게 있어야 합니다.
+  /// (board_layout.dart의 boardCardHeight 설명 참고)
+  Map<String, double> measuredHeights = const <String, double>{},
 }) {
   final int index = indexOfCard(cards, cardId);
 
@@ -201,7 +211,7 @@ BoardCardsUpdate resizeCard(
         width,
         width * heightPerWidth,
       ),
-      others: _rectsExcept(cards, cardId),
+      others: _rectsExcept(cards, cardId, measuredHeights),
       useGrid: useGrid,
     );
 
@@ -222,11 +232,15 @@ BoardCardsUpdate resizeCard(
 }
 
 /// 이 카드를 뺀 나머지 카드들의 네모를 모읍니다. 스냅 후보로 씁니다.
-List<Rect> _rectsExcept(List<BoardCard> cards, String cardId) {
+List<Rect> _rectsExcept(
+  List<BoardCard> cards,
+  String cardId,
+  Map<String, double> measuredHeights,
+) {
   final List<Rect> rects = <Rect>[];
   for (final BoardCard card in cards) {
     if (card.id != cardId) {
-      rects.add(boardCardRect(card));
+      rects.add(boardCardRect(card, measuredHeights: measuredHeights));
     }
   }
   return rects;

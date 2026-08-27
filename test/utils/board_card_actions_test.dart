@@ -141,6 +141,56 @@ void main() {
       expect(cardOf(cards, 'a').y, 10000);
     });
 
+
+    test('재서 알려준 높이를 쓰면 세로 스냅이 눈에 맞는다', () {
+      // ── 의뢰인이 "붙는 게 부자연스럽다"고 한 문제의 핵심입니다 ──
+      // 카드 높이는 보통 저장돼 있지 않습니다. 어림값(4:3)에 기대면
+      // 세로 사진에서 128픽셀이나 어긋나서, 눈에 보이지도 않는 자리에
+      // 붙습니다. 붙는 거리가 8픽셀인데 말입니다.
+      //
+      // 기준 카드: y=100, 실제 높이 300 → 아래쪽 끝이 400
+      // 움직일 카드: 실제 높이 300, y가 103이면 아래쪽이 403
+      //   → 어림값(165)을 쓰면 아래쪽을 265로 잘못 알아 안 붙습니다.
+      //   → 실제 높이를 쓰면 위쪽끼리 3만큼 차이라 붙습니다.
+      final BoardCard anchor = makeCard('anchor', x: 900, y: 100);
+      final BoardCard moving = makeCard('a', x: 900, y: 103);
+
+      final Map<String, double> measured = <String, double>{
+        anchor.id: 300,
+        moving.id: 300,
+      };
+
+      final BoardCardsUpdate update = moveCard(
+        <BoardCard>[anchor, moving],
+        'a',
+        Offset.zero,
+        measuredHeights: measured,
+      );
+
+      // 위쪽끼리 맞아서 100으로 당겨져야 합니다.
+      expect(cardOf(update.cards, 'a').y, 100);
+      expect(update.guideY, 100);
+    });
+
+    test('아래쪽 끝끼리도 실제 높이로 맞춘다', () {
+      // 기준: y=0, 높이 300 → 위 0, 가운데 150, 아래 300
+      // 움직일 것: 높이 100, y=203 → 위 203, 가운데 253, 아래 303
+      //   → 아래쪽끼리 3만큼 차이라 그쪽으로 붙습니다.
+      //
+      // 어림값(165)을 쓰면 아래쪽을 368로 잘못 알아 안 붙습니다.
+      final BoardCard anchor = makeCard('anchor', x: 900, y: 0);
+      final BoardCard moving = makeCard('a', x: 900, y: 203);
+
+      final BoardCardsUpdate update = moveCard(
+        <BoardCard>[anchor, moving],
+        'a',
+        Offset.zero,
+        measuredHeights: <String, double>{anchor.id: 300, moving.id: 100},
+      );
+
+      expect(cardOf(update.cards, 'a').y, 200);
+      expect(update.guideY, 300);
+    });
     test('원래 목록은 그대로 남는다', () {
       // 받은 목록을 직접 뜯어고치면 부른 쪽에서 "언제 바뀐 거지?" 하고 헤맵니다.
       final List<BoardCard> cards = <BoardCard>[makeCard('a', x: 100)];

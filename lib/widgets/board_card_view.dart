@@ -33,6 +33,7 @@ class BoardCardView extends StatefulWidget {
     required this.item,
     required this.imagePath,
     required this.onRemove,
+    required this.onMeasured,
     required this.onResizeStart,
     required this.onResizeUpdate,
     required this.onResizeEnd,
@@ -58,6 +59,18 @@ class BoardCardView extends StatefulWidget {
   /// 카드 높이는 보통 저장돼 있지 않습니다(= 그림 비율대로). 그래서 지금 높이가
   /// 얼마인지는 **실제로 그려진 것을 재봐야** 알 수 있고, 재는 일은 카드 자신만
   /// 할 수 있습니다.
+  /// 이 카드가 **실제로 몇 픽셀로 그려졌는지** 알려줍니다.
+  ///
+  /// ── 왜 필요한가 ──
+  /// 카드 높이는 보통 저장돼 있지 않습니다(= 그림 비율대로). 그래서 판은
+  /// 카드가 세로로 얼마나 긴지 **모릅니다.** 전에는 4:3이라고 어림잡았는데,
+  /// 세로 사진이면 128픽셀이나 어긋났습니다. 스냅이 붙는 거리가 8픽셀이니
+  /// **눈에 보이지도 않는 자리에 붙는** 셈이었습니다.
+  ///
+  /// 재는 일은 카드 자신만 할 수 있어서 여기서 알려줍니다.
+  /// 크기가 바뀌었을 때만 부릅니다. 매번 부르면 화면이 계속 다시 그려집니다.
+  final void Function(Size size) onMeasured;
+
   final void Function(Size currentSize) onResizeStart;
 
   /// 손잡이를 끄는 동안 움직인 만큼을 알려줍니다.
@@ -77,6 +90,9 @@ class BoardCardView extends StatefulWidget {
 }
 
 class _BoardCardViewState extends State<BoardCardView> {
+  /// 마지막으로 바깥에 알려준 크기입니다. 같은 값을 또 알리지 않으려고 둡니다.
+  Size? _reportedSize;
+
   /// 지금 마우스가 이 카드 위에 올라와 있는지 여부입니다.
   ///
   /// 카드마다 따로 기억합니다. 판 전체가 기억하면 카드 하나에 마우스가 스칠 때마다
@@ -95,11 +111,40 @@ class _BoardCardViewState extends State<BoardCardView> {
     widget.onResizeStart(size);
   }
 
+  /// 다 그려진 뒤에 실제 크기를 재서 바깥에 알려줍니다.
+  ///
+  /// ── 왜 build가 끝난 뒤인가 ──
+  /// build를 하는 도중에는 아직 크기가 안 정해져 있습니다. 그림을 읽어와
+  /// 비율을 알아야 높이가 나오기 때문입니다. addPostFrameCallback은
+  /// "이번에 다 그리고 나면 불러줘"라는 뜻입니다.
+  ///
+  /// 값이 바뀌었을 때만 알립니다. 매번 알리면 화면이 끝없이 다시 그려집니다.
+  void _measureAfterBuild() {
+    WidgetsBinding.instance.addPostFrameCallback((Duration _) {
+      if (!mounted) {
+        return;
+      }
+
+      final Size? size = context.size;
+      if (size == null) {
+        return;
+      }
+      if (size == _reportedSize) {
+        return;
+      }
+
+      _reportedSize = size;
+      widget.onMeasured(size);
+    });
+  }
+
   /// 카드 한 장의 생김새를 만들어 돌려줍니다.
   @override
   Widget build(BuildContext context) {
     final AppPalette palette = AppPalette.of(context);
     final ColorScheme colors = Theme.of(context).colorScheme;
+
+    _measureAfterBuild();
 
     // 잡고 있거나 마우스를 올렸으면 도드라지게 합니다.
     final bool isRaised = widget.isActive || _isHovered;
