@@ -19,19 +19,23 @@ import 'package:flutter/material.dart';
 import '../models/board.dart';
 import '../models/reference_item.dart';
 import 'board_card_view.dart';
+import 'board_guides.dart';
 
 /// 카드를 자유롭게 늘어놓는 판입니다.
 class BoardCanvas extends StatelessWidget {
   const BoardCanvas({
     super.key,
     required this.cards,
-    required this.canvasOrigin,
+    required this.canvasRect,
+    required this.guideX,
+    required this.guideY,
     required this.itemsById,
     required this.imagePaths,
     required this.activeCardId,
     required this.onDragStart,
     required this.onDragUpdate,
     required this.onDragEnd,
+    required this.onMeasured,
     required this.onResizeStart,
     required this.onResizeUpdate,
     required this.onResizeEnd,
@@ -43,7 +47,7 @@ class BoardCanvas extends StatelessWidget {
   /// Stack은 목록의 뒤쪽에 있는 것을 위에 그립니다. 그래서 이 순서가 곧 겹침 순서입니다.
   final List<BoardCard> cards;
 
-  /// 그리는 자리의 **왼쪽 위 모서리**입니다. (판 좌표)
+  /// 그리는 자리입니다. (판 좌표)
   ///
   /// 카드는 음수 자리에도 놓일 수 있습니다. 그런데 화면 조각은 상자 안에서
   /// 0 이상이어야 클릭이 닿습니다. 그래서 카드를 놓을 때 이 값을 빼서
@@ -52,7 +56,13 @@ class BoardCanvas extends StatelessWidget {
   /// 뺀 만큼은 board_viewport.dart가 상자를 놓을 때 도로 더합니다.
   /// 그래서 화면에서 카드가 움직이지는 않습니다.
   /// (board_layout.dart의 boardCanvasRect 설명 참고)
-  final Offset canvasOrigin;
+  final Rect canvasRect;
+
+  /// 스냅 안내선을 그릴 자리입니다. 안 붙었으면 null입니다.
+  final double? guideX;
+
+  /// 스냅 안내선을 그릴 자리입니다. 안 붙었으면 null입니다.
+  final double? guideY;
 
   /// 레퍼런스 번호로 레퍼런스를 찾는 표입니다. (referenceId → ReferenceItem)
   ///
@@ -89,6 +99,12 @@ class BoardCanvas extends StatelessWidget {
   /// 카드 높이는 보통 비어 있습니다(= 그림 비율대로). 그래서 "지금 높이가 얼마인지"는
   /// 저장된 값만 봐서는 알 수 없고, **실제로 그려진 것을 재봐야** 알 수 있습니다.
   /// 그 재는 일은 카드 자신만 할 수 있어서 여기서 알려줍니다.
+  /// 카드가 **실제로 몇 픽셀로 그려졌는지** 알려줍니다.
+  ///
+  /// 스냅이 눈에 보이는 자리에 붙으려면 이 값이 필요합니다.
+  /// (board_card_view.dart의 onMeasured 설명 참고)
+  final void Function(BoardCard card, Size size) onMeasured;
+
   final void Function(BoardCard card, Size currentSize) onResizeStart;
 
   /// 크기 조절 손잡이를 끄는 동안 움직인 만큼을 알려줍니다. (판 좌표)
@@ -108,6 +124,14 @@ class BoardCanvas extends StatelessWidget {
       // 아래층(board_viewport.dart의 판 옮기기)까지 내려갑니다.
       children: <Widget>[
         for (final BoardCard card in cards) _buildPositionedCard(card),
+
+        // 안내선은 카드 위에 그립니다. 카드에 가리면 보이지 않습니다.
+        // IgnorePointer로 감싸져 있어서 클릭은 그대로 통과합니다.
+        BoardGuides(
+          canvasRect: canvasRect,
+          guideX: guideX,
+          guideY: guideY,
+        ),
       ],
     );
   }
@@ -138,9 +162,9 @@ class BoardCanvas extends StatelessWidget {
     return Positioned(
       key: ValueKey<String>(card.id),
 
-      // 판 좌표를 상자 안쪽 좌표로 옮깁니다. (위 canvasOrigin 설명 참고)
-      left: card.x - canvasOrigin.dx,
-      top: card.y - canvasOrigin.dy,
+      // 판 좌표를 상자 안쪽 좌표로 옮깁니다. (위 canvasRect 설명 참고)
+      left: card.x - canvasRect.left,
+      top: card.y - canvasRect.top,
       width: card.width,
 
       // ── height에 null이 들어가는 경우가 있습니다 ──
@@ -170,6 +194,7 @@ class BoardCanvas extends StatelessWidget {
           imagePath: imagePaths[card.referenceId],
           isActive: activeCardId == card.id,
           onRemove: () => onRemoveCard(card),
+          onMeasured: (Size size) => onMeasured(card, size),
           onResizeStart: (Size currentSize) => onResizeStart(card, currentSize),
           onResizeUpdate: (Offset delta) => onResizeUpdate(card, delta),
           onResizeEnd: () => onResizeEnd(card),

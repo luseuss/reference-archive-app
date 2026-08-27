@@ -91,7 +91,7 @@ void main() {
     test('움직인 만큼 자리가 바뀐다', () {
       final List<BoardCard> cards = <BoardCard>[makeCard('a', x: 100, y: 100)];
 
-      final List<BoardCard> result = moveCard(cards, 'a', const Offset(30, 40));
+      final List<BoardCard> result = moveCard(cards, 'a', const Offset(30, 40)).cards;
 
       expect(cardOf(result, 'a').x, 130);
       expect(cardOf(result, 'a').y, 140);
@@ -108,7 +108,7 @@ void main() {
         cards,
         'a',
         const Offset(-500, -500),
-      );
+      ).cards;
 
       expect(cardOf(result, 'a').x, -490);
       expect(cardOf(result, 'a').y, -490);
@@ -123,7 +123,7 @@ void main() {
         cards,
         'a',
         const Offset(50000, 40000),
-      );
+      ).cards;
 
       expect(cardOf(result, 'a').x, 50100);
       expect(cardOf(result, 'a').y, 40100);
@@ -134,13 +134,63 @@ void main() {
       List<BoardCard> cards = <BoardCard>[makeCard('a', x: 0, y: 0)];
 
       for (int i = 0; i < 10; i++) {
-        cards = moveCard(cards, 'a', const Offset(1000, 1000));
+        cards = moveCard(cards, 'a', const Offset(1000, 1000)).cards;
       }
 
       expect(cardOf(cards, 'a').x, 10000);
       expect(cardOf(cards, 'a').y, 10000);
     });
 
+
+    test('재서 알려준 높이를 쓰면 세로 스냅이 눈에 맞는다', () {
+      // ── 의뢰인이 "붙는 게 부자연스럽다"고 한 문제의 핵심입니다 ──
+      // 카드 높이는 보통 저장돼 있지 않습니다. 어림값(4:3)에 기대면
+      // 세로 사진에서 128픽셀이나 어긋나서, 눈에 보이지도 않는 자리에
+      // 붙습니다. 붙는 거리가 8픽셀인데 말입니다.
+      //
+      // 기준 카드: y=100, 실제 높이 300 → 아래쪽 끝이 400
+      // 움직일 카드: 실제 높이 300, y가 103이면 아래쪽이 403
+      //   → 어림값(165)을 쓰면 아래쪽을 265로 잘못 알아 안 붙습니다.
+      //   → 실제 높이를 쓰면 위쪽끼리 3만큼 차이라 붙습니다.
+      final BoardCard anchor = makeCard('anchor', x: 900, y: 100);
+      final BoardCard moving = makeCard('a', x: 900, y: 103);
+
+      final Map<String, double> measured = <String, double>{
+        anchor.id: 300,
+        moving.id: 300,
+      };
+
+      final BoardCardsUpdate update = moveCard(
+        <BoardCard>[anchor, moving],
+        'a',
+        Offset.zero,
+        measuredHeights: measured,
+      );
+
+      // 위쪽끼리 맞아서 100으로 당겨져야 합니다.
+      expect(cardOf(update.cards, 'a').y, 100);
+      expect(update.guideY, 100);
+    });
+
+    test('아래쪽 끝끼리도 실제 높이로 맞춘다', () {
+      // 기준: y=0, 높이 300 → 위 0, 가운데 150, 아래 300
+      // 움직일 것: 높이 100, y=203 → 위 203, 가운데 253, 아래 303
+      //   → 아래쪽끼리 3만큼 차이라 그쪽으로 붙습니다.
+      //
+      // 어림값(165)을 쓰면 아래쪽을 368로 잘못 알아 안 붙습니다.
+      final BoardCard anchor = makeCard('anchor', x: 900, y: 0);
+      final BoardCard moving = makeCard('a', x: 900, y: 203);
+
+      final BoardCardsUpdate update = moveCard(
+        <BoardCard>[anchor, moving],
+        'a',
+        Offset.zero,
+        measuredHeights: <String, double>{anchor.id: 300, moving.id: 100},
+      );
+
+      expect(cardOf(update.cards, 'a').y, 200);
+      expect(update.guideY, 300);
+    });
     test('원래 목록은 그대로 남는다', () {
       // 받은 목록을 직접 뜯어고치면 부른 쪽에서 "언제 바뀐 거지?" 하고 헤맵니다.
       final List<BoardCard> cards = <BoardCard>[makeCard('a', x: 100)];
@@ -160,7 +210,7 @@ void main() {
         'a',
         startSize: const Size(200, 150),
         movedSoFar: const Offset(100, 0),
-      );
+      ).cards;
 
       expect(cardOf(result, 'a').width, 300);
     });
@@ -175,7 +225,7 @@ void main() {
         'a',
         startSize: const Size(200, 150),
         movedSoFar: const Offset(100, 0),
-      );
+      ).cards;
 
       final BoardCard resized = cardOf(result, 'a');
       expect(resized.height! / resized.width, closeTo(150 / 200, 0.001));
@@ -191,13 +241,13 @@ void main() {
         'a',
         startSize: const Size(200, 150),
         movedSoFar: const Offset(100, 0),
-      );
+      ).cards;
       final List<BoardCard> withHeight = resizeCard(
         cards,
         'a',
         startSize: const Size(200, 150),
         movedSoFar: const Offset(100, 400),
-      );
+      ).cards;
 
       expect(cardOf(withHeight, 'a').width, cardOf(onlyWidth, 'a').width);
     });
@@ -210,7 +260,7 @@ void main() {
         'a',
         startSize: const Size(200, 150),
         movedSoFar: const Offset(-9999, 0),
-      );
+      ).cards;
 
       expect(cardOf(result, 'a').width, minBoardCardWidth);
     });
@@ -225,7 +275,7 @@ void main() {
         'a',
         startSize: const Size(200, 150),
         movedSoFar: const Offset(9999, 0),
-      );
+      ).cards;
 
       expect(cardOf(result, 'a').width, maxBoardCardWidth);
     });
@@ -240,13 +290,13 @@ void main() {
         'a',
         startSize: const Size(220, 293),
         movedSoFar: const Offset(400, 0),
-      );
+      ).cards;
       final List<BoardCard> farResult = resizeCard(
         far,
         'a',
         startSize: const Size(220, 293),
         movedSoFar: const Offset(400, 0),
-      );
+      ).cards;
 
       expect(cardOf(nearResult, 'a').width, cardOf(farResult, 'a').width);
       expect(cardOf(nearResult, 'a').height, cardOf(farResult, 'a').height);
@@ -263,7 +313,7 @@ void main() {
         'a',
         startSize: const Size(220, 293),
         movedSoFar: const Offset(9999, 0),
-      );
+      ).cards;
 
       final BoardCard resized = cardOf(result, 'a');
 
@@ -280,7 +330,7 @@ void main() {
         'a',
         startSize: Size.zero,
         movedSoFar: const Offset(100, 0),
-      );
+      ).cards;
 
       expect(result, cards);
     });

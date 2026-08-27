@@ -11,6 +11,7 @@
 import 'package:drift/native.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:reference_archive_app/data/app_database.dart';
 import 'package:reference_archive_app/models/board.dart';
@@ -22,6 +23,7 @@ import 'package:reference_archive_app/screens/board_screen.dart';
 import 'package:reference_archive_app/utils/id_generator.dart';
 import 'package:reference_archive_app/widgets/board_viewport.dart';
 import 'package:reference_archive_app/widgets/board_card_view.dart';
+import 'package:reference_archive_app/widgets/board_guides.dart';
 
 import '../fakes/fake_image_storage.dart';
 
@@ -319,6 +321,25 @@ void main() {
     expect(items.first.title, '노을');
   });
 
+  /// [body]를 실행하는 동안 Alt 키를 누르고 있는 것처럼 만듭니다.
+  ///
+  /// ── 왜 필요한가 ──
+  /// 스냅은 **기본은 꺼져 있고 Alt를 누르고 있을 때만 켜집니다.** 스냅이
+  /// 걸리는지 확인하려는 테스트는 실제로 Alt가 눌린 척을 해야 합니다.
+  /// 안 그러면 board_screen.dart의 `_snapEnabled`가 늘 거짓이라 스냅이
+  /// 한 번도 안 걸립니다.
+  Future<void> withAltPressed(
+    WidgetTester tester,
+    Future<void> Function() body,
+  ) async {
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
+    try {
+      await body();
+    } finally {
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
+    }
+  }
+
   /// 카드의 크기 조절 손잡이를 [dx]만큼 오른쪽으로 끕니다. (화면 좌표 기준)
   ///
   /// 손잡이는 마우스를 올렸을 때만 나타나므로, 진짜 마우스처럼 움직이는
@@ -592,5 +613,167 @@ void main() {
 
     expect(after.dx, closeTo(before.dx, 1), reason: '가만있어야 할 카드가 밀렸습니다');
     expect((await reloadCard(staying.id)).x, 900);
+  });
+
+  testWidgets('평소에는 가까이 있어도 안 붙는다', (WidgetTester tester) async {
+    // ── 기본이 뒤집혔습니다 (2026-08-28) ──
+    // 처음에는 "평소 붙고 Alt로 끄기"였는데, 의뢰인이 써보니 반대가
+    // 손에 맞았습니다. 카드를 대충 늘어놓는 시간이 훨씬 많고, 줄을 딱
+    // 맞추고 싶을 때만 가끔 스냅을 켭니다.
+    final String movingRef = await saveReference('움직일 것');
+    final String anchorRef = await saveReference('기준');
+
+    // 기준 카드의 왼쪽은 600입니다.
+    await putCardOnBoard(referenceId: anchorRef, x: 600, y: 200);
+    final BoardCard moving = await putCardOnBoard(
+      referenceId: movingRef,
+      x: 100,
+      y: 700,
+    );
+
+    await openBoard(tester);
+
+    final double scale = shownScale(tester);
+
+    // 기준의 왼쪽(600)에서 5만큼 못 미치는 자리로 끕니다. Alt를 안 눌렀으니
+    // 붙지 않고 끈 만큼 그대로 595에 놓여야 합니다.
+    final double target = 595;
+    await tester.drag(
+      find.byKey(ValueKey<String>(moving.id)),
+      Offset((target - 100) * scale, 0),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      (await reloadCard(moving.id)).x,
+      closeTo(595, 1),
+      reason: 'Alt를 안 눌렀는데 스냅이 걸렸습니다',
+    );
+  });
+
+  testWidgets('Alt를 누르고 가까이 끌면 다른 카드에 착 붙는다', (
+    WidgetTester tester,
+  ) async {
+    // ── 규칙이 맞는지는 board_snap_test가 봅니다 ──
+    // 여기서는 그 규칙이 **실제 끌기에 연결됐는지**를 봅니다. 계산은 맞는데
+    // 화면에 안 이어져 있으면 사용자에게는 없는 기능입니다.
+    final String movingRef = await saveReference('움직일 것');
+    final String anchorRef = await saveReference('기준');
+
+    // 기준 카드의 왼쪽은 600입니다.
+    await putCardOnBoard(referenceId: anchorRef, x: 600, y: 200);
+    final BoardCard moving = await putCardOnBoard(
+      referenceId: movingRef,
+      x: 100,
+      y: 700,
+    );
+
+    await openBoard(tester);
+
+    final double scale = shownScale(tester);
+
+    // 기준의 왼쪽(600)에서 5만큼 못 미치는 자리로 끕니다.
+    // Alt가 눌려 있으면 스냅이 걸려 600으로 당겨져야 합니다.
+    final double target = 595;
+    await withAltPressed(tester, () async {
+      await tester.drag(
+        find.byKey(ValueKey<String>(moving.id)),
+        Offset((target - 100) * scale, 0),
+      );
+      await tester.pumpAndSettle();
+    });
+
+    expect(
+      (await reloadCard(moving.id)).x,
+      600,
+      reason: 'Alt를 눌렀는데 스냅이 안 걸렸습니다',
+    );
+  });
+
+  testWidgets('Alt를 눌러도 멀리 있으면 안 붙는다', (WidgetTester tester) async {
+    // 아무 데나 붙으면 원하는 자리에 못 놓습니다.
+    final String movingRef = await saveReference('움직일 것');
+    final String anchorRef = await saveReference('기준');
+
+    await putCardOnBoard(referenceId: anchorRef, x: 600, y: 200);
+    final BoardCard moving = await putCardOnBoard(
+      referenceId: movingRef,
+      x: 100,
+      y: 700,
+    );
+
+    await openBoard(tester);
+
+    final double scale = shownScale(tester);
+
+    // 기준에서 한참 떨어진 자리로 끕니다.
+    await withAltPressed(tester, () async {
+      await tester.drag(
+        find.byKey(ValueKey<String>(moving.id)),
+        Offset(200 * scale, 0),
+      );
+      await tester.pumpAndSettle();
+    });
+
+    expect((await reloadCard(moving.id)).x, closeTo(300, 1));
+  });
+
+  testWidgets('Alt를 누르고 끄는 동안 안내선이 보인다', (WidgetTester tester) async {
+    // 스냅은 눈에 안 보이는 기능이라, 무엇에 맞춰졌는지 알려줘야 합니다.
+    final String movingRef = await saveReference('움직일 것');
+    final String anchorRef = await saveReference('기준');
+
+    await putCardOnBoard(referenceId: anchorRef, x: 600, y: 200);
+    final BoardCard moving = await putCardOnBoard(
+      referenceId: movingRef,
+      x: 100,
+      y: 700,
+    );
+
+    await openBoard(tester);
+
+    final double scale = shownScale(tester);
+
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
+
+    // 끌기를 **끝내지 않고** 붙은 상태에서 확인합니다.
+    // 손을 떼면 안내선이 사라지기 때문입니다.
+    final TestGesture drag = await tester.startGesture(
+      tester.getCenter(find.byKey(ValueKey<String>(moving.id))),
+    );
+    await tester.pump();
+
+    await drag.moveBy(Offset((595 - 100) * scale / 2, 0));
+    await tester.pump();
+    await drag.moveBy(Offset((595 - 100) * scale / 2, 0));
+    await tester.pump();
+
+    expect(find.byType(BoardGuides), findsOneWidget);
+    final BoardGuides guides = tester.widget(find.byType(BoardGuides));
+    expect(guides.guideX, 600, reason: '안내선이 안 그려졌습니다');
+
+    await drag.up();
+    await tester.pumpAndSettle();
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
+
+    // 손을 떼면 사라져야 합니다. 계속 떠 있으면 판이 지저분해집니다.
+    final BoardGuides after = tester.widget(find.byType(BoardGuides));
+    expect(after.guideX, isNull, reason: '손을 뗐는데 안내선이 남아 있습니다');
+  });
+
+  testWidgets('안내선이 빈 곳 끌기를 가로채지 않는다', (WidgetTester tester) async {
+    // 안내선은 판 위에 얹히는 것이라, IgnorePointer로 감싸지 않으면
+    // 클릭을 가로채서 판이 안 움직입니다.
+    // (board_canvas.dart가 바탕을 안 그리는 것과 같은 이유)
+    final String referenceId = await saveReference('노을');
+    await putCardOnBoard(referenceId: referenceId, x: 100, y: 100);
+
+    await openBoard(tester);
+
+    expect(
+      find.byType(BoardGuides).hitTestable(),
+      findsNothing,
+      reason: '안내선이 클릭을 받고 있습니다',
+    );
   });
 }

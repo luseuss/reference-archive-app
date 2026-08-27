@@ -13,36 +13,55 @@ import 'dart:ui';
 import '../models/board.dart';
 import '../theme/app_metrics.dart';
 
-/// 카드의 세로 크기를 **어림잡아** 돌려줍니다.
+/// 카드의 세로 크기를 돌려줍니다.
 ///
-/// ── 왜 어림잡나 (정확한 값을 못 구하나) ──
-/// 무드보드 카드의 높이는 그림의 원본 비율이 정합니다(사진을 잘라내지 않으려고).
-/// 그런데 그림의 비율은 파일을 다 읽어봐야 알 수 있고, 그 전에는 알 수 없습니다.
+/// ── 왜 어림잡아야 할 때가 있나 ──
+/// 무드보드 카드의 높이는 보통 **그림의 원본 비율**이 정합니다(사진을
+/// 잘라내지 않으려고). 그 비율은 파일을 다 읽어봐야 알 수 있어서, 읽기
+/// 전에는 알 수 없습니다.
 ///
-/// 이 값이 필요한 이유는 딱 하나, **카드를 판 밖으로 끌어내지 못하게 막기 위해서**
-/// 입니다. 그 용도라면 어림값으로 충분합니다. 조금 넉넉하게 잡아두면 실제 카드가
-/// 더 길더라도 윗부분은 반드시 판 안에 남아서 다시 잡을 수 있습니다.
+/// 그래서 두 곳에서 값을 찾습니다.
+///   1. [BoardCard.height] — 사용자가 직접 크기를 조절한 카드. 정확한 값입니다.
+///   2. [measuredHeights] — 화면에 그려진 카드가 **자기를 재서 알려준 값**.
+///      이것도 정확합니다. (board_card_view.dart의 onMeasured)
 ///
-/// [BoardCard.height]에 값이 들어있으면(직접 크기를 조절한 카드) 그건 정확한 값이라
-/// 그대로 씁니다.
-double estimatedBoardCardHeight(BoardCard card) {
+/// 둘 다 없을 때만 4:3으로 어림잡습니다. 그림이 아직 안 읽힌 짧은 순간입니다.
+///
+/// ── 어림값에 기대면 안 되는 이유 ──
+/// 스냅은 8픽셀 안에서 붙습니다. 그런데 4:3 어림값은 3:2 사진에서 18픽셀,
+/// 세로 사진에서는 128픽셀이나 어긋납니다. 어림값으로 스냅을 하면
+/// **눈에 보이지도 않는 자리에 붙습니다.** 실제로 그래서 고쳤습니다.
+double boardCardHeight(
+  BoardCard card, {
+  Map<String, double> measuredHeights = const <String, double>{},
+}) {
   final double? exactHeight = card.height;
   if (exactHeight != null) {
     return exactHeight;
   }
 
-  // 4:3 그림 + 아래 여유. 세로 사진은 이보다 길지만, 위에서 설명한 대로
-  // 넉넉히 잡는 쪽이 안전합니다.
+  final double? measured = measuredHeights[card.id];
+  if (measured != null) {
+    return measured;
+  }
+
+  // 그림이 아직 안 읽힌 짧은 순간에만 여기까지 옵니다.
   return card.width * 3 / 4;
 }
 
 /// 카드 한 장이 차지하는 네모를 돌려줍니다.
-Rect boardCardRect(BoardCard card) {
+///
+/// [measuredHeights]는 화면에 그려진 카드들이 재서 알려준 실제 높이입니다.
+/// 스냅처럼 **정확한 자리가 중요한 계산**에는 반드시 넘겨주세요.
+Rect boardCardRect(
+  BoardCard card, {
+  Map<String, double> measuredHeights = const <String, double>{},
+}) {
   return Rect.fromLTWH(
     card.x,
     card.y,
     card.width,
-    estimatedBoardCardHeight(card),
+    boardCardHeight(card, measuredHeights: measuredHeights),
   );
 }
 
@@ -128,7 +147,7 @@ Offset initialCardPosition(int index) {
   final int column = index % columns;
   final int row = index ~/ columns;
 
-  // 줄 간격은 어림 높이를 씁니다. 위의 estimatedBoardCardHeight와 같은 사정입니다.
+  // 줄 간격은 어림 높이를 씁니다. 위의 boardCardHeight와 같은 사정입니다.
   final double rowStep = defaultBoardCardWidth * 3 / 4 + boardPlacementSpacing;
 
   return Offset(

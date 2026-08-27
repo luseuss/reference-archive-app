@@ -14,6 +14,7 @@ import 'dart:ui';
 
 import '../models/board.dart';
 import 'board_layout.dart';
+import 'board_snap.dart';
 
 /// 목록에서 이 번호를 가진 카드가 몇 번째인지 찾습니다. 없으면 -1입니다.
 int indexOfCard(List<BoardCard> cards, String cardId) {
@@ -63,32 +64,93 @@ List<BoardCard> raiseCardToTop(List<BoardCard> cards, String cardId) {
   ];
 }
 
-/// 이 카드를 [delta]만큼 옮긴 새 목록을 돌려줍니다.
+/// 카드를 옮기거나 크기를 바꾼 결과입니다.
+///
+/// ── 왜 목록만 돌려주지 않나 ──
+/// 스냅이 붙었을 때 **어디에 붙었는지**를 화면이 알아야 안내선을 그립니다.
+/// 목록만 돌려주면 "붙었는지 아닌지"를 화면에서 다시 계산해야 하고,
+/// 그러면 규칙이 두 군데로 갈라집니다.
+class BoardCardsUpdate {
+  const BoardCardsUpdate(this.cards, {this.guideX, this.guideY});
+
+  /// 바뀐 카드 목록입니다.
+  final List<BoardCard> cards;
+
+  /// 세로 안내선을 그릴 자리입니다(판 좌표 x). 안 붙었으면 null입니다.
+  final double? guideX;
+
+  /// 가로 안내선을 그릴 자리입니다(판 좌표 y). 안 붙었으면 null입니다.
+  final double? guideY;
+}
+
+/// 이 카드를 [delta]만큼 옮긴 결과를 돌려줍니다.
 ///
 /// **어느 쪽으로도 붙잡지 않습니다.** 판에 사방으로 끝이 없습니다.
-///
 /// 음수 자리도 괜찮습니다. 그리는 자리가 카드를 따라 움직여서 클릭이
 /// 계속 닿습니다. (board_layout.dart의 boardCanvasRect 설명 참고)
-List<BoardCard> moveCard(
+///
+/// [snap]이 참이면 다른 카드에 착 붙습니다. 평소에는 거짓이고, 사용자가
+/// Alt를 누르고 있을 때만 참으로 넘어옵니다 — 대충 늘어놓을 때가 훨씬
+/// 많고, 줄을 딱 맞추고 싶을 때만 잠깐 켜는 편이 손에 맞았습니다.
+///
+/// [useGrid]는 격자 스냅입니다. **카드끼리 안 맞았을 때만** 쓰입니다.
+/// (board_snap.dart 설명 참고)
+BoardCardsUpdate moveCard(
   List<BoardCard> cards,
   String cardId,
-  Offset delta,
-) {
+  Offset delta, {
+  bool snap = true,
+  bool useGrid = false,
+
+  /// 화면에 그려진 카드들이 재서 알려준 실제 높이입니다.
+  /// 스냅이 눈에 보이는 자리에 붙으려면 이게 있어야 합니다.
+  /// (board_layout.dart의 boardCardHeight 설명 참고)
+  Map<String, double> measuredHeights = const <String, double>{},
+}) {
   final int index = indexOfCard(cards, cardId);
   if (index == -1) {
-    return cards;
+    return BoardCardsUpdate(cards);
   }
 
   final BoardCard current = cards[index];
 
-  return <BoardCard>[
-    ...cards.sublist(0, index),
-    current.copyWith(x: current.x + delta.dx, y: current.y + delta.dy),
-    ...cards.sublist(index + 1),
-  ];
+  // 먼저 손이 움직인 만큼 그대로 옮깁니다.
+  BoardCard moved = current.copyWith(
+    x: current.x + delta.dx,
+    y: current.y + delta.dy,
+  );
+
+  double? guideX;
+  double? guideY;
+
+  if (snap) {
+    final BoardSnapResult result = snapMovingCard(
+      moving: boardCardRect(moved, measuredHeights: measuredHeights),
+      // 자기 자신은 후보에서 빼야 합니다. 자기한테 붙으면 안 움직입니다.
+      others: _rectsExcept(cards, cardId, measuredHeights),
+      useGrid: useGrid,
+    );
+
+    moved = moved.copyWith(
+      x: moved.x + result.offset.dx,
+      y: moved.y + result.offset.dy,
+    );
+    guideX = result.guideX;
+    guideY = result.guideY;
+  }
+
+  return BoardCardsUpdate(
+    <BoardCard>[
+      ...cards.sublist(0, index),
+      moved,
+      ...cards.sublist(index + 1),
+    ],
+    guideX: guideX,
+    guideY: guideY,
+  );
 }
 
-/// 이 카드의 크기를 바꾼 새 목록을 돌려줍니다.
+/// 이 카드의 크기를 바꾼 결과를 돌려줍니다.
 ///
 /// [startSize]는 **손잡이를 잡던 순간** 카드가 실제로 그려져 있던 크기이고,
 /// [movedSoFar]는 그 뒤로 지금까지 끈 거리의 합입니다.
@@ -106,18 +168,28 @@ List<BoardCard> moveCard(
 /// 세로로 끈 거리(`movedSoFar.dy`)는 일부러 안 씁니다. 가로세로를 함께 보면
 /// 어느 쪽을 따를지 정해야 하는데, 어느 쪽으로 정해도 다른 쪽으로 끌 때
 /// 손가락과 모서리가 어긋납니다. 가로 하나만 보는 편이 훨씬 예측하기 쉽습니다.
-List<BoardCard> resizeCard(
+///
+/// 스냅은 **오른쪽 모서리만** 봅니다. 세로가 비율을 따라오기 때문입니다.
+/// (board_snap.dart의 snapResizingCard 설명 참고)
+BoardCardsUpdate resizeCard(
   List<BoardCard> cards,
   String cardId, {
   required Size startSize,
   required Offset movedSoFar,
+  bool snap = true,
+  bool useGrid = false,
+
+  /// 화면에 그려진 카드들이 재서 알려준 실제 높이입니다.
+  /// 스냅이 눈에 보이는 자리에 붙으려면 이게 있어야 합니다.
+  /// (board_layout.dart의 boardCardHeight 설명 참고)
+  Map<String, double> measuredHeights = const <String, double>{},
 }) {
   final int index = indexOfCard(cards, cardId);
 
   // 가로가 0이면 비율을 구할 수 없습니다(0으로 나누게 됩니다).
   // 그림이 아직 안 읽혀서 크기를 못 잰 경우입니다.
   if (index == -1 || startSize.width <= 0) {
-    return cards;
+    return BoardCardsUpdate(cards);
   }
 
   final BoardCard current = cards[index];
@@ -128,13 +200,49 @@ List<BoardCard> resizeCard(
   // 가로를 먼저 정하고 세로는 비율대로 따라갑니다.
   // 판에 끝이 없어서 이제 최소·최대 크기만 봅니다.
   // (자세한 이유는 board_layout.dart의 clampResizedCardWidth 설명을 보세요)
-  final double width = clampResizedCardWidth(startSize.width + movedSoFar.dx);
+  double width = clampResizedCardWidth(startSize.width + movedSoFar.dx);
 
-  final double height = width * heightPerWidth;
+  double? guideX;
 
-  return <BoardCard>[
-    ...cards.sublist(0, index),
-    current.copyWith(width: width, height: height),
-    ...cards.sublist(index + 1),
-  ];
+  if (snap) {
+    final BoardSnapResult result = snapResizingCard(
+      resizing: Rect.fromLTWH(
+        current.x,
+        current.y,
+        width,
+        width * heightPerWidth,
+      ),
+      others: _rectsExcept(cards, cardId, measuredHeights),
+      useGrid: useGrid,
+    );
+
+    // 여기서 offset.dx는 **자리**가 아니라 **가로 크기**에 더하는 값입니다.
+    // 왼쪽 위는 그대로 두고 오른쪽으로만 늘어나기 때문입니다.
+    width = clampResizedCardWidth(width + result.offset.dx);
+    guideX = result.guideX;
+  }
+
+  return BoardCardsUpdate(
+    <BoardCard>[
+      ...cards.sublist(0, index),
+      current.copyWith(width: width, height: width * heightPerWidth),
+      ...cards.sublist(index + 1),
+    ],
+    guideX: guideX,
+  );
+}
+
+/// 이 카드를 뺀 나머지 카드들의 네모를 모읍니다. 스냅 후보로 씁니다.
+List<Rect> _rectsExcept(
+  List<BoardCard> cards,
+  String cardId,
+  Map<String, double> measuredHeights,
+) {
+  final List<Rect> rects = <Rect>[];
+  for (final BoardCard card in cards) {
+    if (card.id != cardId) {
+      rects.add(boardCardRect(card, measuredHeights: measuredHeights));
+    }
+  }
+  return rects;
 }
