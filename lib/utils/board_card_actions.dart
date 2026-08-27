@@ -65,8 +65,10 @@ List<BoardCard> raiseCardToTop(List<BoardCard> cards, String cardId) {
 
 /// 이 카드를 [delta]만큼 옮긴 새 목록을 돌려줍니다.
 ///
-/// 왼쪽 위 바깥으로만 안 나가게 붙잡습니다. 오른쪽·아래로는 끝이 없습니다.
-/// (왜 그런지는 board_layout.dart의 clampToCanvas 설명을 보세요)
+/// **어느 쪽으로도 붙잡지 않습니다.** 판에 사방으로 끝이 없습니다.
+///
+/// 음수 자리도 괜찮습니다. 그리는 자리가 카드를 따라 움직여서 클릭이
+/// 계속 닿습니다. (board_layout.dart의 boardCanvasRect 설명 참고)
 List<BoardCard> moveCard(
   List<BoardCard> cards,
   String cardId,
@@ -78,14 +80,10 @@ List<BoardCard> moveCard(
   }
 
   final BoardCard current = cards[index];
-  final Offset moved = clampToCanvas(
-    current.x + delta.dx,
-    current.y + delta.dy,
-  );
 
   return <BoardCard>[
     ...cards.sublist(0, index),
-    current.copyWith(x: moved.dx, y: moved.dy),
+    current.copyWith(x: current.x + delta.dx, y: current.y + delta.dy),
     ...cards.sublist(index + 1),
   ];
 }

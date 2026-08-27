@@ -264,26 +264,6 @@ void main() {
     expect(saved.y, closeTo(100 + 60 / scale, 1));
   });
 
-  testWidgets('판 밖으로는 끌어낼 수 없다', (WidgetTester tester) async {
-    // 판 밖에 놓이면 화면에 안 그려져서, 사용자 눈에는 사진이 사라진 것과 같습니다.
-    final String referenceId = await saveReference('노을');
-    final BoardCard card = await putCardOnBoard(
-      referenceId: referenceId,
-      x: 100,
-      y: 100,
-    );
-
-    await openBoard(tester);
-
-    // 왼쪽 위로 한참 밀어냅니다.
-    await tester.drag(find.byType(BoardCardView), const Offset(-500, -500));
-    await tester.pumpAndSettle();
-
-    final BoardCard saved = await reloadCard(card.id);
-    expect(saved.x, 0);
-    expect(saved.y, 0);
-  });
-
   testWidgets('카드를 잡으면 맨 위로 올라온다', (WidgetTester tester) async {
     // 아래 깔린 카드를 꺼내려고 끌었는데 여전히 덮여 있으면
     // 무엇을 잡았는지 보이지 않습니다.
@@ -536,9 +516,11 @@ void main() {
     expect((await reloadCard(card.id)).y, greaterThan(1200));
   });
 
-  testWidgets('왼쪽 위로는 0에서 멈춘다', (WidgetTester tester) async {
-    // 음수 자리에 놓인 카드는 클릭이 안 닿아서 잡을 수가 없습니다.
-    // 그래서 이쪽만 막아둡니다.
+  testWidgets('왼쪽·위로도 계속 끌 수 있다', (WidgetTester tester) async {
+    // ── 사방 무한 (4단계 3번 뒤 보완) ──
+    // 전에는 (0, 0)이 벽이었습니다. 음수 자리에서는 클릭이 안 닿기 때문에
+    // 막아뒀는데, 실제로 써보니 자주 부딪혔습니다.
+    // 이제는 그리는 상자를 통째로 밀어서 그리므로 막을 이유가 없습니다.
     final String referenceId = await saveReference('노을');
     final BoardCard card = await putCardOnBoard(
       referenceId: referenceId,
@@ -548,11 +530,67 @@ void main() {
 
     await openBoard(tester);
 
-    await tester.drag(find.byType(BoardCardView), const Offset(-3000, -3000));
+    final double scale = shownScale(tester);
+
+    await tester.drag(find.byType(BoardCardView), const Offset(-400, -300));
     await tester.pumpAndSettle();
 
     final BoardCard saved = await reloadCard(card.id);
-    expect(saved.x, 0);
-    expect(saved.y, 0);
+
+    expect(saved.x, lessThan(0), reason: '왼쪽 벽에 막혔습니다');
+    expect(saved.y, lessThan(0), reason: '위쪽 벽에 막혔습니다');
+    expect(saved.x, closeTo(100 - 400 / scale, 2));
+    expect(saved.y, closeTo(100 - 300 / scale, 2));
+  });
+
+  testWidgets('음수 자리로 간 카드도 다시 잡을 수 있다', (WidgetTester tester) async {
+    // ── 벽을 세웠던 유일한 이유가 이것입니다 ──
+    // Flutter는 상자 바깥의 클릭을 자식에게 안 내려보냅니다. 음수 자리에
+    // 놓인 카드가 화면에는 보이는데 안 잡히면, 눈에 보이는 채로 못 쓰게 됩니다.
+    final String referenceId = await saveReference('노을');
+    await putCardOnBoard(
+      referenceId: referenceId,
+      x: -800,
+      y: -600,
+    );
+
+    await openBoard(tester);
+
+    expect(
+      find.byType(BoardCardView).hitTestable(),
+      findsOneWidget,
+      reason: '음수 자리 카드가 보이기는 하는데 클릭이 안 닿습니다',
+    );
+  });
+
+  testWidgets('왼쪽으로 끌어도 다른 카드는 제자리에 있다', (WidgetTester tester) async {
+    // 그리는 상자의 원점이 따라 움직이므로, 화면에서는 아무 일도 없어야 합니다.
+    // 원점 보정이 잘못되면 한 장을 끌 때 나머지가 우르르 밀립니다.
+    final String movingRef = await saveReference('움직일 것');
+    final String stayingRef = await saveReference('가만있을 것');
+
+    await putCardOnBoard(referenceId: movingRef, x: 100, y: 300);
+    final BoardCard staying = await putCardOnBoard(
+      referenceId: stayingRef,
+      x: 900,
+      y: 300,
+    );
+
+    await openBoard(tester);
+
+    // ── 이름표로 찾습니다 ──
+    // 카드를 잡으면 목록 맨 뒤로 옮겨지므로(맨 위에 그리려고), 몇 번째냐로
+    // 찾으면 엉뚱한 카드를 보게 됩니다. (PR #18에서 겪은 것과 같은 이유)
+    final Finder stayingCard = find.byKey(ValueKey<String>(staying.id));
+
+    final Offset before = tester.getTopLeft(stayingCard);
+
+    await tester.drag(find.byType(BoardCardView).first, const Offset(-400, 0));
+    await tester.pumpAndSettle();
+
+    final Offset after = tester.getTopLeft(stayingCard);
+
+    expect(after.dx, closeTo(before.dx, 1), reason: '가만있어야 할 카드가 밀렸습니다');
+    expect((await reloadCard(staying.id)).x, 900);
   });
 }

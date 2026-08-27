@@ -25,6 +25,7 @@ class BoardCanvas extends StatelessWidget {
   const BoardCanvas({
     super.key,
     required this.cards,
+    required this.canvasOrigin,
     required this.itemsById,
     required this.imagePaths,
     required this.activeCardId,
@@ -41,6 +42,17 @@ class BoardCanvas extends StatelessWidget {
   ///
   /// Stack은 목록의 뒤쪽에 있는 것을 위에 그립니다. 그래서 이 순서가 곧 겹침 순서입니다.
   final List<BoardCard> cards;
+
+  /// 그리는 자리의 **왼쪽 위 모서리**입니다. (판 좌표)
+  ///
+  /// 카드는 음수 자리에도 놓일 수 있습니다. 그런데 화면 조각은 상자 안에서
+  /// 0 이상이어야 클릭이 닿습니다. 그래서 카드를 놓을 때 이 값을 빼서
+  /// **상자 안쪽 좌표로 옮겨** 놓습니다.
+  ///
+  /// 뺀 만큼은 board_viewport.dart가 상자를 놓을 때 도로 더합니다.
+  /// 그래서 화면에서 카드가 움직이지는 않습니다.
+  /// (board_layout.dart의 boardCanvasRect 설명 참고)
+  final Offset canvasOrigin;
 
   /// 레퍼런스 번호로 레퍼런스를 찾는 표입니다. (referenceId → ReferenceItem)
   ///
@@ -125,8 +137,10 @@ class BoardCanvas extends StatelessWidget {
 
     return Positioned(
       key: ValueKey<String>(card.id),
-      left: card.x,
-      top: card.y,
+
+      // 판 좌표를 상자 안쪽 좌표로 옮깁니다. (위 canvasOrigin 설명 참고)
+      left: card.x - canvasOrigin.dx,
+      top: card.y - canvasOrigin.dy,
       width: card.width,
 
       // ── height에 null이 들어가는 경우가 있습니다 ──

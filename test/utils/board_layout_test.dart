@@ -5,7 +5,7 @@
 //
 // "어느 배율로 어디를 보고 있는가"는 board_view_test.dart가 봅니다.
 
-import 'dart:ui' show Offset, Rect, Size;
+import 'dart:ui' show Offset, Rect;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:reference_archive_app/models/board.dart';
@@ -80,63 +80,67 @@ void main() {
     });
   });
 
-  group('카드를 그릴 자리의 크기', () {
-    test('카드가 없어도 최소 크기는 나온다', () {
-      // 카드가 몇 장 없다고 판이 손바닥만 하면 어색합니다.
-      final Size size = boardCanvasSize(<BoardCard>[]);
+  group('카드를 그릴 자리', () {
+    test('카드가 없으면 기본 크기로 왼쪽 위에 둔다', () {
+      final Rect rect = boardCanvasRect(<BoardCard>[]);
 
-      expect(size.width, minCanvasWidth);
-      expect(size.height, minCanvasHeight);
+      expect(rect.topLeft, Offset.zero);
+      expect(rect.width, minCanvasWidth);
+      expect(rect.height, minCanvasHeight);
     });
 
-    test('카드가 오른쪽으로 멀리 가면 그만큼 넓어진다', () {
-      // ── 이게 "판에 끝이 없다"의 알맹이입니다 ──
-      // 카드를 오른쪽으로 끌면 그릴 자리가 따라 늘어납니다. 그래서 끝에
-      // 부딪히는 일이 없습니다.
-      final BoardCard far = makeCard(x: 5000, y: 0, width: 200, height: 100);
+    test('카드 둘레로 사방에 여유를 둔다', () {
+      // 카드가 상자 끝에 딱 붙어 있으면 그쪽으로 더 밀 자리가 없습니다.
+      final BoardCard card = makeCard(x: 100, y: 200, width: 300, height: 200);
 
-      final Size size = boardCanvasSize(<BoardCard>[far]);
+      final Rect rect = boardCanvasRect(<BoardCard>[card]);
 
-      expect(size.width, 5200 + canvasBreathingRoom);
+      expect(rect.left, 100 - canvasBreathingRoom);
+      expect(rect.top, 200 - canvasBreathingRoom);
+      expect(rect.right, 400 + canvasBreathingRoom);
+      expect(rect.bottom, 400 + canvasBreathingRoom);
     });
 
-    test('아래로 멀리 가도 마찬가지다', () {
-      final BoardCard far = makeCard(x: 0, y: 4000, width: 200, height: 100);
+    test('카드가 음수 자리에 있으면 상자도 따라 간다', () {
+      // ── 이게 사방 무한의 알맹이입니다 ──
+      // 상자를 (0, 0)에 고정해두면 음수 자리 카드는 상자 바깥이 되어
+      // **클릭이 안 닿습니다.** 상자가 따라가면 그럴 일이 없습니다.
+      final BoardCard card = makeCard(x: -900, y: -700, width: 200, height: 150);
 
-      expect(
-        boardCanvasSize(<BoardCard>[far]).height,
-        4100 + canvasBreathingRoom,
-      );
+      final Rect rect = boardCanvasRect(<BoardCard>[card]);
+
+      expect(rect.left, lessThan(-900));
+      expect(rect.top, lessThan(-700));
     });
 
-    test('카드가 끝에 닿아도 더 밀 자리가 남는다', () {
-      // 카드의 오른쪽 끝보다 자리가 넓어야 계속 끌 수 있습니다.
-      final BoardCard card = makeCard(x: 3000, y: 0, width: 200, height: 100);
+    test('어느 카드든 상자 안에 들어온다', () {
+      // 상자 밖으로 삐져나온 카드는 클릭이 안 닿습니다.
+      // 어느 방향이든 반드시 안에 있어야 합니다.
+      final List<BoardCard> cards = <BoardCard>[
+        makeCard(x: -5000, y: 300, width: 200, height: 150),
+        makeCard(x: 4000, y: -2000, width: 200, height: 150),
+        makeCard(x: 0, y: 0, width: 200, height: 150),
+      ];
 
-      expect(
-        boardCanvasSize(<BoardCard>[card]).width,
-        greaterThan(3200),
-      );
-    });
-  });
+      final Rect rect = boardCanvasRect(cards);
 
-  group('카드를 판 안으로 붙잡기', () {
-    test('오른쪽·아래로는 얼마든지 갈 수 있다', () {
-      // 판에 끝이 없습니다. 아무리 큰 값이어도 그대로 둡니다.
-      expect(clampToCanvas(99999, 88888), const Offset(99999, 88888));
-    });
-
-    test('왼쪽으로 넘어가면 0으로 붙인다', () {
-      // 음수 자리에 놓인 카드는 클릭이 안 닿아서 잡을 수가 없습니다.
-      expect(clampToCanvas(-50, 100), const Offset(0, 100));
+      for (final BoardCard card in cards) {
+        expect(rect.contains(boardCardRect(card).topLeft), isTrue);
+        expect(rect.contains(boardCardRect(card).bottomRight), isTrue);
+      }
     });
 
-    test('위로 넘어가도 0으로 붙인다', () {
-      expect(clampToCanvas(100, -50), const Offset(100, 0));
-    });
+    test('카드가 멀어지면 상자도 넓어진다', () {
+      final Rect near = boardCanvasRect(<BoardCard>[
+        makeCard(x: 0, y: 0, width: 200, height: 150),
+      ]);
+      final Rect far = boardCanvasRect(<BoardCard>[
+        makeCard(x: 0, y: 0, width: 200, height: 150),
+        makeCard(x: 9000, y: 8000, width: 200, height: 150),
+      ]);
 
-    test('둘 다 넘어가면 둘 다 붙인다', () {
-      expect(clampToCanvas(-10, -10), Offset.zero);
+      expect(far.width, greaterThan(near.width));
+      expect(far.height, greaterThan(near.height));
     });
   });
 
