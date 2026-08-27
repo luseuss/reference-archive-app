@@ -93,11 +93,16 @@ void main() {
   }
 
   /// 판에 카드를 하나 올리고 그 카드를 돌려줍니다.
+  ///
+  /// [height]를 넣으면 **크기를 이미 조절해둔 카드**가 됩니다. 비워두면
+  /// 그림 비율대로 그려집니다(실제 앱에서 새로 담은 카드와 같은 상태).
   Future<BoardCard> putCardOnBoard({
     required String referenceId,
     double x = 100,
     double y = 100,
     int zOrder = 0,
+    double width = defaultBoardCardWidth,
+    double? height,
   }) async {
     final DateTime now = DateTime.now().toUtc();
     final BoardCard card = BoardCard(
@@ -106,6 +111,8 @@ void main() {
       referenceId: referenceId,
       x: x,
       y: y,
+      width: width,
+      height: height,
       zOrder: zOrder,
       createdAt: now,
       updatedAt: now,
@@ -278,7 +285,7 @@ void main() {
   ///
   /// 손잡이는 마우스를 올렸을 때만 나타나므로, 진짜 마우스처럼 움직이는
   /// 포인터를 만들어 카드 위로 옮긴 뒤 끕니다.
-  Future<void> dragResizeHandle(WidgetTester tester, double dx) async {
+  Future<TestGesture> dragResizeHandle(WidgetTester tester, double dx) async {
     final TestGesture mouse = await tester.createGesture(
       kind: PointerDeviceKind.mouse,
     );
@@ -304,6 +311,10 @@ void main() {
 
     await mouse.up();
     await tester.pumpAndSettle();
+
+    // 마우스를 그대로 돌려줍니다. 한 화면에 마우스를 두 개 만들면
+    // Flutter가 "같은 장치가 두 번 들어왔다"며 멈춥니다.
+    return mouse;
   }
 
   testWidgets('손잡이를 끌면 카드가 커지고 그 크기가 저장된다', (WidgetTester tester) async {
@@ -369,5 +380,48 @@ void main() {
     final BoardCard saved = await reloadCard(card.id);
     expect(saved.x, 300);
     expect(saved.y, 200);
+  });
+
+  testWidgets('세로 사진을 한껏 키워도 손잡이를 다시 잡을 수 있다', (
+    WidgetTester tester,
+  ) async {
+    // ── 왜 이걸 확인하나 ──
+    // 크기 조절은 가로세로 비율을 고정합니다. 그래서 가로만 판 안으로 붙잡으면
+    // **세로가 판 밖으로 나갑니다.** 손잡이는 카드의 오른쪽 아래에 있어서,
+    // 그렇게 되면 손잡이도 판 밖으로 나가 **다시 잡을 수가 없습니다.**
+    // 크기는 손을 뗄 때 저장되므로 앱을 껐다 켜도 그대로입니다.
+    //
+    // 3:4 세로 사진(220 × 293)을 판 맨 위에 두고 한껏 키워봅니다.
+    final String referenceId = await saveReference('세로 사진');
+    final BoardCard card = await putCardOnBoard(
+      referenceId: referenceId,
+      x: 0,
+      y: 0,
+      width: 220,
+      height: 293,
+    );
+
+    await openBoard(tester);
+
+    // 화면에서 900픽셀 오른쪽으로. 판이 줄여서 그려지므로 판 위에서는
+    // 이보다 더 많이 움직입니다(그래서 한계까지 닿습니다).
+    final TestGesture mouse = await dragResizeHandle(tester, 900);
+
+    // (1) 저장된 크기가 판 안에 들어와 있어야 합니다.
+    final BoardCard saved = await reloadCard(card.id);
+    expect(saved.height, isNotNull);
+    expect(saved.y + saved.height!, lessThanOrEqualTo(boardHeight));
+
+    // (2) 그리고 손잡이를 **실제로 다시 누를 수 있어야** 합니다.
+    // 위젯 트리에 있는 것만으로는 부족합니다. 판 밖으로 나가면 트리에는
+    // 남아 있으면서 클릭만 안 닿는 상태가 되기 때문입니다.
+    await mouse.moveTo(tester.getCenter(find.byType(BoardCardView)));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byIcon(Icons.open_in_full).hitTestable(),
+      findsOneWidget,
+      reason: '손잡이가 판 밖으로 나가서 다시 잡을 수 없습니다',
+    );
   });
 }

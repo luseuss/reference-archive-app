@@ -171,17 +171,51 @@ Offset zoomAroundPoint({
 
 /// 크기 조절 중인 카드의 가로 크기를 붙잡아둡니다.
 ///
-/// 두 가지를 함께 봅니다.
+/// 세 가지를 함께 봅니다.
 ///   1. 너무 작거나 크지 않게 (minBoardCardWidth ~ maxBoardCardWidth)
-///   2. **판 오른쪽 끝을 넘지 않게** — 넘어가면 카드의 일부가 판 밖으로 나가서
-///      보이지 않게 됩니다. 카드를 옮길 때 막는 것과 같은 이유입니다.
+///   2. **판 오른쪽 끝을 넘지 않게**
+///   3. **판 아래쪽 끝을 넘지 않게**
 ///
-/// [cardX]는 카드의 왼쪽 끝 위치입니다. 크기를 키울 때 왼쪽 위는 그대로 두고
-/// 오른쪽 아래로만 늘어나므로, 남은 자리는 여기서부터 판 끝까지입니다.
-double clampResizedCardWidth(double width, double cardX) {
-  // 판 끝에 바짝 붙은 카드는 남은 자리가 최소 크기보다 작을 수 있습니다.
-  // 그대로 두면 clamp가 "최솟값이 최댓값보다 크다"며 오류를 냅니다.
-  final double room = max(minBoardCardWidth, boardWidth - cardX);
+/// ── 왜 가로를 구하는데 세로까지 보나 ──
+/// 크기 조절은 가로세로 비율을 고정한 채 이뤄집니다. 그래서 가로를 키우면
+/// 세로도 따라 커지고, 가로만 막아서는 **세로가 판 밖으로 나갑니다.**
+///
+/// 그냥 안 보이는 것으로 끝나지 않습니다. 크기 조절 손잡이는 카드의
+/// **오른쪽 아래**에 있어서, 카드 아래쪽이 판 밖으로 나가면 손잡이도 함께
+/// 나갑니다. 그러면 **다시 잡아서 줄일 수가 없습니다.** 크기는 손을 뗄 때
+/// 저장되므로 앱을 껐다 켜도 그대로입니다. 판에서 내렸다 다시 담는 것
+/// 말고는 되돌릴 방법이 없어집니다.
+///
+/// [cardX], [cardY]는 카드의 왼쪽 위 모서리 위치입니다. 크기를 키울 때
+/// 왼쪽 위는 그대로 두고 오른쪽 아래로만 늘어나므로, 남은 자리는 여기서부터
+/// 판의 오른쪽 끝·아래쪽 끝까지입니다.
+///
+/// [heightPerWidth]는 세로 ÷ 가로입니다. 4:3 가로 사진이면 0.75,
+/// 3:4 세로 사진이면 약 1.33입니다. **0이면 비율을 모른다는 뜻**이고
+/// (그림이 아직 안 읽혀 크기를 못 잰 경우), 그때는 세로를 따지지 않습니다.
+double clampResizedCardWidth({
+  required double width,
+  required double cardX,
+  required double cardY,
+  required double heightPerWidth,
+}) {
+  // 오른쪽으로 남은 자리입니다.
+  //
+  // max(min...)으로 감싸는 이유: 판 끝에 바짝 붙은 카드는 남은 자리가 최소
+  // 크기보다 작을 수 있습니다. 그대로 두면 아래 clamp가 "최솟값이 최댓값보다
+  // 크다"며 오류를 냅니다.
+  final double roomRight = max(minBoardCardWidth, boardWidth - cardX);
 
-  return width.clamp(minBoardCardWidth, min(maxBoardCardWidth, room));
+  // 아래로 남은 자리를 **가로로 환산한** 값입니다.
+  //
+  // 세로 = 가로 × heightPerWidth 이므로, 뒤집으면 가로 = 세로 ÷ heightPerWidth.
+  // 비율을 모를 때(0)는 나눌 수 없으니 세로 제한이 없는 셈 칩니다.
+  final double roomBelow = heightPerWidth <= 0
+      ? maxBoardCardWidth
+      : max(minBoardCardWidth, (boardHeight - cardY) / heightPerWidth);
+
+  // 셋 중 가장 빡빡한 것을 따릅니다.
+  final double largest = min(maxBoardCardWidth, min(roomRight, roomBelow));
+
+  return width.clamp(minBoardCardWidth, largest);
 }

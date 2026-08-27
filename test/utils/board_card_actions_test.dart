@@ -199,6 +199,47 @@ void main() {
       expect(cardOf(result, 'a').width, 300);
     });
 
+    test('세로 사진을 키워도 카드 아래가 판 밖으로 안 나간다', () {
+      // ── 왜 이걸 확인하나 ──
+      // 손잡이는 카드의 **오른쪽 아래**에 있습니다. 카드 아래쪽이 판 밖으로
+      // 나가면 손잡이도 함께 나가서, 다시 잡아 줄일 수가 없게 됩니다.
+      // 크기는 손을 뗄 때 저장되므로 앱을 껐다 켜도 그대로입니다.
+      //
+      // 3:4 세로 사진(220 x 293)을 판 맨 위에서 최대한 키워봅니다.
+      final List<BoardCard> cards = <BoardCard>[makeCard('a', x: 0, y: 0)];
+
+      final List<BoardCard> result = resizeCard(
+        cards,
+        'a',
+        startSize: const Size(220, 293),
+        movedSoFar: const Offset(9999, 0),
+      );
+
+      final BoardCard resized = cardOf(result, 'a');
+
+      expect(resized.y + resized.height!, lessThanOrEqualTo(boardHeight));
+    });
+
+    test('아래쪽에 놓인 카드는 그만큼만 커진다', () {
+      // 판 아래쪽 끝에서 400만큼 위에 있는 4:3 가로 사진입니다.
+      // 세로가 400을 넘지 못하므로 가로도 따라서 막힙니다.
+      final List<BoardCard> cards = <BoardCard>[
+        makeCard('a', x: 0, y: boardHeight - 400),
+      ];
+
+      final List<BoardCard> result = resizeCard(
+        cards,
+        'a',
+        startSize: const Size(200, 150),
+        movedSoFar: const Offset(9999, 0),
+      );
+
+      final BoardCard resized = cardOf(result, 'a');
+
+      expect(resized.height, lessThanOrEqualTo(400));
+      expect(resized.y + resized.height!, lessThanOrEqualTo(boardHeight));
+    });
+
     test('처음 크기를 못 쟀으면 그대로 둔다', () {
       // 그림이 아직 안 읽혀서 가로가 0인 경우입니다.
       // 그대로 계산하면 0으로 나누게 됩니다.

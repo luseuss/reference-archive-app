@@ -125,11 +125,21 @@ List<BoardCard> resizeCard(
 
   final BoardCard current = cards[index];
 
+  // 세로 ÷ 가로. 크기를 바꾸는 내내 이 비율을 그대로 지킵니다.
+  final double heightPerWidth = startSize.height / startSize.width;
+
+  // 가로를 먼저 정합니다. 이때 판의 오른쪽 끝뿐 아니라 **아래쪽 끝**도 함께
+  // 봅니다. 비율이 고정이라 가로를 키우면 세로도 따라 커지기 때문입니다.
+  // (자세한 이유는 board_layout.dart의 clampResizedCardWidth 설명을 보세요)
   final double width = clampResizedCardWidth(
-    startSize.width + movedSoFar.dx,
-    current.x,
+    width: startSize.width + movedSoFar.dx,
+    cardX: current.x,
+    cardY: current.y,
+    heightPerWidth: heightPerWidth,
   );
-  final double height = width * (startSize.height / startSize.width);
+
+  // 세로는 가로를 따라갑니다. 가로가 이미 판 안으로 붙잡혔으므로 세로도 안전합니다.
+  final double height = width * heightPerWidth;
 
   return <BoardCard>[
     ...cards.sublist(0, index),

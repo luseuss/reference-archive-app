@@ -280,25 +280,91 @@ void main() {
   });
 
   group('크기 조절 중 카드 가로 크기 붙잡기', () {
+    /// 테스트에서 읽기 쉬우라고 만든 도우미입니다.
+    ///
+    /// 기본값은 **가로 사진(4:3)이 판 왼쪽 위에 있는 경우**입니다.
+    /// 그 상태에서는 판 아래쪽까지 여유가 넉넉해서, 세로 때문에 걸리는 일이
+    /// 없습니다. 그래서 가로 쪽만 보고 싶은 테스트는 기본값을 그대로 씁니다.
+    double clampWidth(
+      double width, {
+      double cardX = 0,
+      double cardY = 0,
+      double heightPerWidth = 3 / 4,
+    }) {
+      return clampResizedCardWidth(
+        width: width,
+        cardX: cardX,
+        cardY: cardY,
+        heightPerWidth: heightPerWidth,
+      );
+    }
+
     test('너무 작게는 못 줄인다', () {
       // 더 작아지면 손잡이와 내리기 버튼이 카드보다 커져서 잡을 수가 없습니다.
-      expect(clampResizedCardWidth(1, 0), minBoardCardWidth);
+      expect(clampWidth(1), minBoardCardWidth);
     });
 
     test('너무 크게는 못 키운다', () {
-      expect(clampResizedCardWidth(99999, 0), maxBoardCardWidth);
+      expect(clampWidth(99999), maxBoardCardWidth);
     });
 
     test('판 오른쪽 끝을 넘지 않는다', () {
       // 카드가 판 끝에서 300만큼 앞에 있으면, 아무리 끌어도 300까지입니다.
-      const double cardX = boardWidth - 300;
-
-      expect(clampResizedCardWidth(99999, cardX), 300);
+      expect(clampWidth(99999, cardX: boardWidth - 300), 300);
     });
 
     test('판 끝에 바짝 붙어 있어도 오류가 나지 않는다', () {
       // 남은 자리가 최소 크기보다 작은 경우입니다.
-      expect(clampResizedCardWidth(200, boardWidth - 10), minBoardCardWidth);
+      expect(clampWidth(200, cardX: boardWidth - 10), minBoardCardWidth);
+    });
+
+    // ── 여기서부터가 판 아래쪽입니다 ──
+    //
+    // 가로세로 비율을 고정한 채 키우기 때문에, 가로를 붙잡지 않으면 세로가
+    // 판 밖으로 나갑니다. 그런데 손잡이는 카드의 **오른쪽 아래**에 있어서,
+    // 한 번 나가면 다시 잡을 수가 없습니다. 그래서 가로 쪽과 똑같이 막습니다.
+
+    test('세로 사진은 판 아래쪽 끝을 넘지 않는다', () {
+      // 3:4 세로 사진이 판 맨 위에 있습니다. 세로 여유는 1200.
+      // 가로로 환산하면 1200 ÷ (4/3) = 900. 최대치(960)보다 이쪽이 빡빡합니다.
+      final double width = clampWidth(99999, cardY: 0, heightPerWidth: 4 / 3);
+
+      expect(width, 900);
+      expect(width * 4 / 3, boardHeight);
+    });
+
+    test('아래쪽에 놓인 카드는 남은 자리만큼만 커진다', () {
+      // 판 아래쪽 끝에서 600만큼 위에 있는 4:3 가로 사진입니다.
+      // 가로로 환산하면 600 ÷ (3/4) = 800.
+      final double width = clampWidth(99999, cardY: boardHeight - 600);
+
+      expect(width, 800);
+    });
+
+    test('아래쪽에 바짝 붙어 있어도 오류가 나지 않는다', () {
+      // 남은 세로가 최소 크기보다도 작은 경우입니다.
+      expect(
+        clampWidth(500, cardY: boardHeight - 10),
+        minBoardCardWidth,
+      );
+    });
+
+    test('가로와 세로 중 더 빡빡한 쪽을 따른다', () {
+      // 오른쪽 여유는 400, 아래쪽 여유를 가로로 환산하면 300입니다.
+      final double width = clampWidth(
+        99999,
+        cardX: boardWidth - 400,
+        cardY: boardHeight - 300,
+        heightPerWidth: 1,
+      );
+
+      expect(width, 300);
+    });
+
+    test('비율을 모르면(0) 세로는 따지지 않는다', () {
+      // 그림이 아직 안 읽혀서 크기를 못 잰 경우입니다.
+      // 0으로 나누면 안 되므로 가로 쪽만 봅니다.
+      expect(clampWidth(99999, heightPerWidth: 0), maxBoardCardWidth);
     });
   });
 }
