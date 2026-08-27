@@ -305,13 +305,15 @@ class _BoardScreenState extends State<BoardScreen> {
 
   /// 지금 스냅을 걸어야 하는지 알려줍니다.
   ///
-  /// ── Alt를 누르고 있으면 잠시 끕니다 ──
-  /// 스냅은 대개 도움이 되지만, 일부러 살짝 어긋나게 놓고 싶을 때는
-  /// 방해가 됩니다. PureRef·피그마 같은 도구들이 쓰는 방식이라 손에 익습니다.
+  /// ── 기본은 자유롭게, Alt를 누르면 붙습니다 ──
+  /// 처음에는 반대로(평소 붙고 Alt로 끄기) 만들었는데, 의뢰인이 써보니
+  /// **평소에 자유롭게 두고 정밀하게 맞추고 싶을 때만** 스냅을 켜는 쪽이
+  /// 손에 맞았습니다. 카드를 대충 늘어놓는 시간이 훨씬 많고, 줄을 맞추는
+  /// 건 가끔이라 그렇습니다.
   ///
   /// `HardwareKeyboard`는 지금 눌려 있는 키를 바로 알려주는 Flutter의
   /// 기본 장치입니다. 키 입력을 받는 위젯을 따로 만들지 않아도 됩니다.
-  bool get _snapEnabled => !HardwareKeyboard.instance.isAltPressed;
+  bool get _snapEnabled => HardwareKeyboard.instance.isAltPressed;
 
   /// 카드가 자기 크기를 알려왔을 때 받아둡니다.
   ///
