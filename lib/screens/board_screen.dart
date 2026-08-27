@@ -1,14 +1,17 @@
-// 무드보드 판 하나를 여는 화면입니다. 카드를 올리고, 끌어서 옮기고, 내립니다.
+// 무드보드 판 하나를 여는 화면입니다. 카드를 올리고, 끌어서 옮기고, 크기를 바꾸고, 내립니다.
 //
 // ── 역할 나누기 ──
-//   board_canvas.dart  — 카드를 좌표대로 그리고, 끌기 동작을 알아챕니다.
-//   board_card_view.dart — 카드 한 장이 어떻게 생겼는지.
-//   board_layout.dart  — 어디에 놓을지 계산합니다(순수한 셈).
-//   이 파일             — **위치를 기억하고 저장합니다.**
+//   board_viewport.dart      — 판을 확대·축소하고 이동해서 보여줍니다(줌·팬).
+//   board_canvas.dart        — 카드를 좌표대로 놓고, 조작을 알아챕니다.
+//   board_card_view.dart     — 카드 한 장이 어떻게 생겼는지.
+//   board_layout.dart        — 자리와 배율 계산(순수한 셈).
+//   board_card_actions.dart  — 옮기기·크기 바꾸기·맨 위로 올리기 규칙(순수한 셈).
+//   이 파일                   — **읽어오고, 기억하고, 저장합니다.**
 //
 // ── 언제 저장하는가 (이 화면에서 가장 중요한 결정) ──
-// 카드를 끄는 동안에는 **화면에서만** 위치를 바꾸고, 손을 뗐을 때 한 번 저장합니다.
-// 끄는 동안 매 순간 저장하면 1초에 수십 번 데이터베이스에 쓰게 되어 눈에 띄게 버벅입니다.
+// 카드를 끄는 동안에는 **화면에서만** 위치와 크기를 바꾸고, 손을 뗐을 때 한 번
+// 저장합니다. 끄는 동안 매 순간 저장하면 1초에 수십 번 데이터베이스에 쓰게 되어
+// 눈에 띄게 버벅입니다.
 //
 // ── "저장" 버튼이 없는 이유 ──
 // 손을 떼는 순간 저장되므로 따로 누를 것이 없습니다. 저장 버튼을 두면 사용자는
@@ -17,16 +20,16 @@
 import 'package:flutter/material.dart';
 
 import '../models/board.dart';
-import '../models/reference_item.dart';
 import '../repositories/board_repository.dart';
 import '../repositories/reference_repository.dart';
 import '../services/image_storage.dart';
-import '../theme/app_metrics.dart';
-import '../theme/app_palette.dart';
-import '../theme/app_text.dart';
+import '../services/reference_lookup.dart';
+import '../utils/board_card_actions.dart';
 import '../utils/board_layout.dart';
 import '../utils/id_generator.dart';
 import '../widgets/board_canvas.dart';
+import '../widgets/board_viewport.dart';
+import '../widgets/empty_state_message.dart';
 import '../widgets/pick_references_dialog.dart';
 
 /// 무드보드 판 하나를 보여주는 화면입니다.
@@ -59,14 +62,28 @@ class _BoardScreenState extends State<BoardScreen> {
   /// 판에 놓인 카드들입니다. **아래에 깔린 것부터** 순서대로 들어있습니다.
   List<BoardCard> _cards = <BoardCard>[];
 
-  /// 레퍼런스 번호 → 레퍼런스. 카드가 보여줄 제목과 파일 이름을 여기서 찾습니다.
-  Map<String, ReferenceItem> _itemsById = <String, ReferenceItem>{};
+  /// 카드가 보여줄 레퍼런스를 번호로 찾을 수 있게 정리해둔 것입니다.
+  ///
+  /// 카드에는 번호만 들어있어서, 제목과 그림을 보여주려면 짝을 지어야 합니다.
+  /// (services/reference_lookup.dart 설명 참고)
+  ReferenceLookup _lookup = const ReferenceLookup.empty();
 
-  /// 레퍼런스 번호 → 이미지 파일의 전체 경로
-  Map<String, String?> _imagePaths = <String, String?>{};
+  /// 지금 끌거나 크기를 바꾸고 있는 카드의 번호입니다. 없으면 null입니다.
+  String? _activeCardId;
 
-  /// 지금 끌고 있는 카드의 번호입니다. 아무것도 안 끌고 있으면 null입니다.
-  String? _draggingCardId;
+  /// 크기 조절 손잡이를 잡은 순간의 카드 크기입니다. 조절 중이 아니면 null입니다.
+  ///
+  /// 저장된 값이 아니라 **실제로 그려져 있던 크기**입니다. 카드 높이는 보통
+  /// 비어 있어서(= 그림 비율대로) 저장된 값만으로는 알 수 없기 때문입니다.
+  Size? _resizeStartSize;
+
+  /// 손잡이를 잡은 뒤 지금까지 움직인 거리의 합입니다.
+  ///
+  /// ── 왜 합을 따로 들고 있나 ──
+  /// 매 순간의 움직임을 카드 크기에 바로바로 더하면, 조금씩 어긋난 값이
+  /// 쌓여서 손가락과 카드 모서리가 점점 벌어집니다. **처음 크기 + 지금까지의 합**
+  /// 으로 매번 새로 계산하면 어긋날 일이 없습니다.
+  Offset _resizeDelta = Offset.zero;
 
   /// 아직 읽어오는 중인지 여부입니다.
   bool _isLoading = true;
@@ -84,22 +101,10 @@ class _BoardScreenState extends State<BoardScreen> {
       widget.board.id,
     );
 
-    // ── 레퍼런스를 하나씩 찾지 않고 전부 가져오는 이유 ──
-    // 카드가 30장이면 하나씩 찾을 때 데이터베이스에 30번 오갑니다.
-    // 한 번에 가져와 표를 만들어두면 찾는 일은 앱 안에서 끝납니다.
-    final List<ReferenceItem> items = await widget.referenceRepository.getAll();
-
-    final Map<String, ReferenceItem> itemsById = <String, ReferenceItem>{};
-    final Map<String, String?> paths = <String, String?>{};
-
-    for (final ReferenceItem item in items) {
-      itemsById[item.id] = item;
-
-      final String? fileName = item.fileName;
-      if (fileName != null) {
-        paths[item.id] = await widget.imageStorage.getFullPath(fileName);
-      }
-    }
+    final ReferenceLookup lookup = await ReferenceLookup.load(
+      repository: widget.referenceRepository,
+      imageStorage: widget.imageStorage,
+    );
 
     // 읽어오는 사이에 사용자가 화면을 떠났을 수 있습니다.
     if (!mounted) {
@@ -108,24 +113,9 @@ class _BoardScreenState extends State<BoardScreen> {
 
     setState(() {
       _cards = cards;
-      _itemsById = itemsById;
-      _imagePaths = paths;
+      _lookup = lookup;
       _isLoading = false;
     });
-  }
-
-  /// 지금 판에서 가장 위에 있는 카드의 zOrder를 돌려줍니다. 카드가 없으면 0입니다.
-  ///
-  /// 데이터베이스에 묻지 않고 손에 든 목록에서 셉니다. 카드를 잡을 때마다
-  /// 물어보면 끄는 동작이 시작될 때마다 잠깐씩 걸립니다.
-  int _topZOrder() {
-    int top = 0;
-    for (final BoardCard card in _cards) {
-      if (card.zOrder > top) {
-        top = card.zOrder;
-      }
-    }
-    return top;
   }
 
   /// 레퍼런스를 골라 판에 올립니다.
@@ -143,7 +133,7 @@ class _BoardScreenState extends State<BoardScreen> {
 
     final DateTime now = DateTime.now().toUtc();
     final int startIndex = _cards.length;
-    final int topZ = _topZOrder();
+    final int topZ = topZOrderOf(_cards);
 
     final List<BoardCard> newCards = <BoardCard>[];
     for (int i = 0; i < pickedIds.length; i++) {
@@ -176,59 +166,86 @@ class _BoardScreenState extends State<BoardScreen> {
 
   /// 카드를 잡았을 때 실행됩니다. 잡은 카드를 맨 위로 올립니다.
   ///
-  /// 맨 위로 올리지 않으면, 아래 깔린 카드를 꺼내려고 끌었는데도
-  /// 여전히 다른 카드에 덮인 채 따라옵니다. 무엇을 잡았는지 보이지 않습니다.
+  /// 규칙 자체는 utils/board_card_actions.dart에 있습니다. 여기서는
+  /// "지금 무엇을 잡고 있는지"만 기억하고 결과를 화면에 반영합니다.
   void _onDragStart(BoardCard card) {
     setState(() {
-      _draggingCardId = card.id;
-
-      final int index = _indexOf(card.id);
-      if (index == -1) {
-        return;
-      }
-
-      final BoardCard raised = _cards[index].copyWith(zOrder: _topZOrder() + 1);
-
-      // 목록에서 빼서 맨 뒤에 다시 넣습니다. Stack은 뒤에 있는 것을 위에
-      // 그리므로, 이것만으로 화면에서도 맨 위로 올라옵니다.
-      _cards
-        ..removeAt(index)
-        ..add(raised);
+      _activeCardId = card.id;
+      _cards = raiseCardToTop(_cards, card.id);
     });
   }
 
   /// 카드를 끄는 동안 실행됩니다. **화면에서만** 옮기고 저장은 하지 않습니다.
   ///
-  /// [delta]는 이번 순간에 움직인 거리입니다. 지금 위치에 더해서 씁니다.
+  /// [delta]는 이번 순간에 움직인 거리입니다.
   void _onDragUpdate(BoardCard card, Offset delta) {
-    final int index = _indexOf(card.id);
-    if (index == -1) {
-      return;
-    }
-
-    final BoardCard current = _cards[index];
-
-    // 판 밖으로 나가지 않게 붙잡아둡니다.
-    // (왜 막는지는 utils/board_layout.dart의 clampToBoard 설명을 보세요)
-    final Offset moved = clampToBoard(
-      current.x + delta.dx,
-      current.y + delta.dy,
-      current,
-    );
-
     setState(() {
-      _cards[index] = current.copyWith(x: moved.dx, y: moved.dy);
+      _cards = moveCard(_cards, card.id, delta);
     });
   }
 
   /// 카드에서 손을 뗐을 때 실행됩니다. **여기서 한 번만 저장합니다.**
   Future<void> _onDragEnd(BoardCard card) async {
-    final int index = _indexOf(card.id);
-
     setState(() {
-      _draggingCardId = null;
+      _activeCardId = null;
     });
 
+    await _saveCard(card.id);
+  }
+
+  /// 크기 조절 손잡이를 잡았을 때 실행됩니다.
+  ///
+  /// [currentSize]는 저장된 값이 아니라 **지금 실제로 그려져 있는 크기**입니다.
+  /// 카드 높이는 보통 비어 있어서(= 그림 비율대로) 저장된 값만으로는
+  /// 지금 높이가 얼마인지 알 수 없기 때문에, 카드가 직접 재서 알려줍니다.
+  void _onResizeStart(BoardCard card, Size currentSize) {
+    setState(() {
+      _activeCardId = card.id;
+      _resizeStartSize = currentSize;
+      _resizeDelta = Offset.zero;
+    });
+  }
+
+  /// 손잡이를 끄는 동안 실행됩니다. **화면에서만** 크기를 바꾸고 저장은 하지 않습니다.
+  ///
+  /// 가로세로 비율을 왜 고정하는지는 utils/board_card_actions.dart의
+  /// resizeCard 설명을 보세요.
+  void _onResizeUpdate(BoardCard card, Offset delta) {
+    final Size? startSize = _resizeStartSize;
+    if (startSize == null) {
+      return;
+    }
+
+    setState(() {
+      _resizeDelta += delta;
+      _cards = resizeCard(
+        _cards,
+        card.id,
+        startSize: startSize,
+        movedSoFar: _resizeDelta,
+      );
+    });
+  }
+
+  /// 손잡이에서 손을 뗐을 때 실행됩니다. **여기서 한 번만 저장합니다.**
+  ///
+  /// 이때 카드의 높이가 처음으로 채워집니다. 그 전까지는 비어 있었고
+  /// (= 그림 비율대로), 이제부터는 정해진 크기로 그려집니다.
+  Future<void> _onResizeEnd(BoardCard card) async {
+    setState(() {
+      _activeCardId = null;
+      _resizeStartSize = null;
+      _resizeDelta = Offset.zero;
+    });
+
+    await _saveCard(card.id);
+  }
+
+  /// 카드 하나의 지금 상태를 저장합니다. 목록에 없으면 아무 일도 안 합니다.
+  ///
+  /// 끌기와 크기 조절이 끝날 때 둘 다 이걸 부릅니다.
+  Future<void> _saveCard(String cardId) async {
+    final int index = indexOfCard(_cards, cardId);
     if (index == -1) {
       return;
     }
@@ -249,13 +266,12 @@ class _BoardScreenState extends State<BoardScreen> {
     }
 
     setState(() {
-      _cards.removeWhere((BoardCard each) => each.id == card.id);
+      // 목록을 직접 뜯어고치지 않고 새 목록으로 갈아끼웁니다.
+      // 옮기기·크기 바꾸기와 같은 방식이라 읽을 때 헷갈리지 않습니다.
+      _cards = _cards
+          .where((BoardCard each) => each.id != card.id)
+          .toList();
     });
-  }
-
-  /// 목록에서 이 번호를 가진 카드가 몇 번째인지 찾습니다. 없으면 -1입니다.
-  int _indexOf(String cardId) {
-    return _cards.indexWhere((BoardCard card) => card.id == cardId);
   }
 
   /// 화면의 생김새를 만들어 돌려줍니다.
@@ -289,53 +305,35 @@ class _BoardScreenState extends State<BoardScreen> {
       return _buildEmptyState();
     }
 
-    return BoardCanvas(
-      cards: _cards,
-      itemsById: _itemsById,
-      imagePaths: _imagePaths,
-      draggingCardId: _draggingCardId,
-      onDragStart: _onDragStart,
-      onDragUpdate: _onDragUpdate,
-      onDragEnd: _onDragEnd,
-      onRemoveCard: _removeCard,
+    // 판을 확대·이동해서 보여주는 일은 BoardViewport가 맡습니다.
+    // 카드를 놓고 조작을 알아채는 일만 BoardCanvas가 합니다.
+    return BoardViewport(
+      child: BoardCanvas(
+        cards: _cards,
+        itemsById: _lookup.itemsById,
+        imagePaths: _lookup.imagePaths,
+        activeCardId: _activeCardId,
+        onDragStart: _onDragStart,
+        onDragUpdate: _onDragUpdate,
+        onDragEnd: _onDragEnd,
+        onResizeStart: _onResizeStart,
+        onResizeUpdate: _onResizeUpdate,
+        onResizeEnd: _onResizeEnd,
+        onRemoveCard: _removeCard,
+      ),
     );
   }
 
   /// 아직 판이 비어 있을 때의 안내입니다.
   Widget _buildEmptyState() {
-    final AppPalette palette = AppPalette.of(context);
-
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(screenPaddingHorizontal),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: <Widget>[
-            Icon(
-              Icons.add_photo_alternate_outlined,
-              size: 64,
-              color: palette.textDim,
-            ),
-            const SizedBox(height: 24),
-            Text(
-              '판이 비어 있습니다',
-              style: AppText.emptyTitle.copyWith(color: palette.text),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 6),
-            Text(
-              '오른쪽 위 "레퍼런스 담기"로 올린 뒤\n끌어서 원하는 자리에 놓아보세요.',
-              style: AppText.emptyBody.copyWith(color: palette.textDim),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 16),
-            FilledButton.icon(
-              onPressed: _addCards,
-              icon: const Icon(Icons.add),
-              label: const Text('레퍼런스 담기'),
-            ),
-          ],
-        ),
+    return EmptyStateMessage(
+      icon: Icons.add_photo_alternate_outlined,
+      title: '판이 비어 있습니다',
+      body: '오른쪽 위 "레퍼런스 담기"로 올린 뒤\n끌어서 원하는 자리에 놓아보세요.',
+      action: FilledButton.icon(
+        onPressed: _addCards,
+        icon: const Icon(Icons.add),
+        label: const Text('레퍼런스 담기'),
       ),
     );
   }

@@ -12,12 +12,12 @@ import '../models/board.dart';
 import '../repositories/board_repository.dart';
 import '../repositories/reference_repository.dart';
 import '../services/image_storage.dart';
-import '../theme/app_metrics.dart';
 import '../theme/app_palette.dart';
 import '../theme/app_text.dart';
 import '../utils/date_format.dart';
 import '../utils/id_generator.dart';
 import '../widgets/board_name_dialog.dart';
+import '../widgets/empty_state_message.dart';
 import 'board_screen.dart';
 
 /// 무드보드 목록 화면입니다.
@@ -242,34 +242,12 @@ class _BoardListScreenState extends State<BoardListScreen> {
 
   /// 아직 무드보드가 하나도 없을 때의 안내입니다.
   Widget _buildEmptyState() {
-    final AppPalette palette = AppPalette.of(context);
-
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(screenPaddingHorizontal),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: <Widget>[
-            Icon(
-              Icons.dashboard_customize_outlined,
-              size: 64,
-              color: palette.textDim,
-            ),
-            const SizedBox(height: 24),
-            Text(
-              '아직 만든 무드보드가 없습니다',
-              style: AppText.emptyTitle.copyWith(color: palette.text),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 6),
-            Text(
-              '무드보드는 레퍼런스를 원하는 자리에 늘어놓고\n분위기를 잡아보는 판입니다.',
-              style: AppText.emptyBody.copyWith(color: palette.textDim),
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
-      ),
+    // 버튼을 안 붙인 이유: 오른쪽 아래에 "새 무드보드" 버튼이 이미 떠 있습니다.
+    // 같은 버튼이 두 개 보이면 어느 쪽을 눌러야 하나 잠깐 멈칫하게 됩니다.
+    return const EmptyStateMessage(
+      icon: Icons.dashboard_customize_outlined,
+      title: '아직 만든 무드보드가 없습니다',
+      body: '무드보드는 레퍼런스를 원하는 자리에 늘어놓고\n분위기를 잡아보는 판입니다.',
     );
   }
 

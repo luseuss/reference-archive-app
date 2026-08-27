@@ -73,3 +73,15 @@ const double boardPlacementSpacing = 20;
 
 /// 판에 새로 올린 카드가 시작하는 자리입니다. 판의 왼쪽 위 모서리에서 띄웁니다.
 const double boardPlacementMargin = 40;
+
+/// 판을 확대할 수 있는 최대 배율입니다.
+///
+/// 더 키울 수도 있지만, 원본보다 3배 넘게 늘리면 그림이 뭉개져서
+/// 확대한 보람이 없습니다.
+const double maxBoardScale = 3.0;
+
+/// 확대·축소 버튼을 한 번 누를 때 바뀌는 비율입니다.
+///
+/// 1.25 = 한 번에 25%씩. 2배씩 뛰면 원하는 크기를 지나쳐서 왔다 갔다 하게 되고,
+/// 1.1처럼 잘면 여러 번 눌러야 합니다.
+const double boardZoomStep = 1.25;

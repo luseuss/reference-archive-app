@@ -81,3 +81,141 @@ Offset initialCardPosition(int index) {
     boardPlacementMargin + row * rowStep,
   );
 }
+
+// ── 여기서부터는 줌·팬(확대·이동) 계산입니다 (4단계 2번) ──
+//
+// ── 화면 좌표와 판 좌표 ──
+// 카드의 x, y는 **판 좌표**입니다. 판의 왼쪽 위가 (0, 0)이고, 확대해도 줄여도
+// 안 바뀝니다. 화면에 실제로 그려지는 자리는 여기에 배율과 이동을 더해 구합니다.
+//
+//   화면 위치 = 이동(offset) + 판 위치 × 배율(scale)
+//
+// 이 한 줄만 붙잡고 있으면 아래 계산들이 전부 이 식을 뒤집은 것에 지나지 않습니다.
+
+/// 판 전체가 화면에 딱 들어오는 배율을 구합니다.
+///
+/// 가로·세로 중 **더 빡빡한 쪽**에 맞춰야 판이 통째로 들어옵니다.
+///
+/// ── 1보다 크게는 안 만듭니다 ──
+/// 화면이 판보다 크면 계산상 1.2배 같은 값이 나오는데, 그러면 그림을 억지로
+/// 늘리는 셈이라 흐려집니다. 그럴 때는 원래 크기로 가운데에 두는 편이 낫습니다.
+double fitBoardScale(Size viewport) {
+  final double byWidth = viewport.width / boardWidth;
+  final double byHeight = viewport.height / boardHeight;
+
+  return min(1.0, min(byWidth, byHeight));
+}
+
+/// 배율이 너무 작거나 크지 않도록 붙잡아둡니다.
+///
+/// 가장 작은 값은 "판 전체가 보이는 배율"입니다. 그보다 더 줄이면 판 주위의
+/// 빈 공간만 넓어질 뿐 보이는 것이 늘지 않습니다.
+double clampBoardScale(double scale, Size viewport) {
+  final double smallest = fitBoardScale(viewport);
+
+  // 화면이 아주 작으면 smallest가 maxBoardScale보다 클 수도 있습니다.
+  // 그대로 두면 clamp가 "최솟값이 최댓값보다 크다"며 오류를 냅니다.
+  final double largest = max(smallest, maxBoardScale);
+
+  return scale.clamp(smallest, largest);
+}
+
+/// 판이 화면 밖으로 너무 밀려나지 않도록 이동값을 붙잡아둡니다.
+///
+/// 두 경우로 나뉩니다.
+///   - 판이 화면보다 **작으면** → 가운데에 둡니다. 구석에 치우쳐 있으면 어색합니다.
+///   - 판이 화면보다 **크면** → 가장자리 밖으로는 못 밀게 합니다. 안 막으면
+///     판을 화면 밖으로 완전히 밀어내고 빈 화면만 보게 됩니다.
+Offset clampBoardOffset(Offset offset, double scale, Size viewport) {
+  return Offset(
+    _clampAxis(offset.dx, boardWidth * scale, viewport.width),
+    _clampAxis(offset.dy, boardHeight * scale, viewport.height),
+  );
+}
+
+/// 한 축(가로 또는 세로)의 이동값을 붙잡습니다. clampBoardOffset이 씁니다.
+double _clampAxis(double value, double scaledSize, double viewportSize) {
+  if (scaledSize <= viewportSize) {
+    // 남는 공간을 양쪽에 똑같이 나눠 가운데에 둡니다.
+    return (viewportSize - scaledSize) / 2;
+  }
+
+  // 0 = 판의 왼쪽(위쪽) 끝이 화면 끝에 붙은 상태.
+  // viewportSize - scaledSize = 판의 오른쪽(아래쪽) 끝이 화면 끝에 붙은 상태.
+  return value.clamp(viewportSize - scaledSize, 0.0);
+}
+
+/// **손가락(마우스) 밑에 있던 지점이 그대로 있도록** 확대·축소한 뒤의 이동값을 구합니다.
+///
+/// ── 왜 이런 계산이 필요한가 ──
+/// 그냥 배율만 바꾸면 판이 왼쪽 위를 기준으로 커집니다. 그러면 확대할 때마다
+/// 보고 있던 곳이 화면 밖으로 밀려나서, 확대하고 다시 찾아가고를 반복하게 됩니다.
+///
+/// 가리키고 있는 곳을 붙잡아두면 "그 자리를 확대한다"가 되어 훨씬 자연스럽습니다.
+///
+/// [focalPoint]는 **화면 좌표**입니다. 마우스 커서 자리나, 버튼으로 확대할 때는
+/// 화면 한가운데를 넘기면 됩니다.
+Offset zoomAroundPoint({
+  required Offset focalPoint,
+  required Offset offset,
+  required double fromScale,
+  required double toScale,
+}) {
+  // 맨 위 식(화면 = 이동 + 판×배율)을 뒤집어, 지금 손가락 밑에 있는
+  // **판 좌표**를 먼저 구합니다.
+  final Offset boardPoint = (focalPoint - offset) / fromScale;
+
+  // 그 판 좌표가 새 배율에서도 같은 화면 자리에 오도록 이동값을 되맞춥니다.
+  return focalPoint - boardPoint * toScale;
+}
+
+/// 크기 조절 중인 카드의 가로 크기를 붙잡아둡니다.
+///
+/// 세 가지를 함께 봅니다.
+///   1. 너무 작거나 크지 않게 (minBoardCardWidth ~ maxBoardCardWidth)
+///   2. **판 오른쪽 끝을 넘지 않게**
+///   3. **판 아래쪽 끝을 넘지 않게**
+///
+/// ── 왜 가로를 구하는데 세로까지 보나 ──
+/// 크기 조절은 가로세로 비율을 고정한 채 이뤄집니다. 그래서 가로를 키우면
+/// 세로도 따라 커지고, 가로만 막아서는 **세로가 판 밖으로 나갑니다.**
+///
+/// 그냥 안 보이는 것으로 끝나지 않습니다. 크기 조절 손잡이는 카드의
+/// **오른쪽 아래**에 있어서, 카드 아래쪽이 판 밖으로 나가면 손잡이도 함께
+/// 나갑니다. 그러면 **다시 잡아서 줄일 수가 없습니다.** 크기는 손을 뗄 때
+/// 저장되므로 앱을 껐다 켜도 그대로입니다. 판에서 내렸다 다시 담는 것
+/// 말고는 되돌릴 방법이 없어집니다.
+///
+/// [cardX], [cardY]는 카드의 왼쪽 위 모서리 위치입니다. 크기를 키울 때
+/// 왼쪽 위는 그대로 두고 오른쪽 아래로만 늘어나므로, 남은 자리는 여기서부터
+/// 판의 오른쪽 끝·아래쪽 끝까지입니다.
+///
+/// [heightPerWidth]는 세로 ÷ 가로입니다. 4:3 가로 사진이면 0.75,
+/// 3:4 세로 사진이면 약 1.33입니다. **0이면 비율을 모른다는 뜻**이고
+/// (그림이 아직 안 읽혀 크기를 못 잰 경우), 그때는 세로를 따지지 않습니다.
+double clampResizedCardWidth({
+  required double width,
+  required double cardX,
+  required double cardY,
+  required double heightPerWidth,
+}) {
+  // 오른쪽으로 남은 자리입니다.
+  //
+  // max(min...)으로 감싸는 이유: 판 끝에 바짝 붙은 카드는 남은 자리가 최소
+  // 크기보다 작을 수 있습니다. 그대로 두면 아래 clamp가 "최솟값이 최댓값보다
+  // 크다"며 오류를 냅니다.
+  final double roomRight = max(minBoardCardWidth, boardWidth - cardX);
+
+  // 아래로 남은 자리를 **가로로 환산한** 값입니다.
+  //
+  // 세로 = 가로 × heightPerWidth 이므로, 뒤집으면 가로 = 세로 ÷ heightPerWidth.
+  // 비율을 모를 때(0)는 나눌 수 없으니 세로 제한이 없는 셈 칩니다.
+  final double roomBelow = heightPerWidth <= 0
+      ? maxBoardCardWidth
+      : max(minBoardCardWidth, (boardHeight - cardY) / heightPerWidth);
+
+  // 셋 중 가장 빡빡한 것을 따릅니다.
+  final double largest = min(maxBoardCardWidth, min(roomRight, roomBelow));
+
+  return width.clamp(minBoardCardWidth, largest);
+}
