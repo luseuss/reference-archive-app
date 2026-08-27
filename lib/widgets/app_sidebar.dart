@@ -35,6 +35,7 @@ class AppSidebar extends StatelessWidget {
     required this.parts,
     required this.selectedPartId,
     required this.onSelectPart,
+    required this.onOpenBoards,
     required this.onOpenSettings,
     required this.onLogInOut,
   });
@@ -50,6 +51,9 @@ class AppSidebar extends StatelessWidget {
 
   /// 파트를 골랐을 때 알려줍니다. null을 넘기면 "전체"입니다.
   final ValueChanged<String?> onSelectPart;
+
+  /// 무드보드 목록을 눌렀을 때 실행할 동작입니다.
+  final VoidCallback onOpenBoards;
 
   /// 설정을 눌렀을 때 실행할 동작입니다.
   final VoidCallback onOpenSettings;
@@ -76,6 +80,16 @@ class AppSidebar extends StatelessWidget {
               _buildUserBlock(dark),
 
               const SizedBox(height: 20),
+
+              // 무드보드로 가는 길입니다. 파트 목록 위에 따로 둡니다.
+              //
+              // ── 왜 파트 목록 안에 넣지 않았나 ──
+              // 파트는 "레퍼런스를 어떻게 나눠 볼까"이고, 무드보드는 "레퍼런스로
+              // 무엇을 할까"입니다. 성격이 달라서 같은 목록에 섞으면 파트 중
+              // 하나처럼 보입니다. 한 칸 띄워 두면 다른 종류라는 것이 드러납니다.
+              _buildBoardsBlock(dark),
+
+              const SizedBox(height: 12),
 
               // ② 파트 목록입니다. Expanded로 감싸 남는 공간을 다 차지하게 하면,
               // ③(설정)이 언제나 맨 아래에 붙습니다.
@@ -138,6 +152,28 @@ class AppSidebar extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  /// 무드보드로 가는 줄입니다.
+  Widget _buildBoardsBlock(AppPalette dark) {
+    return Container(
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: dark.surface,
+        borderRadius: BorderRadius.circular(appCornerRadius),
+        border: Border.all(color: dark.border),
+      ),
+      child: _buildNavItem(
+        dark,
+        icon: Icons.dashboard_outlined,
+        label: '무드보드',
+
+        // 고른 상태로 표시하지 않습니다. 여기는 "머무는 자리"가 아니라
+        // 다른 화면으로 가는 문이라, 켜져 있으면 지금 그 화면인 줄 오해합니다.
+        isSelected: false,
+        onTap: onOpenBoards,
       ),
     );
   }
