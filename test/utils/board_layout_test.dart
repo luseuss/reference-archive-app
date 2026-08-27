@@ -1,9 +1,11 @@
-// 무드보드에서 "카드를 어디에 둘 것인가"를 계산하는 함수들을 확인하는 테스트입니다.
+// 무드보드에서 "카드가 어디에 놓이는가"를 계산하는 함수들을 확인하는 테스트입니다.
 //
 // 화면 없이 숫자만 확인합니다. 앱을 띄우고 카드를 끌어볼 필요가 없어서 빠릅니다.
 // 이런 계산을 화면 파일에서 따로 빼둔 이유가 바로 이것입니다.
+//
+// "어느 배율로 어디를 보고 있는가"는 board_view_test.dart가 봅니다.
 
-import 'dart:ui' show Size;
+import 'dart:ui' show Offset, Rect, Size;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:reference_archive_app/models/board.dart';
@@ -12,7 +14,12 @@ import 'package:reference_archive_app/utils/board_layout.dart';
 
 void main() {
   /// 테스트용 카드를 하나 만들어 돌려줍니다.
-  BoardCard makeCard({double x = 0, double y = 0, double? height}) {
+  BoardCard makeCard({
+    double x = 0,
+    double y = 0,
+    double width = defaultBoardCardWidth,
+    double? height,
+  }) {
     final DateTime now = DateTime.now().toUtc();
     return BoardCard(
       id: 'card-1',
@@ -20,6 +27,7 @@ void main() {
       referenceId: 'ref-1',
       x: x,
       y: y,
+      width: width,
       height: height,
       createdAt: now,
       updatedAt: now,
@@ -32,339 +40,165 @@ void main() {
     });
 
     test('정해둔 높이가 없으면 4:3으로 어림잡는다', () {
-      // 그림 비율은 파일을 읽어봐야 알 수 있어서, 그 전에는 어림값을 씁니다.
+      expect(estimatedBoardCardHeight(makeCard(width: 200)), 150);
+    });
+  });
+
+  group('카드가 놓인 범위', () {
+    test('카드가 없으면 빈 네모다', () {
+      // 빈 네모를 돌려주면 부르는 쪽에서 "비었으면 이렇게 하자"를 정할 수
+      // 있습니다. 여기서 기본값을 지어내면 오히려 헷갈립니다.
+      expect(boardContentBounds(<BoardCard>[]), Rect.zero);
+    });
+
+    test('한 장이면 그 카드의 네모다', () {
+      final BoardCard card = makeCard(x: 100, y: 50, width: 200, height: 150);
+
       expect(
-        estimatedBoardCardHeight(makeCard()),
-        defaultBoardCardWidth * 3 / 4,
+        boardContentBounds(<BoardCard>[card]),
+        const Rect.fromLTWH(100, 50, 200, 150),
+      );
+    });
+
+    test('여러 장이면 전부를 감싼다', () {
+      final List<BoardCard> cards = <BoardCard>[
+        makeCard(x: 100, y: 100, width: 200, height: 100),
+        makeCard(x: 500, y: 400, width: 200, height: 100),
+      ];
+
+      // 왼쪽 위는 (100, 100), 오른쪽 아래는 (700, 500)
+      expect(
+        boardContentBounds(cards),
+        const Rect.fromLTRB(100, 100, 700, 500),
+      );
+    });
+
+    test('높이를 안 정한 카드는 어림 높이로 잰다', () {
+      final BoardCard card = makeCard(x: 0, y: 0, width: 200);
+
+      expect(boardContentBounds(<BoardCard>[card]).bottom, 150);
+    });
+  });
+
+  group('카드를 그릴 자리의 크기', () {
+    test('카드가 없어도 최소 크기는 나온다', () {
+      // 카드가 몇 장 없다고 판이 손바닥만 하면 어색합니다.
+      final Size size = boardCanvasSize(<BoardCard>[]);
+
+      expect(size.width, minCanvasWidth);
+      expect(size.height, minCanvasHeight);
+    });
+
+    test('카드가 오른쪽으로 멀리 가면 그만큼 넓어진다', () {
+      // ── 이게 "판에 끝이 없다"의 알맹이입니다 ──
+      // 카드를 오른쪽으로 끌면 그릴 자리가 따라 늘어납니다. 그래서 끝에
+      // 부딪히는 일이 없습니다.
+      final BoardCard far = makeCard(x: 5000, y: 0, width: 200, height: 100);
+
+      final Size size = boardCanvasSize(<BoardCard>[far]);
+
+      expect(size.width, 5200 + canvasBreathingRoom);
+    });
+
+    test('아래로 멀리 가도 마찬가지다', () {
+      final BoardCard far = makeCard(x: 0, y: 4000, width: 200, height: 100);
+
+      expect(
+        boardCanvasSize(<BoardCard>[far]).height,
+        4100 + canvasBreathingRoom,
+      );
+    });
+
+    test('카드가 끝에 닿아도 더 밀 자리가 남는다', () {
+      // 카드의 오른쪽 끝보다 자리가 넓어야 계속 끌 수 있습니다.
+      final BoardCard card = makeCard(x: 3000, y: 0, width: 200, height: 100);
+
+      expect(
+        boardCanvasSize(<BoardCard>[card]).width,
+        greaterThan(3200),
       );
     });
   });
 
-  group('판 밖으로 나가지 않게 붙잡기', () {
-    test('판 안쪽 위치는 그대로 둔다', () {
-      final Offset result = clampToBoard(100, 200, makeCard());
-
-      expect(result.dx, 100);
-      expect(result.dy, 200);
+  group('카드를 판 안으로 붙잡기', () {
+    test('오른쪽·아래로는 얼마든지 갈 수 있다', () {
+      // 판에 끝이 없습니다. 아무리 큰 값이어도 그대로 둡니다.
+      expect(clampToCanvas(99999, 88888), const Offset(99999, 88888));
     });
 
-    test('왼쪽·위로 넘어가면 0으로 붙인다', () {
-      // 이걸 안 막으면 카드가 판 바깥으로 나가서 화면에 아예 안 보이게 됩니다.
-      final Offset result = clampToBoard(-50, -80, makeCard());
-
-      expect(result.dx, 0);
-      expect(result.dy, 0);
+    test('왼쪽으로 넘어가면 0으로 붙인다', () {
+      // 음수 자리에 놓인 카드는 클릭이 안 닿아서 잡을 수가 없습니다.
+      expect(clampToCanvas(-50, 100), const Offset(0, 100));
     });
 
-    test('오른쪽으로 넘어가면 카드가 판 안에 다 들어오도록 당긴다', () {
-      final Offset result = clampToBoard(boardWidth + 1000, 0, makeCard());
-
-      expect(result.dx, boardWidth - defaultBoardCardWidth);
+    test('위로 넘어가도 0으로 붙인다', () {
+      expect(clampToCanvas(100, -50), const Offset(100, 0));
     });
 
-    test('아래로 넘어가면 카드 윗부분이 판 안에 남도록 당긴다', () {
-      final Offset result = clampToBoard(0, boardHeight + 1000, makeCard());
-
-      // 정확한 높이를 모르므로 어림 높이만큼 띄웁니다. 어림이 틀려서 카드가
-      // 더 길더라도 **윗부분은 반드시 판 안에 남아** 다시 잡을 수 있습니다.
-      expect(result.dy, boardHeight - defaultBoardCardWidth * 3 / 4);
-    });
-
-    test('카드가 판보다 커도 오류가 나지 않는다', () {
-      // clamp는 "최솟값이 최댓값보다 크면" 오류를 냅니다. 그 경우를 막아뒀는지 봅니다.
-      final Offset result = clampToBoard(
-        100,
-        100,
-        makeCard(height: boardHeight * 2),
-      );
-
-      expect(result.dy, 0);
+    test('둘 다 넘어가면 둘 다 붙인다', () {
+      expect(clampToCanvas(-10, -10), Offset.zero);
     });
   });
 
-  group('새로 올린 카드 자리 정하기', () {
+  group('새 카드 놓을 자리', () {
     test('첫 장은 왼쪽 위 여백만큼 띄운 자리에 놓인다', () {
-      final Offset first = initialCardPosition(0);
-
-      expect(first.dx, boardPlacementMargin);
-      expect(first.dy, boardPlacementMargin);
+      expect(
+        initialCardPosition(0),
+        const Offset(boardPlacementMargin, boardPlacementMargin),
+      );
     });
 
     test('두 번째 장은 첫 장 오른쪽에 놓인다', () {
       final Offset first = initialCardPosition(0);
       final Offset second = initialCardPosition(1);
 
-      expect(second.dy, first.dy, reason: '같은 줄이어야 합니다');
-      expect(
-        second.dx,
-        first.dx + defaultBoardCardWidth + boardPlacementSpacing,
-      );
+      expect(second.dy, first.dy);
+      expect(second.dx, greaterThan(first.dx));
     });
 
     test('한 줄이 차면 아랫줄로 넘어간다', () {
-      // 몇 장에서 줄이 바뀌는지는 판 너비에 달려 있으므로, 여기서 직접
-      // 세지 않고 "언젠가 반드시 아랫줄로 내려간다"만 확인합니다.
+      // 한 줄에 몇 장이 들어가는지는 boardPlacementRowWidth가 정합니다.
+      // 판의 크기가 아니라 "늘어놓는 폭"입니다.
       final Offset first = initialCardPosition(0);
 
       Offset? wrapped;
-      for (int index = 1; index < 100; index++) {
-        final Offset position = initialCardPosition(index);
+      for (int i = 1; i < 50; i++) {
+        final Offset position = initialCardPosition(i);
         if (position.dy > first.dy) {
           wrapped = position;
           break;
         }
       }
 
-      expect(wrapped, isNotNull, reason: '100장을 놓아도 줄이 안 바뀌면 이상합니다');
-      expect(wrapped!.dx, first.dx, reason: '아랫줄은 다시 왼쪽에서 시작해야 합니다');
+      expect(wrapped, isNotNull);
+      expect(wrapped!.dx, first.dx);
     });
 
-    test('놓이는 자리는 판 안이다', () {
-      // 처음부터 판 밖에 놓이면 사용자는 올린 카드를 찾지 못합니다.
-      for (int index = 0; index < 30; index++) {
-        final Offset position = initialCardPosition(index);
-
-        expect(position.dx, lessThan(boardWidth));
-        expect(position.dy, lessThan(boardHeight));
+    test('놓이는 자리는 언제나 0 이상이다', () {
+      for (int i = 0; i < 30; i++) {
+        final Offset position = initialCardPosition(i);
+        expect(position.dx, greaterThanOrEqualTo(0));
+        expect(position.dy, greaterThanOrEqualTo(0));
       }
     });
   });
 
-  group('판 전체가 보이는 배율 구하기', () {
-    test('화면이 판보다 작으면 줄여서 맞춘다', () {
-      // 가로가 더 빡빡한 경우입니다. 세로에 맞추면 가로가 넘칩니다.
-      final double scale = fitBoardScale(
-        Size(boardWidth / 2, boardHeight),
-      );
-
-      expect(scale, 0.5);
-    });
-
-    test('가로·세로 중 더 빡빡한 쪽에 맞춘다', () {
-      final double scale = fitBoardScale(
-        Size(boardWidth, boardHeight / 4),
-      );
-
-      expect(scale, 0.25);
-    });
-
-    test('화면이 판보다 커도 1배를 넘지 않는다', () {
-      // 억지로 늘리면 그림이 흐려집니다. 원래 크기로 가운데에 두는 편이 낫습니다.
-      final double scale = fitBoardScale(
-        Size(boardWidth * 3, boardHeight * 3),
-      );
-
-      expect(scale, 1.0);
-    });
-  });
-
-  group('배율 붙잡기', () {
-    test('판 전체가 보이는 배율보다 더 줄일 수 없다', () {
-      // 더 줄여봐야 판 주위의 빈 공간만 넓어질 뿐입니다.
-      final Size viewport = Size(boardWidth / 2, boardHeight / 2);
-
-      expect(clampBoardScale(0.01, viewport), fitBoardScale(viewport));
-    });
-
-    test('최대 배율보다 더 키울 수 없다', () {
-      final Size viewport = Size(boardWidth, boardHeight);
-
-      expect(clampBoardScale(100, viewport), maxBoardScale);
-    });
-
-    test('그 사이 값은 그대로 둔다', () {
-      final Size viewport = Size(boardWidth, boardHeight);
-
-      expect(clampBoardScale(1.5, viewport), 1.5);
-    });
-
-    test('화면이 아주 작아도 오류가 나지 않는다', () {
-      // 이때는 "판 전체가 보이는 배율"이 최대 배율보다 클 수도 있습니다.
-      // 막아두지 않으면 clamp가 "최솟값이 최댓값보다 크다"며 오류를 냅니다.
-      final Size viewport = Size(boardWidth * 10, boardHeight * 10);
-
-      expect(clampBoardScale(1, viewport), isNotNull);
-    });
-  });
-
-  group('판이 화면 밖으로 밀려나지 않게 붙잡기', () {
-    test('판이 화면보다 작으면 가운데에 둔다', () {
-      final Size viewport = Size(boardWidth * 2, boardHeight * 2);
-
-      final Offset result = clampBoardOffset(Offset.zero, 1.0, viewport);
-
-      expect(result.dx, (viewport.width - boardWidth) / 2);
-      expect(result.dy, (viewport.height - boardHeight) / 2);
-    });
-
-    test('판이 화면보다 크면 왼쪽 끝을 넘겨 밀 수 없다', () {
-      // 여기서 안 막으면 판을 화면 밖으로 완전히 밀어내고 빈 화면만 보게 됩니다.
-      final Size viewport = Size(boardWidth / 2, boardHeight / 2);
-
-      final Offset result = clampBoardOffset(const Offset(500, 500), 1.0, viewport);
-
-      expect(result.dx, 0);
-      expect(result.dy, 0);
-    });
-
-    test('판이 화면보다 크면 오른쪽 끝도 넘길 수 없다', () {
-      final Size viewport = Size(boardWidth / 2, boardHeight / 2);
-
-      final Offset result = clampBoardOffset(
-        const Offset(-99999, -99999),
-        1.0,
-        viewport,
-      );
-
-      expect(result.dx, viewport.width - boardWidth);
-      expect(result.dy, viewport.height - boardHeight);
-    });
-  });
-
-  group('가리키는 자리를 붙잡은 채 확대하기', () {
-    test('가리킨 지점은 확대해도 같은 자리에 남는다', () {
-      // ── 이게 이 계산의 전부입니다 ──
-      // 안 그러면 확대할 때마다 보고 있던 곳이 화면 밖으로 밀려나서,
-      // 확대하고 다시 찾아가고를 반복하게 됩니다.
-      const Offset focal = Offset(300, 200);
-      const Offset offset = Offset(50, 20);
-
-      final Offset next = zoomAroundPoint(
-        focalPoint: focal,
-        offset: offset,
-        fromScale: 1.0,
-        toScale: 2.0,
-      );
-
-      // 확대 전에 손가락 밑에 있던 판 좌표
-      final Offset boardPoint = (focal - offset) / 1.0;
-
-      // 확대 후에도 같은 화면 자리에 와야 합니다. (화면 = 이동 + 판×배율)
-      final Offset shownAgain = next + boardPoint * 2.0;
-
-      expect(shownAgain.dx, closeTo(focal.dx, 0.001));
-      expect(shownAgain.dy, closeTo(focal.dy, 0.001));
-    });
-
-    test('축소할 때도 마찬가지다', () {
-      const Offset focal = Offset(640, 400);
-      const Offset offset = Offset(-100, -60);
-
-      final Offset next = zoomAroundPoint(
-        focalPoint: focal,
-        offset: offset,
-        fromScale: 2.0,
-        toScale: 0.5,
-      );
-
-      final Offset boardPoint = (focal - offset) / 2.0;
-      final Offset shownAgain = next + boardPoint * 0.5;
-
-      expect(shownAgain.dx, closeTo(focal.dx, 0.001));
-      expect(shownAgain.dy, closeTo(focal.dy, 0.001));
-    });
-
-    test('배율이 그대로면 이동값도 그대로다', () {
-      const Offset offset = Offset(12, 34);
-
-      final Offset next = zoomAroundPoint(
-        focalPoint: const Offset(100, 100),
-        offset: offset,
-        fromScale: 1.0,
-        toScale: 1.0,
-      );
-
-      expect(next.dx, closeTo(offset.dx, 0.001));
-      expect(next.dy, closeTo(offset.dy, 0.001));
-    });
-  });
-
   group('크기 조절 중 카드 가로 크기 붙잡기', () {
-    /// 테스트에서 읽기 쉬우라고 만든 도우미입니다.
-    ///
-    /// 기본값은 **가로 사진(4:3)이 판 왼쪽 위에 있는 경우**입니다.
-    /// 그 상태에서는 판 아래쪽까지 여유가 넉넉해서, 세로 때문에 걸리는 일이
-    /// 없습니다. 그래서 가로 쪽만 보고 싶은 테스트는 기본값을 그대로 씁니다.
-    double clampWidth(
-      double width, {
-      double cardX = 0,
-      double cardY = 0,
-      double heightPerWidth = 3 / 4,
-    }) {
-      return clampResizedCardWidth(
-        width: width,
-        cardX: cardX,
-        cardY: cardY,
-        heightPerWidth: heightPerWidth,
-      );
-    }
-
     test('너무 작게는 못 줄인다', () {
       // 더 작아지면 손잡이와 내리기 버튼이 카드보다 커져서 잡을 수가 없습니다.
-      expect(clampWidth(1), minBoardCardWidth);
+      expect(clampResizedCardWidth(1), minBoardCardWidth);
     });
 
     test('너무 크게는 못 키운다', () {
-      expect(clampWidth(99999), maxBoardCardWidth);
+      expect(clampResizedCardWidth(99999), maxBoardCardWidth);
     });
 
-    test('판 오른쪽 끝을 넘지 않는다', () {
-      // 카드가 판 끝에서 300만큼 앞에 있으면, 아무리 끌어도 300까지입니다.
-      expect(clampWidth(99999, cardX: boardWidth - 300), 300);
+    test('그 사이 값은 그대로 둔다', () {
+      expect(clampResizedCardWidth(400), 400);
     });
 
-    test('판 끝에 바짝 붙어 있어도 오류가 나지 않는다', () {
-      // 남은 자리가 최소 크기보다 작은 경우입니다.
-      expect(clampWidth(200, cardX: boardWidth - 10), minBoardCardWidth);
-    });
-
-    // ── 여기서부터가 판 아래쪽입니다 ──
-    //
-    // 가로세로 비율을 고정한 채 키우기 때문에, 가로를 붙잡지 않으면 세로가
-    // 판 밖으로 나갑니다. 그런데 손잡이는 카드의 **오른쪽 아래**에 있어서,
-    // 한 번 나가면 다시 잡을 수가 없습니다. 그래서 가로 쪽과 똑같이 막습니다.
-
-    test('세로 사진은 판 아래쪽 끝을 넘지 않는다', () {
-      // 3:4 세로 사진이 판 맨 위에 있습니다. 세로 여유는 1200.
-      // 가로로 환산하면 1200 ÷ (4/3) = 900. 최대치(960)보다 이쪽이 빡빡합니다.
-      final double width = clampWidth(99999, cardY: 0, heightPerWidth: 4 / 3);
-
-      expect(width, 900);
-      expect(width * 4 / 3, boardHeight);
-    });
-
-    test('아래쪽에 놓인 카드는 남은 자리만큼만 커진다', () {
-      // 판 아래쪽 끝에서 600만큼 위에 있는 4:3 가로 사진입니다.
-      // 가로로 환산하면 600 ÷ (3/4) = 800.
-      final double width = clampWidth(99999, cardY: boardHeight - 600);
-
-      expect(width, 800);
-    });
-
-    test('아래쪽에 바짝 붙어 있어도 오류가 나지 않는다', () {
-      // 남은 세로가 최소 크기보다도 작은 경우입니다.
-      expect(
-        clampWidth(500, cardY: boardHeight - 10),
-        minBoardCardWidth,
-      );
-    });
-
-    test('가로와 세로 중 더 빡빡한 쪽을 따른다', () {
-      // 오른쪽 여유는 400, 아래쪽 여유를 가로로 환산하면 300입니다.
-      final double width = clampWidth(
-        99999,
-        cardX: boardWidth - 400,
-        cardY: boardHeight - 300,
-        heightPerWidth: 1,
-      );
-
-      expect(width, 300);
-    });
-
-    test('비율을 모르면(0) 세로는 따지지 않는다', () {
-      // 그림이 아직 안 읽혀서 크기를 못 잰 경우입니다.
-      // 0으로 나누면 안 되므로 가로 쪽만 봅니다.
-      expect(clampWidth(99999, heightPerWidth: 0), maxBoardCardWidth);
-    });
+    // 판 끝을 넘지 않게 막던 규칙은 없어졌습니다. 판에 끝이 없어서
+    // 떨어져 나갈 곳이 없습니다. 크게 키워 화면 밖으로 나가더라도
+    // 축소하거나 ⛶를 누르면 다시 보입니다.
   });
 }

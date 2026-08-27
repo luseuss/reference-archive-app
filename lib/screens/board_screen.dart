@@ -85,6 +85,15 @@ class _BoardScreenState extends State<BoardScreen> {
   /// 으로 매번 새로 계산하면 어긋날 일이 없습니다.
   Offset _resizeDelta = Offset.zero;
 
+  /// 보던 화면을 "카드 전부 보기"로 되돌리라고 알리는 숫자입니다.
+  ///
+  /// 숫자 자체에는 뜻이 없습니다. **1 올리면 되돌아갑니다.**
+  /// (BoardViewport의 viewResetCount 설명 참고)
+  ///
+  /// 레퍼런스를 새로 담을 때 씁니다. 멀리 확대해서 보고 있었다면 새 카드가
+  /// 화면 밖에 생겨서 안 담긴 것처럼 보이기 때문입니다.
+  int _viewResetCount = 0;
+
   /// 아직 읽어오는 중인지 여부입니다.
   bool _isLoading = true;
 
@@ -162,6 +171,16 @@ class _BoardScreenState extends State<BoardScreen> {
       return;
     }
     await _loadBoard();
+
+    if (!mounted) {
+      return;
+    }
+
+    // 담은 카드가 화면 밖에 생기면 "안 담겼나?" 싶어집니다.
+    // 한 번 전체 보기로 되돌려서 방금 담은 것이 반드시 보이게 합니다.
+    setState(() {
+      _viewResetCount++;
+    });
   }
 
   /// 카드를 잡았을 때 실행됩니다. 잡은 카드를 맨 위로 올립니다.
@@ -308,6 +327,11 @@ class _BoardScreenState extends State<BoardScreen> {
     // 판을 확대·이동해서 보여주는 일은 BoardViewport가 맡습니다.
     // 카드를 놓고 조작을 알아채는 일만 BoardCanvas가 합니다.
     return BoardViewport(
+      // 판에 끝이 없어서, 그릴 자리와 "카드가 놓인 범위"를 카드에서 구해
+      // 넘겨줍니다. 카드를 옮기면 이 값들도 따라 바뀝니다.
+      canvasSize: boardCanvasSize(_cards),
+      contentBounds: boardContentBounds(_cards),
+      viewResetCount: _viewResetCount,
       child: BoardCanvas(
         cards: _cards,
         itemsById: _lookup.itemsById,

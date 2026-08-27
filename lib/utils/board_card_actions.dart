@@ -65,8 +65,8 @@ List<BoardCard> raiseCardToTop(List<BoardCard> cards, String cardId) {
 
 /// 이 카드를 [delta]만큼 옮긴 새 목록을 돌려줍니다.
 ///
-/// 판 밖으로 나가지 않게 붙잡아둡니다.
-/// (왜 막는지는 board_layout.dart의 clampToBoard 설명을 보세요)
+/// 왼쪽 위 바깥으로만 안 나가게 붙잡습니다. 오른쪽·아래로는 끝이 없습니다.
+/// (왜 그런지는 board_layout.dart의 clampToCanvas 설명을 보세요)
 List<BoardCard> moveCard(
   List<BoardCard> cards,
   String cardId,
@@ -78,10 +78,9 @@ List<BoardCard> moveCard(
   }
 
   final BoardCard current = cards[index];
-  final Offset moved = clampToBoard(
+  final Offset moved = clampToCanvas(
     current.x + delta.dx,
     current.y + delta.dy,
-    current,
   );
 
   return <BoardCard>[
@@ -128,17 +127,11 @@ List<BoardCard> resizeCard(
   // 세로 ÷ 가로. 크기를 바꾸는 내내 이 비율을 그대로 지킵니다.
   final double heightPerWidth = startSize.height / startSize.width;
 
-  // 가로를 먼저 정합니다. 이때 판의 오른쪽 끝뿐 아니라 **아래쪽 끝**도 함께
-  // 봅니다. 비율이 고정이라 가로를 키우면 세로도 따라 커지기 때문입니다.
+  // 가로를 먼저 정하고 세로는 비율대로 따라갑니다.
+  // 판에 끝이 없어서 이제 최소·최대 크기만 봅니다.
   // (자세한 이유는 board_layout.dart의 clampResizedCardWidth 설명을 보세요)
-  final double width = clampResizedCardWidth(
-    width: startSize.width + movedSoFar.dx,
-    cardX: current.x,
-    cardY: current.y,
-    heightPerWidth: heightPerWidth,
-  );
+  final double width = clampResizedCardWidth(startSize.width + movedSoFar.dx);
 
-  // 세로는 가로를 따라갑니다. 가로가 이미 판 안으로 붙잡혔으므로 세로도 안전합니다.
   final double height = width * heightPerWidth;
 
   return <BoardCard>[

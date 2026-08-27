@@ -10,7 +10,6 @@ import 'dart:ui' show Offset, Size;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:reference_archive_app/models/board.dart';
-import 'package:reference_archive_app/theme/app_metrics.dart';
 import 'package:reference_archive_app/utils/board_card_actions.dart';
 
 void main() {
@@ -98,7 +97,8 @@ void main() {
       expect(cardOf(result, 'a').y, 140);
     });
 
-    test('판 밖으로는 나가지 않는다', () {
+    test('왼쪽 위 바깥으로는 나가지 않는다', () {
+      // 음수 자리에 놓인 카드는 클릭이 안 닿아서 잡을 수가 없습니다.
       final List<BoardCard> cards = <BoardCard>[makeCard('a', x: 10, y: 10)];
 
       final List<BoardCard> result = moveCard(
@@ -109,6 +109,33 @@ void main() {
 
       expect(cardOf(result, 'a').x, 0);
       expect(cardOf(result, 'a').y, 0);
+    });
+
+    test('오른쪽·아래로는 얼마든지 갈 수 있다', () {
+      // ── 이게 "판에 끝이 없다"의 알맹이입니다 ──
+      // 전에는 1920×1200에서 막혔습니다. 이제는 안 막힙니다.
+      final List<BoardCard> cards = <BoardCard>[makeCard('a', x: 100, y: 100)];
+
+      final List<BoardCard> result = moveCard(
+        cards,
+        'a',
+        const Offset(50000, 40000),
+      );
+
+      expect(cardOf(result, 'a').x, 50100);
+      expect(cardOf(result, 'a').y, 40100);
+    });
+
+    test('여러 번 끌어도 계속 나아간다', () {
+      // 한 번은 되는데 두 번째부터 막히면 "끝이 없다"가 아닙니다.
+      List<BoardCard> cards = <BoardCard>[makeCard('a', x: 0, y: 0)];
+
+      for (int i = 0; i < 10; i++) {
+        cards = moveCard(cards, 'a', const Offset(1000, 1000));
+      }
+
+      expect(cardOf(cards, 'a').x, 10000);
+      expect(cardOf(cards, 'a').y, 10000);
     });
 
     test('원래 목록은 그대로 남는다', () {
@@ -185,9 +212,10 @@ void main() {
       expect(cardOf(result, 'a').width, minBoardCardWidth);
     });
 
-    test('판 오른쪽 끝을 넘지 않는다', () {
-      const double cardX = boardWidth - 300;
-      final List<BoardCard> cards = <BoardCard>[makeCard('a', x: cardX)];
+    test('판 끝과 상관없이 최대 크기까지 커진다', () {
+      // ── 전에는 판 끝에서 막혔습니다 ──
+      // 판에 끝이 없어진 뒤로는 걸릴 것이 없습니다. 남는 것은 최대 크기뿐입니다.
+      final List<BoardCard> cards = <BoardCard>[makeCard('a', x: 0)];
 
       final List<BoardCard> result = resizeCard(
         cards,
@@ -196,16 +224,35 @@ void main() {
         movedSoFar: const Offset(9999, 0),
       );
 
-      expect(cardOf(result, 'a').width, 300);
+      expect(cardOf(result, 'a').width, maxBoardCardWidth);
     });
 
-    test('세로 사진을 키워도 카드 아래가 판 밖으로 안 나간다', () {
-      // ── 왜 이걸 확인하나 ──
-      // 손잡이는 카드의 **오른쪽 아래**에 있습니다. 카드 아래쪽이 판 밖으로
-      // 나가면 손잡이도 함께 나가서, 다시 잡아 줄일 수가 없게 됩니다.
-      // 크기는 손을 뗄 때 저장되므로 앱을 껐다 켜도 그대로입니다.
-      //
-      // 3:4 세로 사진(220 x 293)을 판 맨 위에서 최대한 키워봅니다.
+    test('멀리 떨어진 카드도 똑같이 커진다', () {
+      // 자리는 크기에 아무 영향을 주지 않습니다. 판 어디에 있든 같습니다.
+      final List<BoardCard> near = <BoardCard>[makeCard('a', x: 0, y: 0)];
+      final List<BoardCard> far = <BoardCard>[makeCard('a', x: 9000, y: 7000)];
+
+      final List<BoardCard> nearResult = resizeCard(
+        near,
+        'a',
+        startSize: const Size(220, 293),
+        movedSoFar: const Offset(400, 0),
+      );
+      final List<BoardCard> farResult = resizeCard(
+        far,
+        'a',
+        startSize: const Size(220, 293),
+        movedSoFar: const Offset(400, 0),
+      );
+
+      expect(cardOf(nearResult, 'a').width, cardOf(farResult, 'a').width);
+      expect(cardOf(nearResult, 'a').height, cardOf(farResult, 'a').height);
+    });
+
+    test('세로 사진도 비율만 지키면 얼마든지 커진다', () {
+      // 전에는 판 아래 끝 때문에 가로가 900에서 막혔습니다.
+      // 이제는 최대치(960)까지 갑니다. 화면 밖으로 나가더라도 축소하거나
+      // ⛶를 누르면 다시 보이므로 갇히지 않습니다.
       final List<BoardCard> cards = <BoardCard>[makeCard('a', x: 0, y: 0)];
 
       final List<BoardCard> result = resizeCard(
@@ -217,32 +264,12 @@ void main() {
 
       final BoardCard resized = cardOf(result, 'a');
 
-      expect(resized.y + resized.height!, lessThanOrEqualTo(boardHeight));
-    });
-
-    test('아래쪽에 놓인 카드는 그만큼만 커진다', () {
-      // 판 아래쪽 끝에서 400만큼 위에 있는 4:3 가로 사진입니다.
-      // 세로가 400을 넘지 못하므로 가로도 따라서 막힙니다.
-      final List<BoardCard> cards = <BoardCard>[
-        makeCard('a', x: 0, y: boardHeight - 400),
-      ];
-
-      final List<BoardCard> result = resizeCard(
-        cards,
-        'a',
-        startSize: const Size(200, 150),
-        movedSoFar: const Offset(9999, 0),
-      );
-
-      final BoardCard resized = cardOf(result, 'a');
-
-      expect(resized.height, lessThanOrEqualTo(400));
-      expect(resized.y + resized.height!, lessThanOrEqualTo(boardHeight));
+      expect(resized.width, maxBoardCardWidth);
+      expect(resized.height! / resized.width, closeTo(293 / 220, 0.001));
     });
 
     test('처음 크기를 못 쟀으면 그대로 둔다', () {
       // 그림이 아직 안 읽혀서 가로가 0인 경우입니다.
-      // 그대로 계산하면 0으로 나누게 됩니다.
       final List<BoardCard> cards = <BoardCard>[makeCard('a')];
 
       final List<BoardCard> result = resizeCard(
