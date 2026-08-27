@@ -42,16 +42,21 @@ import 'board_zoom_controls.dart';
 class BoardViewport extends StatefulWidget {
   const BoardViewport({
     super.key,
-    required this.canvasSize,
+    required this.canvasRect,
     required this.contentBounds,
     required this.viewResetCount,
     required this.child,
   });
 
-  /// 카드를 그릴 자리의 크기입니다. (`boardCanvasSize`로 구합니다)
+  /// 카드를 그릴 자리입니다. (`boardCanvasRect`로 구합니다)
   ///
-  /// 카드가 오른쪽·아래로 갈수록 커집니다. 왼쪽 위(0, 0)는 고정입니다.
-  final Size canvasSize;
+  /// **왼쪽 위 모서리가 고정이 아닙니다.** 카드가 어느 쪽으로 가든 상자가
+  /// 따라 움직입니다. 그래야 음수 자리에 놓인 카드도 클릭이 닿습니다.
+  ///
+  /// 상자를 놓을 때 그 모서리만큼 다시 더해주기 때문에, 상자가 움직여도
+  /// 화면에서 카드는 제자리에 있습니다.
+  /// (board_layout.dart의 boardCanvasRect 설명 참고)
+  final Rect canvasRect;
 
   /// 지금 카드들이 놓인 범위입니다. (`boardContentBounds`로 구합니다)
   ///
@@ -73,7 +78,7 @@ class BoardViewport extends StatefulWidget {
   /// 부르는 쪽에서 1씩 올려주면 됩니다.
   final int viewResetCount;
 
-  /// 판 안에 그릴 것입니다. 크기가 [canvasSize]라고 보고 그립니다.
+  /// 판 안에 그릴 것입니다. 크기가 [canvasRect]의 크기라고 보고 그립니다.
   ///
   /// 빈 자리는 **클릭을 받지 않아야** 합니다. 받아버리면 빈 곳을 끌어도
   /// 판이 안 움직입니다. (board_canvas.dart가 바탕을 안 그리는 이유입니다)
@@ -291,15 +296,22 @@ class _BoardViewportState extends State<BoardViewport> {
               // 좌표를 손으로 환산하지 않아도 되는 것이 이 방식의 장점입니다.
               // 카드를 끌 때 Flutter가 화면의 손가락 위치를 판 좌표로 되돌려줍니다.
               Positioned(
-                left: offset.dx,
-                top: offset.dy,
-                width: widget.canvasSize.width * scale,
-                height: widget.canvasSize.height * scale,
+                // 상자의 왼쪽 위 모서리(판 좌표)를 화면 좌표로 옮겨 더합니다.
+                // 카드를 놓을 때 뺀 만큼을 여기서 도로 더하는 것입니다.
+                //
+                //   화면 = 이동 + 원점×배율 + (카드 - 원점)×배율
+                //        = 이동 + 카드×배율      ← 원점이 사라집니다
+                //
+                // 그래서 상자가 움직여도 카드는 화면에서 안 움직입니다.
+                left: offset.dx + widget.canvasRect.left * scale,
+                top: offset.dy + widget.canvasRect.top * scale,
+                width: widget.canvasRect.width * scale,
+                height: widget.canvasRect.height * scale,
                 child: FittedBox(
                   fit: BoxFit.fill,
                   child: SizedBox(
-                    width: widget.canvasSize.width,
-                    height: widget.canvasSize.height,
+                    width: widget.canvasRect.width,
+                    height: widget.canvasRect.height,
                     child: widget.child,
                   ),
                 ),

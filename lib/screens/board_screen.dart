@@ -324,16 +324,22 @@ class _BoardScreenState extends State<BoardScreen> {
       return _buildEmptyState();
     }
 
+    // 판에 끝이 없어서, 그릴 자리를 카드에서 구합니다.
+    // 카드를 옮기면 이 자리도 따라 움직입니다.
+    //
+    // 한 번만 구해서 둘에게 나눠줍니다. 각자 구하게 두면 언젠가 한쪽만
+    // 고쳐서 상자와 카드가 어긋나게 됩니다.
+    final Rect canvasRect = boardCanvasRect(_cards);
+
     // 판을 확대·이동해서 보여주는 일은 BoardViewport가 맡습니다.
     // 카드를 놓고 조작을 알아채는 일만 BoardCanvas가 합니다.
     return BoardViewport(
-      // 판에 끝이 없어서, 그릴 자리와 "카드가 놓인 범위"를 카드에서 구해
-      // 넘겨줍니다. 카드를 옮기면 이 값들도 따라 바뀝니다.
-      canvasSize: boardCanvasSize(_cards),
+      canvasRect: canvasRect,
       contentBounds: boardContentBounds(_cards),
       viewResetCount: _viewResetCount,
       child: BoardCanvas(
         cards: _cards,
+        canvasOrigin: canvasRect.topLeft,
         itemsById: _lookup.itemsById,
         imagePaths: _lookup.imagePaths,
         activeCardId: _activeCardId,

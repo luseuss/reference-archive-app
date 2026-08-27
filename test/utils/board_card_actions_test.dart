@@ -97,8 +97,11 @@ void main() {
       expect(cardOf(result, 'a').y, 140);
     });
 
-    test('왼쪽 위 바깥으로는 나가지 않는다', () {
-      // 음수 자리에 놓인 카드는 클릭이 안 닿아서 잡을 수가 없습니다.
+    test('왼쪽·위로도 얼마든지 갈 수 있다', () {
+      // ── 한때 여기에 벽이 있었습니다 ──
+      // 음수 자리에서는 클릭이 안 닿아서 막아뒀는데, 써보니 자주 부딪혔습니다.
+      // 이제는 그리는 상자가 카드를 따라 움직여서 막을 이유가 없습니다.
+      // (board_layout.dart의 boardCanvasRect 설명 참고)
       final List<BoardCard> cards = <BoardCard>[makeCard('a', x: 10, y: 10)];
 
       final List<BoardCard> result = moveCard(
@@ -107,8 +110,8 @@ void main() {
         const Offset(-500, -500),
       );
 
-      expect(cardOf(result, 'a').x, 0);
-      expect(cardOf(result, 'a').y, 0);
+      expect(cardOf(result, 'a').x, -490);
+      expect(cardOf(result, 'a').y, -490);
     });
 
     test('오른쪽·아래로는 얼마든지 갈 수 있다', () {

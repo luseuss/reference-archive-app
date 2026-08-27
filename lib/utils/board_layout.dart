@@ -67,40 +67,40 @@ Rect boardContentBounds(List<BoardCard> cards) {
   return bounds;
 }
 
-/// 카드를 그릴 **자리의 크기**를 돌려줍니다.
+/// 카드를 그릴 **자리**를 돌려줍니다. (판 좌표 기준의 네모)
 ///
-/// ── 왜 카드 범위보다 크게 잡나 ──
-/// 두 가지 때문입니다.
-///   1. 카드를 맨 끝까지 끌었을 때 **더 밀 자리**가 있어야 합니다.
-///      끝에 닿아서 안 밀리면 판에 끝이 없다는 말이 무색해집니다.
-///   2. 카드가 몇 장 없을 때 자리가 손바닥만 하면 어색합니다.
+/// ── 이 함수가 사방 무한을 가능하게 합니다 ──
+/// 카드의 x, y는 **음수여도 됩니다.** 그런데 Flutter는 상자 **바깥**의 클릭을
+/// 자식에게 안 내려보내기 때문에, 상자를 (0, 0)에 고정해두면 음수 자리에 놓인
+/// 카드가 **화면에 보이는데도 안 잡힙니다.** PR #18에서 손잡이가 판 밖으로
+/// 나갔을 때 실제로 겪은 문제입니다.
 ///
-/// ── 왼쪽 위(0, 0)에서만 잽니다 ──
-/// 카드는 음수 자리로 갈 수 없으므로(clampToCanvas), 범위의 왼쪽 위는
-/// 언제나 0 이상입니다. 그래서 오른쪽 아래 끝만 보면 됩니다.
+/// 그래서 상자를 고정하지 않고 **카드를 따라 움직이게** 합니다. 카드가 왼쪽
+/// 위로 가면 상자의 시작점도 함께 왼쪽 위로 갑니다. 상자 안에서 보면 모든
+/// 카드가 0 이상이라 클릭이 정상적으로 닿습니다.
 ///
-/// 카드를 오른쪽으로 끌면 이 크기가 따라 늘어납니다. 원점이 고정이라
-/// 늘어나도 **이미 놓인 카드들은 제자리에 그대로 있습니다.** 원점까지
-/// 같이 움직이면 카드를 끌 때마다 판 전체가 흔들립니다.
-Size boardCanvasSize(List<BoardCard> cards) {
+/// ── 상자가 움직여도 화면은 안 흔들립니다 ──
+/// 그리는 쪽에서 이렇게 계산하기 때문입니다.
+///
+///   화면 위치 = 이동 + 원점×배율 + (카드 − 원점)×배율
+///             = 이동 + 카드×배율          ← 원점이 사라집니다
+///
+/// 원점이 얼마든 카드의 화면 위치는 같습니다. 그래서 한 장을 왼쪽으로 끌어도
+/// 나머지 카드가 밀려 보이지 않습니다.
+/// (board_viewport.dart와 board_canvas.dart가 이 식을 나눠 맡습니다)
+///
+/// ── 사방으로 여유를 둡니다 ──
+/// 카드가 상자 끝에 딱 붙어 있으면 그쪽으로 더 밀 자리가 없습니다.
+/// 어느 방향으로든 계속 끌 수 있도록 둘레에 [canvasBreathingRoom]을 둡니다.
+Rect boardCanvasRect(List<BoardCard> cards) {
   final Rect bounds = boardContentBounds(cards);
 
-  return Size(
-    max(minCanvasWidth, bounds.right + canvasBreathingRoom),
-    max(minCanvasHeight, bounds.bottom + canvasBreathingRoom),
-  );
-}
+  // 카드가 없으면 기본 크기의 자리를 왼쪽 위에 둡니다.
+  if (bounds.isEmpty) {
+    return const Rect.fromLTWH(0, 0, minCanvasWidth, minCanvasHeight);
+  }
 
-/// 카드가 **왼쪽 위 바깥으로 나가지 않도록** 위치를 끌어당깁니다.
-///
-/// 오른쪽·아래로는 붙잡지 않습니다. 그쪽으로는 판에 끝이 없습니다.
-///
-/// ── 왜 왼쪽 위만 막나 ──
-/// 음수 자리에 놓인 카드는 **눌리지가 않습니다.** Flutter는 상자 바깥의
-/// 클릭을 자식에게 내려보내지 않기 때문입니다. 눈에는 보이는데 잡을 수 없는
-/// 카드가 생깁니다. (app_metrics.dart의 minCanvasWidth 설명 참고)
-Offset clampToCanvas(double x, double y) {
-  return Offset(max(0, x), max(0, y));
+  return bounds.inflate(canvasBreathingRoom);
 }
 
 /// 판에 새로 올리는 [index]번째 카드를 어디에 둘지 정해 돌려줍니다.

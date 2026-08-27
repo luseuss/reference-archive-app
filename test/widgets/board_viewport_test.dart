@@ -23,8 +23,11 @@ void main() {
   /// 테스트용 화면 크기입니다.
   const Size testViewport = Size(960, 600);
 
-  /// 카드를 그릴 자리의 크기입니다.
-  const Size testCanvas = Size(1920, 1200);
+  /// 카드를 그릴 자리입니다.
+  ///
+  /// 왼쪽 위가 (0, 0)이 아닌 경우도 확인하려고 일부러 음수에서 시작합니다.
+  /// 상자가 어디서 시작하든 화면에 그려지는 배율은 같아야 합니다.
+  const Rect testCanvas = Rect.fromLTWH(-200, -100, 1920, 1200);
 
   /// 카드들이 놓인 범위입니다.
   ///
@@ -51,7 +54,7 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: BoardViewport(
-            canvasSize: testCanvas,
+            canvasRect: testCanvas,
             contentBounds: content,
             viewResetCount: viewResetCount,
             child: const SizedBox.expand(key: contentKey),
@@ -158,10 +161,14 @@ void main() {
     }
 
     final Rect shown = shownRect(tester);
+    final double scale = shownScale(tester);
 
-    // 카드 범위(판 좌표 0~1760)의 오른쪽 끝이 화면 안에 조금은 남아야 합니다.
-    final double contentRightOnScreen =
-        shown.left + testContent.right * shownScale(tester);
+    // 상자가 놓인 자리에서 원점만큼 되돌리면 "이동값"이 나옵니다.
+    //   상자 왼쪽 = 이동 + 원점×배율
+    final double offsetX = shown.left - testCanvas.left * scale;
+
+    // 카드 범위의 오른쪽 끝이 화면 안에 조금은 남아 있어야 합니다.
+    final double contentRightOnScreen = offsetX + testContent.right * scale;
 
     expect(contentRightOnScreen, greaterThan(0));
   });
