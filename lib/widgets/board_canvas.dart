@@ -101,17 +101,30 @@ class BoardCanvas extends StatelessWidget {
   }
 
   /// 카드 한 장을 제자리에 놓고, 끌 수 있게 감싸 돌려줍니다.
+  ///
+  /// ── 카드마다 이름표(Key)를 꼭 붙입니다 ──
+  /// 카드를 잡으면 그 카드가 목록 맨 뒤로 옮겨집니다(맨 위에 그리려고).
+  /// 이름표가 없으면 Flutter는 화면 조각을 **순서(몇 번째)로만** 짝지어서,
+  /// 순서가 바뀌는 순간 **끌기를 붙잡고 있던 자리에 다른 카드가 들어옵니다.**
+  /// 그러면 잡은 카드는 가만히 있고 엉뚱한 카드가 커서를 따라다닙니다.
+  ///
+  /// 이름표를 붙이면 순서가 바뀌어도 "번호가 같은 것끼리" 짝지어집니다.
+  /// (test/screens/board_screen_test.dart의 '여러 장이 놓여 있어도...' 참고)
   Widget _buildPositionedCard(BoardCard card) {
     final ReferenceItem? item = itemsById[card.referenceId];
 
     // 짝이 되는 레퍼런스를 못 찾으면 아무것도 그리지 않습니다.
     // 레퍼런스를 목록에서 지운 직후에 이런 상태가 잠깐 생길 수 있는데,
     // 빈 상자를 그리는 것보다 안 보이는 편이 낫습니다.
+    //
+    // 이때도 이름표를 붙입니다. 안 붙이면 이 빈 상자 때문에 뒤에 오는
+    // 카드들의 순서가 밀려서 위와 똑같은 문제가 생깁니다.
     if (item == null) {
-      return const SizedBox.shrink();
+      return SizedBox.shrink(key: ValueKey<String>(card.id));
     }
 
     return Positioned(
+      key: ValueKey<String>(card.id),
       left: card.x,
       top: card.y,
       width: card.width,

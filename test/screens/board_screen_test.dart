@@ -183,6 +183,57 @@ void main() {
     expect(after.dy - before.dy, closeTo(60, 1));
   });
 
+
+  testWidgets('여러 장이 놓여 있어도 잡은 카드만 움직인다', (WidgetTester tester) async {
+    // ── 왜 여러 장이어야 하나 ──
+    // 카드를 잡으면 그 카드가 목록 맨 뒤로 옮겨집니다(맨 위에 그리려고).
+    // 한 장뿐이면 순서를 바꿔도 그대로라 아무 문제가 안 드러납니다.
+    // 실제 무드보드에는 여러 장이 놓입니다.
+    final String refA = await saveReference('가');
+    final String refB = await saveReference('나');
+    final String refC = await saveReference('다');
+
+    final BoardCard a = await putCardOnBoard(referenceId: refA, x: 100, y: 100);
+    final BoardCard b = await putCardOnBoard(referenceId: refB, x: 700, y: 100);
+    final BoardCard c = await putCardOnBoard(
+      referenceId: refC,
+      x: 1300,
+      y: 100,
+    );
+
+    await openBoard(tester);
+
+    // ── 끄는 도중에 화면을 다시 그립니다 ──
+    // tester.drag는 누르고-옮기고-떼기를 다시 그리지 않고 한 번에 합니다.
+    // 실제 앱은 매 순간 다시 그리므로, 그 사이에 목록 순서가 바뀝니다.
+    // 그 차이를 흉내내려고 손으로 pump를 넣습니다.
+    final TestGesture drag = await tester.startGesture(
+      tester.getCenter(find.byType(BoardCardView).first),
+    );
+    await tester.pump();
+
+    await drag.moveBy(const Offset(75, 0));
+    await tester.pump();
+
+    await drag.moveBy(const Offset(75, 0));
+    await tester.pump();
+
+    await drag.up();
+    await tester.pumpAndSettle();
+
+    // 잡은 카드만 움직여야 합니다.
+    expect(
+      (await reloadCard(a.id)).x,
+      greaterThan(100),
+      reason: '잡은 카드가 안 움직였습니다',
+    );
+    expect(
+      (await reloadCard(b.id)).x,
+      700,
+      reason: '안 잡은 카드가 움직였습니다',
+    );
+    expect((await reloadCard(c.id)).x, 1300);
+  });
   testWidgets('끌어서 옮긴 자리가 저장된다', (WidgetTester tester) async {
     // ── 이게 이 파일의 핵심입니다 ──
     // 화면에서만 옮겨지고 저장이 안 되면, 앱을 껐다 켤 때 늘어놓은 것이
