@@ -22,6 +22,7 @@ import 'package:reference_archive_app/screens/board_screen.dart';
 import 'package:reference_archive_app/utils/id_generator.dart';
 import 'package:reference_archive_app/widgets/board_viewport.dart';
 import 'package:reference_archive_app/widgets/board_card_view.dart';
+import 'package:reference_archive_app/widgets/board_guides.dart';
 
 import '../fakes/fake_image_storage.dart';
 
@@ -592,5 +593,122 @@ void main() {
 
     expect(after.dx, closeTo(before.dx, 1), reason: '가만있어야 할 카드가 밀렸습니다');
     expect((await reloadCard(staying.id)).x, 900);
+  });
+
+  testWidgets('가까이 끌면 다른 카드에 착 붙는다', (WidgetTester tester) async {
+    // ── 규칙이 맞는지는 board_snap_test가 봅니다 ──
+    // 여기서는 그 규칙이 **실제 끌기에 연결됐는지**를 봅니다. 계산은 맞는데
+    // 화면에 안 이어져 있으면 사용자에게는 없는 기능입니다.
+    final String movingRef = await saveReference('움직일 것');
+    final String anchorRef = await saveReference('기준');
+
+    // 기준 카드의 왼쪽은 600입니다.
+    await putCardOnBoard(referenceId: anchorRef, x: 600, y: 200);
+    final BoardCard moving = await putCardOnBoard(
+      referenceId: movingRef,
+      x: 100,
+      y: 700,
+    );
+
+    await openBoard(tester);
+
+    final double scale = shownScale(tester);
+
+    // 기준의 왼쪽(600)에서 5만큼 못 미치는 자리로 끕니다.
+    // 스냅이 없으면 595에 놓이고, 있으면 600으로 당겨집니다.
+    final double target = 595;
+    await tester.drag(
+      find.byKey(ValueKey<String>(moving.id)),
+      Offset((target - 100) * scale, 0),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      (await reloadCard(moving.id)).x,
+      600,
+      reason: '스냅이 화면에 연결되지 않았습니다',
+    );
+  });
+
+  testWidgets('멀리 있으면 안 붙는다', (WidgetTester tester) async {
+    // 아무 데나 붙으면 원하는 자리에 못 놓습니다.
+    final String movingRef = await saveReference('움직일 것');
+    final String anchorRef = await saveReference('기준');
+
+    await putCardOnBoard(referenceId: anchorRef, x: 600, y: 200);
+    final BoardCard moving = await putCardOnBoard(
+      referenceId: movingRef,
+      x: 100,
+      y: 700,
+    );
+
+    await openBoard(tester);
+
+    final double scale = shownScale(tester);
+
+    // 기준에서 한참 떨어진 자리로 끕니다.
+    await tester.drag(
+      find.byKey(ValueKey<String>(moving.id)),
+      Offset(200 * scale, 0),
+    );
+    await tester.pumpAndSettle();
+
+    expect((await reloadCard(moving.id)).x, closeTo(300, 1));
+  });
+
+  testWidgets('붙는 동안 안내선이 보인다', (WidgetTester tester) async {
+    // 스냅은 눈에 안 보이는 기능이라, 무엇에 맞춰졌는지 알려줘야 합니다.
+    final String movingRef = await saveReference('움직일 것');
+    final String anchorRef = await saveReference('기준');
+
+    await putCardOnBoard(referenceId: anchorRef, x: 600, y: 200);
+    final BoardCard moving = await putCardOnBoard(
+      referenceId: movingRef,
+      x: 100,
+      y: 700,
+    );
+
+    await openBoard(tester);
+
+    final double scale = shownScale(tester);
+
+    // 끌기를 **끝내지 않고** 붙은 상태에서 확인합니다.
+    // 손을 떼면 안내선이 사라지기 때문입니다.
+    final TestGesture drag = await tester.startGesture(
+      tester.getCenter(find.byKey(ValueKey<String>(moving.id))),
+    );
+    await tester.pump();
+
+    await drag.moveBy(Offset((595 - 100) * scale / 2, 0));
+    await tester.pump();
+    await drag.moveBy(Offset((595 - 100) * scale / 2, 0));
+    await tester.pump();
+
+    expect(find.byType(BoardGuides), findsOneWidget);
+    final BoardGuides guides = tester.widget(find.byType(BoardGuides));
+    expect(guides.guideX, 600, reason: '안내선이 안 그려졌습니다');
+
+    await drag.up();
+    await tester.pumpAndSettle();
+
+    // 손을 떼면 사라져야 합니다. 계속 떠 있으면 판이 지저분해집니다.
+    final BoardGuides after = tester.widget(find.byType(BoardGuides));
+    expect(after.guideX, isNull, reason: '손을 뗐는데 안내선이 남아 있습니다');
+  });
+
+  testWidgets('안내선이 빈 곳 끌기를 가로채지 않는다', (WidgetTester tester) async {
+    // 안내선은 판 위에 얹히는 것이라, IgnorePointer로 감싸지 않으면
+    // 클릭을 가로채서 판이 안 움직입니다.
+    // (board_canvas.dart가 바탕을 안 그리는 것과 같은 이유)
+    final String referenceId = await saveReference('노을');
+    await putCardOnBoard(referenceId: referenceId, x: 100, y: 100);
+
+    await openBoard(tester);
+
+    expect(
+      find.byType(BoardGuides).hitTestable(),
+      findsNothing,
+      reason: '안내선이 클릭을 받고 있습니다',
+    );
   });
 }

@@ -91,7 +91,7 @@ void main() {
     test('움직인 만큼 자리가 바뀐다', () {
       final List<BoardCard> cards = <BoardCard>[makeCard('a', x: 100, y: 100)];
 
-      final List<BoardCard> result = moveCard(cards, 'a', const Offset(30, 40));
+      final List<BoardCard> result = moveCard(cards, 'a', const Offset(30, 40)).cards;
 
       expect(cardOf(result, 'a').x, 130);
       expect(cardOf(result, 'a').y, 140);
@@ -108,7 +108,7 @@ void main() {
         cards,
         'a',
         const Offset(-500, -500),
-      );
+      ).cards;
 
       expect(cardOf(result, 'a').x, -490);
       expect(cardOf(result, 'a').y, -490);
@@ -123,7 +123,7 @@ void main() {
         cards,
         'a',
         const Offset(50000, 40000),
-      );
+      ).cards;
 
       expect(cardOf(result, 'a').x, 50100);
       expect(cardOf(result, 'a').y, 40100);
@@ -134,7 +134,7 @@ void main() {
       List<BoardCard> cards = <BoardCard>[makeCard('a', x: 0, y: 0)];
 
       for (int i = 0; i < 10; i++) {
-        cards = moveCard(cards, 'a', const Offset(1000, 1000));
+        cards = moveCard(cards, 'a', const Offset(1000, 1000)).cards;
       }
 
       expect(cardOf(cards, 'a').x, 10000);
@@ -160,7 +160,7 @@ void main() {
         'a',
         startSize: const Size(200, 150),
         movedSoFar: const Offset(100, 0),
-      );
+      ).cards;
 
       expect(cardOf(result, 'a').width, 300);
     });
@@ -175,7 +175,7 @@ void main() {
         'a',
         startSize: const Size(200, 150),
         movedSoFar: const Offset(100, 0),
-      );
+      ).cards;
 
       final BoardCard resized = cardOf(result, 'a');
       expect(resized.height! / resized.width, closeTo(150 / 200, 0.001));
@@ -191,13 +191,13 @@ void main() {
         'a',
         startSize: const Size(200, 150),
         movedSoFar: const Offset(100, 0),
-      );
+      ).cards;
       final List<BoardCard> withHeight = resizeCard(
         cards,
         'a',
         startSize: const Size(200, 150),
         movedSoFar: const Offset(100, 400),
-      );
+      ).cards;
 
       expect(cardOf(withHeight, 'a').width, cardOf(onlyWidth, 'a').width);
     });
@@ -210,7 +210,7 @@ void main() {
         'a',
         startSize: const Size(200, 150),
         movedSoFar: const Offset(-9999, 0),
-      );
+      ).cards;
 
       expect(cardOf(result, 'a').width, minBoardCardWidth);
     });
@@ -225,7 +225,7 @@ void main() {
         'a',
         startSize: const Size(200, 150),
         movedSoFar: const Offset(9999, 0),
-      );
+      ).cards;
 
       expect(cardOf(result, 'a').width, maxBoardCardWidth);
     });
@@ -240,13 +240,13 @@ void main() {
         'a',
         startSize: const Size(220, 293),
         movedSoFar: const Offset(400, 0),
-      );
+      ).cards;
       final List<BoardCard> farResult = resizeCard(
         far,
         'a',
         startSize: const Size(220, 293),
         movedSoFar: const Offset(400, 0),
-      );
+      ).cards;
 
       expect(cardOf(nearResult, 'a').width, cardOf(farResult, 'a').width);
       expect(cardOf(nearResult, 'a').height, cardOf(farResult, 'a').height);
@@ -263,7 +263,7 @@ void main() {
         'a',
         startSize: const Size(220, 293),
         movedSoFar: const Offset(9999, 0),
-      );
+      ).cards;
 
       final BoardCard resized = cardOf(result, 'a');
 
@@ -280,7 +280,7 @@ void main() {
         'a',
         startSize: Size.zero,
         movedSoFar: const Offset(100, 0),
-      );
+      ).cards;
 
       expect(result, cards);
     });

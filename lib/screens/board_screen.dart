@@ -18,6 +18,7 @@
 // 언제 눌러야 하는지 신경 쓰게 되고, 안 누르고 나갔다가 배치를 통째로 잃습니다.
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../models/board.dart';
 import '../repositories/board_repository.dart';
@@ -93,6 +94,17 @@ class _BoardScreenState extends State<BoardScreen> {
   /// 레퍼런스를 새로 담을 때 씁니다. 멀리 확대해서 보고 있었다면 새 카드가
   /// 화면 밖에 생겨서 안 담긴 것처럼 보이기 때문입니다.
   int _viewResetCount = 0;
+
+  /// 격자 스냅을 켰는지 여부입니다. 위쪽 막대 버튼으로 켜고 끕니다.
+  ///
+  /// **카드끼리 붙는 것은 항상 켜져 있습니다.** 이 값은 격자만 다룹니다.
+  ///
+  /// 기억하지 않습니다 — 판을 나갔다 오면 꺼집니다. 기존 웹앱과 같습니다.
+  bool _gridSnap = false;
+
+  /// 스냅 안내선을 그릴 자리입니다. 안 붙었으면 null입니다.
+  double? _guideX;
+  double? _guideY;
 
   /// 아직 읽어오는 중인지 여부입니다.
   bool _isLoading = true;
@@ -198,8 +210,18 @@ class _BoardScreenState extends State<BoardScreen> {
   ///
   /// [delta]는 이번 순간에 움직인 거리입니다.
   void _onDragUpdate(BoardCard card, Offset delta) {
+    final BoardCardsUpdate update = moveCard(
+      _cards,
+      card.id,
+      delta,
+      snap: _snapEnabled,
+      useGrid: _gridSnap,
+    );
+
     setState(() {
-      _cards = moveCard(_cards, card.id, delta);
+      _cards = update.cards;
+      _guideX = update.guideX;
+      _guideY = update.guideY;
     });
   }
 
@@ -207,6 +229,7 @@ class _BoardScreenState extends State<BoardScreen> {
   Future<void> _onDragEnd(BoardCard card) async {
     setState(() {
       _activeCardId = null;
+      _clearGuides();
     });
 
     await _saveCard(card.id);
@@ -235,14 +258,21 @@ class _BoardScreenState extends State<BoardScreen> {
       return;
     }
 
+    _resizeDelta += delta;
+
+    final BoardCardsUpdate update = resizeCard(
+      _cards,
+      card.id,
+      startSize: startSize,
+      movedSoFar: _resizeDelta,
+      snap: _snapEnabled,
+      useGrid: _gridSnap,
+    );
+
     setState(() {
-      _resizeDelta += delta;
-      _cards = resizeCard(
-        _cards,
-        card.id,
-        startSize: startSize,
-        movedSoFar: _resizeDelta,
-      );
+      _cards = update.cards;
+      _guideX = update.guideX;
+      _guideY = update.guideY;
     });
   }
 
@@ -255,9 +285,29 @@ class _BoardScreenState extends State<BoardScreen> {
       _activeCardId = null;
       _resizeStartSize = null;
       _resizeDelta = Offset.zero;
+      _clearGuides();
     });
 
     await _saveCard(card.id);
+  }
+
+  /// 지금 스냅을 걸어야 하는지 알려줍니다.
+  ///
+  /// ── Alt를 누르고 있으면 잠시 끕니다 ──
+  /// 스냅은 대개 도움이 되지만, 일부러 살짝 어긋나게 놓고 싶을 때는
+  /// 방해가 됩니다. PureRef·피그마 같은 도구들이 쓰는 방식이라 손에 익습니다.
+  ///
+  /// `HardwareKeyboard`는 지금 눌려 있는 키를 바로 알려주는 Flutter의
+  /// 기본 장치입니다. 키 입력을 받는 위젯을 따로 만들지 않아도 됩니다.
+  bool get _snapEnabled => !HardwareKeyboard.instance.isAltPressed;
+
+  /// 안내선을 지웁니다. 끌기가 끝나면 부릅니다.
+  ///
+  /// setState 안에서 부르세요. 여기서 직접 부르지 않는 이유는, 끌기가
+  /// 끝날 때 어차피 다른 값들도 함께 바꾸기 때문입니다.
+  void _clearGuides() {
+    _guideX = null;
+    _guideY = null;
   }
 
   /// 카드 하나의 지금 상태를 저장합니다. 목록에 없으면 아무 일도 안 합니다.
@@ -300,6 +350,20 @@ class _BoardScreenState extends State<BoardScreen> {
       appBar: AppBar(
         title: Text(widget.board.name),
         actions: <Widget>[
+          // 격자 스냅 토글. **카드끼리 붙는 것은 항상 켜져 있고**
+          // 이 버튼은 격자만 다룹니다.
+          //
+          // 눌린 상태를 색으로 보여줍니다. 안 그러면 지금 켜졌는지 꺼졌는지
+          // 알 방법이 없어서 눌러보고 카드를 끌어봐야 합니다.
+          IconButton(
+            onPressed: _isLoading
+                ? null
+                : () => setState(() => _gridSnap = !_gridSnap),
+            icon: const Icon(Icons.grid_4x4),
+            isSelected: _gridSnap,
+            tooltip: _gridSnap ? '격자에 맞추기 끄기' : '격자에 맞추기',
+          ),
+
           Padding(
             padding: const EdgeInsets.only(right: 8),
             child: FilledButton.tonalIcon(
@@ -339,7 +403,9 @@ class _BoardScreenState extends State<BoardScreen> {
       viewResetCount: _viewResetCount,
       child: BoardCanvas(
         cards: _cards,
-        canvasOrigin: canvasRect.topLeft,
+        canvasRect: canvasRect,
+        guideX: _guideX,
+        guideY: _guideY,
         itemsById: _lookup.itemsById,
         imagePaths: _lookup.imagePaths,
         activeCardId: _activeCardId,
