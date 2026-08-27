@@ -34,6 +34,84 @@
   기능의 정확한 동작이나 엣지케이스가 궁금하면 그쪽 `CLAUDE.md` / `update.md`(PR #1~#32)를
   먼저 확인하세요. 특히 무드보드 스냅/그룹/정렬 동작, 유튜브 임베드 제약, 메모 리치텍스트 처리.
 
+## 새 컴퓨터에서 처음 시작할 때
+
+의뢰인이 **노트북과 데스크톱을 오가며** 작업합니다. 새 컴퓨터에서 이어받을 때 필요한 것들입니다.
+(2026-08-27 데스크톱으로 옮김)
+
+### 1. 저장소 받기
+
+```
+git clone https://github.com/luseuss/reference-archive-app.git
+```
+
+이 파일과 `update.md`가 함께 따라오므로, 새 컴퓨터의 첫 세션에서도 지금까지의 맥락을
+그대로 읽을 수 있습니다.
+
+### 2. 설치해야 하는 것
+
+| 무엇 | 왜 | 확인 |
+|---|---|---|
+| **Flutter SDK** (stable, 3.47 이상) | 앱을 만들려면 | `flutter --version` |
+| **Visual Studio Build Tools 2022** | Windows 앱으로 만들려면. 설치할 때 **"C++를 사용한 데스크톱 개발"** 워크로드를 반드시 고를 것 | `flutter doctor` |
+| **NuGet** | 유튜브 재생에 쓰는 웹뷰 부품이 필요로 합니다 | 아래 설명 참고 |
+| **GitHub CLI** (`gh`) | PR을 여는 데 씁니다 | `gh --version` |
+
+`flutter doctor`를 돌리면 빠진 것을 알려줍니다. **Android 항목이 빨간 것은 정상입니다**
+(아래 4번 참고).
+
+### 3. NuGet — 이걸 빠뜨리면 Windows 빌드가 실패합니다
+
+`flutter_inappwebview`(유튜브 재생·미리보기용)가 Windows에서 NuGet을 필요로 합니다.
+없으면 빌드가 `NUGET-NOTFOUND`로 죽습니다. 오류 문구만 봐서는 원인을 알기 어렵습니다.
+
+```
+winget install Microsoft.NuGet
+```
+
+**설치한 뒤 반드시 `flutter clean`을 한 번 돌리세요.** 빌드 도구가 "NuGet 없음"을
+기억해두기 때문에, 설치만 하고 다시 빌드하면 똑같이 실패합니다.
+
+### 4. 일부러 설치하지 않은 것
+
+- **Android SDK** (약 10GB). 의뢰인이 "Flutter + Windows 먼저"를 선택했습니다.
+  폰에서 실제로 볼 준비가 됐을 때 설치합니다. 그전까지 **Android 빌드는 검증 불가**입니다.
+
+### 5. 코드 생성기(build_runner)는 평소엔 안 돌려도 됩니다
+
+`lib/data/app_database.g.dart`는 **저장소에 커밋되어 있습니다.** 그래서 clone 직후
+바로 빌드됩니다. `dart run build_runner build`는 **표 정의(`lib/data/tables.dart`)를
+고쳤을 때만** 돌리면 됩니다. (한 번에 5~7분 걸립니다)
+
+### 6. 모아둔 레퍼런스는 git에 없습니다 (중요)
+
+사진과 데이터베이스는 저장소가 아니라 **그 컴퓨터 안**에 있습니다.
+
+```
+%APPDATA%\com.luseuss\reference_archive_app
+   ├─ reference_archive.sqlite   ← 레퍼런스·폴더·태그·무드보드
+   ├─ images\                     ← 사진과 유튜브 썸네일
+   └─ shared_preferences.json     ← 밝기 모드, 사용자 이름
+```
+
+기기 간 동기화는 아직 없습니다(6단계 이후 별도 논의). 다른 컴퓨터에서 **지금까지 모아둔
+레퍼런스를 그대로 보려면 이 폴더를 통째로 복사**해 같은 경로에 넣으세요.
+
+**복사하기 전에 앱을 끄세요.** 켜져 있는 동안 sqlite 파일을 복사하면 깨질 수 있습니다.
+
+기능만 시험해볼 거라면 복사하지 않아도 됩니다. 빈 상태로 시작해서 사진 몇 장 넣으면 됩니다.
+
+### 7. git 신원
+
+전역 설정이 없는 컴퓨터라면 저장소별로 정해줘야 커밋이 됩니다.
+
+```
+git config user.name luseuss
+git config user.email luseuss@users.noreply.github.com
+```
+
+`gh auth login`은 **의뢰인이 직접** 합니다. 계정 로그인은 작업자가 대신하지 않습니다.
+
 ## 프로젝트가 뭔지
 "레퍼런스 아카이브" — 이미지·디자인 레퍼런스와 유튜브 영상을 모아서 정리하고,
 무드보드로 배치해보는 **개인용 로컬 우선 아카이브 앱**.
