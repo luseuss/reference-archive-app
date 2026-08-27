@@ -28,7 +28,8 @@
 
 ## 저장소 정보
 - GitHub: https://github.com/luseuss/reference-archive-app (소유자 계정: `luseuss`, public)
-- 로컬 clone: `D:\reference-archive-app`
+- 로컬 clone: 컴퓨터마다 다릅니다 — 노트북 `D:\reference-archive-app`, 데스크톱 `E:\reference-archive-app`.
+  경로를 문서에 박아두지 말고 지금 열려 있는 폴더를 기준으로 삼으세요.
 - **이전 웹앱 저장소: https://github.com/luseuss/reference-archive — 건드리지 않습니다.**
   새 앱이 완성될 때까지 의뢰인이 계속 쓸 현역 앱입니다.
   기능의 정확한 동작이나 엣지케이스가 궁금하면 그쪽 `CLAUDE.md` / `update.md`(PR #1~#32)를
@@ -53,12 +54,13 @@ git clone https://github.com/luseuss/reference-archive-app.git
 | 무엇 | 왜 | 확인 |
 |---|---|---|
 | **Flutter SDK** (stable, 3.47 이상) | 앱을 만들려면 | `flutter --version` |
-| **Visual Studio Build Tools 2022** | Windows 앱으로 만들려면. 설치할 때 **"C++를 사용한 데스크톱 개발"** 워크로드를 반드시 고를 것 | `flutter doctor` |
+| **Visual Studio 2022** (Build Tools 또는 Community) | Windows 앱으로 만들려면. 설치할 때 **"C++를 사용한 데스크톱 개발"** 워크로드를 반드시 고를 것. Community를 이미 쓰고 있다면 그 워크로드만 추가하면 됩니다 | `flutter doctor` |
 | **NuGet** | 유튜브 재생에 쓰는 웹뷰 부품이 필요로 합니다 | 아래 설명 참고 |
+| **개발자 모드** (Windows 설정) | 부품을 이어 붙일 때 심볼릭 링크가 필요합니다 | 아래 설명 참고 |
 | **GitHub CLI** (`gh`) | PR을 여는 데 씁니다 | `gh --version` |
 
 `flutter doctor`를 돌리면 빠진 것을 알려줍니다. **Android 항목이 빨간 것은 정상입니다**
-(아래 4번 참고).
+(아래 5번 참고).
 
 ### 3. NuGet — 이걸 빠뜨리면 Windows 빌드가 실패합니다
 
@@ -72,18 +74,40 @@ winget install Microsoft.NuGet
 **설치한 뒤 반드시 `flutter clean`을 한 번 돌리세요.** 빌드 도구가 "NuGet 없음"을
 기억해두기 때문에, 설치만 하고 다시 빌드하면 똑같이 실패합니다.
 
-### 4. 일부러 설치하지 않은 것
+### 4. 개발자 모드 — 이것도 빠뜨리면 빌드가 실패합니다
+
+Windows 설정의 **개발자 모드**를 켜야 합니다. 꺼져 있으면 `flutter pub get`이
+부품을 이어 붙이는 단계에서 이렇게 멈춥니다.
+
+```
+Building with plugins requires symlink support.
+```
+
+Flutter는 Windows에서 부품(플러그인)을 연결할 때 **심볼릭 링크**(폴더 바로가기 같은 것)를
+씁니다. Windows는 보안상 이걸 아무나 못 만들게 막아두기 때문에, 개발자 모드로 풀어줘야 합니다.
+
+```
+start ms-settings:developers
+```
+
+이 명령이 설정 창을 바로 엽니다. **개발자 모드** 스위치를 켜고 경고창에 **예**를 누르면 됩니다.
+재부팅은 필요 없습니다.
+
+NuGet과 마찬가지로 **오류 문구만 봐서는 원인을 짐작하기 어려운** 부류라 적어둡니다.
+(2026-08-27 데스크톱을 새로 세팅하면서 실제로 여기서 막혔습니다)
+
+### 5. 일부러 설치하지 않은 것
 
 - **Android SDK** (약 10GB). 의뢰인이 "Flutter + Windows 먼저"를 선택했습니다.
   폰에서 실제로 볼 준비가 됐을 때 설치합니다. 그전까지 **Android 빌드는 검증 불가**입니다.
 
-### 5. 코드 생성기(build_runner)는 평소엔 안 돌려도 됩니다
+### 6. 코드 생성기(build_runner)는 평소엔 안 돌려도 됩니다
 
 `lib/data/app_database.g.dart`는 **저장소에 커밋되어 있습니다.** 그래서 clone 직후
 바로 빌드됩니다. `dart run build_runner build`는 **표 정의(`lib/data/tables.dart`)를
 고쳤을 때만** 돌리면 됩니다. (한 번에 5~7분 걸립니다)
 
-### 6. 모아둔 레퍼런스는 git에 없습니다 (중요)
+### 7. 모아둔 레퍼런스는 git에 없습니다 (중요)
 
 사진과 데이터베이스는 저장소가 아니라 **그 컴퓨터 안**에 있습니다.
 
@@ -101,7 +125,7 @@ winget install Microsoft.NuGet
 
 기능만 시험해볼 거라면 복사하지 않아도 됩니다. 빈 상태로 시작해서 사진 몇 장 넣으면 됩니다.
 
-### 7. git 신원
+### 8. git 신원
 
 전역 설정이 없는 컴퓨터라면 저장소별로 정해줘야 커밋이 됩니다.
 
@@ -160,7 +184,7 @@ dart run build_runner build
 
 ### Windows 빌드 관련해서 알아둘 것 (PR #9부터)
 
-유튜브 재생용 웹뷰(`flutter_inappwebview`)가 들어오면서 두 가지가 생겼습니다.
+유튜브 재생용 웹뷰(`flutter_inappwebview`)가 들어오면서 챙길 것이 생겼습니다.
 
 - **`nuget`이 필요합니다.** 빌드 중에 WebView2 SDK를 받아오는 데 씁니다.
   없으면 `error MSB3073: NUGET-NOTFOUND`로 실패합니다.
@@ -171,6 +195,9 @@ dart run build_runner build
 
   **설치 후 새 터미널을 열어야** PATH가 잡힙니다. 이미 한 번 실패했다면
   `build` 폴더에 "없음"이 캐시돼 있으므로 `flutter clean`도 해야 합니다.
+- **개발자 모드가 켜져 있어야 합니다.** 꺼져 있으면 빌드가 아니라 그 앞의
+  `flutter pub get`이 `Building with plugins requires symlink support.`로 멈춥니다.
+  `start ms-settings:developers`로 켭니다. (위 "새 컴퓨터에서 처음 시작할 때" 4번)
 - **다시 빌드하기 전에 앱을 완전히 닫아야 합니다.** 실행 중인 앱이
   `WebView2Loader.dll`을 붙잡고 있어서 `error MSB3027`로 실패합니다.
   터미널에서 `q`가 가장 깔끔합니다.
