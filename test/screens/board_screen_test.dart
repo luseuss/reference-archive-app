@@ -19,7 +19,6 @@ import 'package:reference_archive_app/models/reference_item.dart';
 import 'package:reference_archive_app/repositories/local_board_repository.dart';
 import 'package:reference_archive_app/repositories/local_reference_repository.dart';
 import 'package:reference_archive_app/screens/board_screen.dart';
-import 'package:reference_archive_app/theme/app_metrics.dart';
 import 'package:reference_archive_app/utils/id_generator.dart';
 import 'package:reference_archive_app/widgets/board_viewport.dart';
 import 'package:reference_archive_app/widgets/board_card_view.dart';
@@ -129,13 +128,21 @@ void main() {
   ///
   /// 배율은 BoardViewport가 정하므로, 실제로 그려진 크기를 재서 되짚습니다.
   double shownScale(WidgetTester tester) {
-    final Size shown = tester.getSize(
-      find.descendant(
-        of: find.byType(BoardViewport),
-        matching: find.byType(FittedBox),
-      ),
+    final Finder fitted = find.descendant(
+      of: find.byType(BoardViewport),
+      matching: find.byType(FittedBox),
     );
-    return shown.width / boardWidth;
+
+    // FittedBox가 화면에 실제로 차지한 크기 (배율이 곱해진 값)
+    final Size shown = tester.getSize(fitted);
+
+    // 그 안의 상자는 배율 이전의 크기입니다. 판에 끝이 없어져서
+    // 이 크기는 카드가 놓인 만큼 달라지므로, 고정값 대신 재서 씁니다.
+    final Size canvas = tester.getSize(
+      find.descendant(of: fitted, matching: find.byType(SizedBox)).first,
+    );
+
+    return shown.width / canvas.width;
   }
 
   /// 저장소에서 이 카드를 다시 읽어옵니다.
@@ -437,12 +444,15 @@ void main() {
     WidgetTester tester,
   ) async {
     // ── 왜 이걸 확인하나 ──
-    // 크기 조절은 가로세로 비율을 고정합니다. 그래서 가로만 판 안으로 붙잡으면
-    // **세로가 판 밖으로 나갑니다.** 손잡이는 카드의 오른쪽 아래에 있어서,
-    // 그렇게 되면 손잡이도 판 밖으로 나가 **다시 잡을 수가 없습니다.**
-    // 크기는 손을 뗄 때 저장되므로 앱을 껐다 켜도 그대로입니다.
+    // 크기 조절은 가로세로 비율을 고정합니다. 손잡이는 카드의 오른쪽 아래에
+    // 있어서, 카드가 그려지는 자리 밖으로 나가면 손잡이도 함께 나가
+    // **다시 잡을 수가 없게** 됩니다. 크기는 손을 뗄 때 저장되므로 앱을
+    // 껐다 켜도 그대로입니다.
     //
-    // 3:4 세로 사진(220 × 293)을 판 맨 위에 두고 한껏 키워봅니다.
+    // 판에 끝이 없어진 뒤로는 그릴 자리가 카드를 따라 늘어나므로 이 일이
+    // 구조적으로 안 생겨야 합니다. 정말 그런지 확인합니다.
+    //
+    // 3:4 세로 사진(220 × 293)을 한껏 키워봅니다.
     final String referenceId = await saveReference('세로 사진');
     final BoardCard card = await putCardOnBoard(
       referenceId: referenceId,
@@ -458,21 +468,91 @@ void main() {
     // 이보다 더 많이 움직입니다(그래서 한계까지 닿습니다).
     final TestGesture mouse = await dragResizeHandle(tester, 900);
 
-    // (1) 저장된 크기가 판 안에 들어와 있어야 합니다.
+    // (1) 비율을 지킨 채 커졌어야 합니다.
     final BoardCard saved = await reloadCard(card.id);
     expect(saved.height, isNotNull);
-    expect(saved.y + saved.height!, lessThanOrEqualTo(boardHeight));
+    expect(saved.width, greaterThan(220));
+    expect(saved.height! / saved.width, closeTo(293 / 220, 0.01));
 
-    // (2) 그리고 손잡이를 **실제로 다시 누를 수 있어야** 합니다.
-    // 위젯 트리에 있는 것만으로는 부족합니다. 판 밖으로 나가면 트리에는
-    // 남아 있으면서 클릭만 안 닿는 상태가 되기 때문입니다.
+    // (2) 크게 키웠으니 손잡이가 화면 밖으로 나갔을 수 있습니다.
+    //     ⛶(판 전체 보기)를 누르면 다시 보여야 합니다.
+    //
+    //     판에 끝이 없어진 뒤로 이것이 되돌아오는 유일한 길입니다.
+    //     이게 막히면 카드를 한 번 키운 뒤로 영영 줄일 수 없게 됩니다.
+    await tester.tap(find.byTooltip('판 전체 보기'));
+    await tester.pumpAndSettle();
+
+    //     손잡이는 마우스를 올렸을 때만 나오므로 다시 올려줍니다.
+    //     위젯 트리에 있는 것만으로는 부족해서 hitTestable로 확인합니다.
     await mouse.moveTo(tester.getCenter(find.byType(BoardCardView)));
     await tester.pumpAndSettle();
 
     expect(
       find.byIcon(Icons.open_in_full).hitTestable(),
       findsOneWidget,
-      reason: '손잡이가 판 밖으로 나가서 다시 잡을 수 없습니다',
+      reason: '⛶를 눌러도 손잡이를 다시 잡을 수 없습니다',
     );
+  });
+
+  testWidgets('오른쪽으로 계속 끌어도 막히지 않는다', (WidgetTester tester) async {
+    // ── 이게 4단계 3번의 알맹이입니다 ──
+    // 전에는 판이 1920 넓이여서 카드가 1700쯤에서 멈췄습니다.
+    // 이제는 멈추는 곳이 없어야 합니다.
+    final String referenceId = await saveReference('노을');
+    final BoardCard card = await putCardOnBoard(
+      referenceId: referenceId,
+      x: 100,
+      y: 100,
+    );
+
+    await openBoard(tester);
+
+    final double scale = shownScale(tester);
+
+    await tester.drag(find.byType(BoardCardView), const Offset(2500, 0));
+    await tester.pumpAndSettle();
+
+    final BoardCard saved = await reloadCard(card.id);
+
+    // 옛 판 크기(1920)에서 카드가 멈추던 자리를 훌쩍 넘어야 합니다.
+    expect(saved.x, greaterThan(1700));
+    expect(saved.x, closeTo(100 + 2500 / scale, 2));
+  });
+
+  testWidgets('아래로도 계속 끌 수 있다', (WidgetTester tester) async {
+    final String referenceId = await saveReference('노을');
+    final BoardCard card = await putCardOnBoard(
+      referenceId: referenceId,
+      x: 100,
+      y: 100,
+    );
+
+    await openBoard(tester);
+
+    await tester.drag(find.byType(BoardCardView), const Offset(0, 2000));
+    await tester.pumpAndSettle();
+
+    // 옛 판 높이(1200)를 넘어야 합니다.
+    expect((await reloadCard(card.id)).y, greaterThan(1200));
+  });
+
+  testWidgets('왼쪽 위로는 0에서 멈춘다', (WidgetTester tester) async {
+    // 음수 자리에 놓인 카드는 클릭이 안 닿아서 잡을 수가 없습니다.
+    // 그래서 이쪽만 막아둡니다.
+    final String referenceId = await saveReference('노을');
+    final BoardCard card = await putCardOnBoard(
+      referenceId: referenceId,
+      x: 100,
+      y: 100,
+    );
+
+    await openBoard(tester);
+
+    await tester.drag(find.byType(BoardCardView), const Offset(-3000, -3000));
+    await tester.pumpAndSettle();
+
+    final BoardCard saved = await reloadCard(card.id);
+    expect(saved.x, 0);
+    expect(saved.y, 0);
   });
 }
