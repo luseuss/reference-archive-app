@@ -270,6 +270,8 @@ class _BoardScreenState extends State<BoardScreen> {
                 child: Center(
                   child: BoardSelectionBar(
                     count: _interaction.selectedCardIds.length,
+                    onAlign: _interaction.alignSelected,
+                    onMatchSize: _interaction.matchSizeSelected,
                     onRemoveSelected: _interaction.removeSelectedCards,
                     onClearSelection: _interaction.clearSelection,
                   ),
