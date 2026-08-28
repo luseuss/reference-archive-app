@@ -58,6 +58,17 @@ class BoardInteractionController extends ChangeNotifier {
   /// 비어 있어서(= 그림 비율대로) 저장된 값만으로는 알 수 없기 때문입니다.
   Size? _resizeStartSize;
 
+  /// 크기 조절 손잡이를 잡은 순간의 카드 자리입니다. 조절 중이 아니면 null입니다.
+  ///
+  /// 반대쪽(고정돼야 할) 모서리를 구할 때 씁니다. [_resizeStartSize]와
+  /// 짝을 이루는 "손잡이를 잡던 순간의 스냅샷"입니다.
+  Offset? _resizeStartPosition;
+
+  /// 지금 잡고 있는 손잡이가 카드의 어느 모서리에 있는지입니다.
+  /// 조절 중이 아니면 null입니다. (board_card_actions.dart의
+  /// BoardResizeCorner 설명 참고)
+  BoardResizeCorner? _resizeCorner;
+
   /// 손잡이를 잡은 뒤 지금까지 움직인 거리의 합입니다.
   ///
   /// ── 왜 합을 따로 들고 있나 ──
@@ -297,9 +308,14 @@ class BoardInteractionController extends ChangeNotifier {
   /// [currentSize]는 저장된 값이 아니라 **지금 실제로 그려져 있는 크기**입니다.
   /// 카드 높이는 보통 비어 있어서(= 그림 비율대로) 저장된 값만으로는
   /// 지금 높이가 얼마인지 알 수 없기 때문에, 카드가 직접 재서 알려줍니다.
-  void onResizeStart(BoardCard card, Size currentSize) {
+  ///
+  /// [corner]는 어느 손잡이를 잡았는지입니다. 그 반대쪽 모서리가 고정된
+  /// 채로 크기가 바뀝니다. (board_card_actions.dart의 resizeCard 설명 참고)
+  void onResizeStart(BoardCard card, Size currentSize, BoardResizeCorner corner) {
     _activeCardId = card.id;
     _resizeStartSize = currentSize;
+    _resizeStartPosition = Offset(card.x, card.y);
+    _resizeCorner = corner;
     _resizeDelta = Offset.zero;
     notifyListeners();
   }
@@ -310,7 +326,9 @@ class BoardInteractionController extends ChangeNotifier {
   /// resizeCard 설명을 보세요.
   void onResizeUpdate(BoardCard card, Offset delta) {
     final Size? startSize = _resizeStartSize;
-    if (startSize == null) {
+    final Offset? startPosition = _resizeStartPosition;
+    final BoardResizeCorner? corner = _resizeCorner;
+    if (startSize == null || startPosition == null || corner == null) {
       return;
     }
 
@@ -320,6 +338,8 @@ class BoardInteractionController extends ChangeNotifier {
       _cards,
       card.id,
       startSize: startSize,
+      startPosition: startPosition,
+      corner: corner,
       movedSoFar: _resizeDelta,
       snap: snapEnabled,
       useGrid: _gridSnap,
@@ -339,6 +359,8 @@ class BoardInteractionController extends ChangeNotifier {
   Future<void> onResizeEnd(BoardCard card) async {
     _activeCardId = null;
     _resizeStartSize = null;
+    _resizeStartPosition = null;
+    _resizeCorner = null;
     _resizeDelta = Offset.zero;
     _clearGuides();
     notifyListeners();

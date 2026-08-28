@@ -19,6 +19,7 @@ import '../models/reference_item.dart';
 import '../theme/app_metrics.dart';
 import '../theme/app_palette.dart';
 import '../theme/app_text.dart';
+import '../utils/board_card_actions.dart' show BoardResizeCorner;
 
 /// 크기 조절 손잡이의 한 변 길이입니다.
 ///
@@ -72,7 +73,8 @@ class BoardCardView extends StatefulWidget {
   /// 크기가 바뀌었을 때만 부릅니다. 매번 부르면 화면이 계속 다시 그려집니다.
   final void Function(Size size) onMeasured;
 
-  final void Function(Size currentSize) onResizeStart;
+  /// [corner]는 어느 손잡이를 잡았는지입니다. 네 모서리 중 하나입니다.
+  final void Function(Size currentSize, BoardResizeCorner corner) onResizeStart;
 
   /// 손잡이를 끄는 동안 움직인 만큼을 알려줍니다.
   final ValueChanged<Offset> onResizeUpdate;
@@ -113,12 +115,12 @@ class _BoardCardViewState extends State<BoardCardView> {
   ///
   /// `context.size`는 **지금 화면에 그려진 이 카드의 크기**입니다.
   /// 판 좌표 기준이라, 판을 확대해서 보고 있어도 값은 그대로입니다.
-  void _reportResizeStart() {
+  void _reportResizeStart(BoardResizeCorner corner) {
     final Size? size = context.size;
     if (size == null) {
       return;
     }
-    widget.onResizeStart(size);
+    widget.onResizeStart(size, corner);
   }
 
   /// 다 그려진 뒤에 실제 크기를 재서 바깥에 알려줍니다.
@@ -201,9 +203,9 @@ class _BoardCardViewState extends State<BoardCardView> {
             // 제목·내리기·크기 조절은 마우스를 올렸을 때만 나타납니다.
             // 평소에도 떠 있으면 그림 여러 장을 늘어놓고 볼 때 눈이 어지럽습니다.
             if (isRaised) ...<Widget>[
-              _buildTitleBar(),
-              _buildRemoveButton(colors),
-              _buildResizeHandle(colors),
+              _buildTitleBar(colors),
+              for (final BoardResizeCorner corner in BoardResizeCorner.values)
+                _buildResizeHandle(colors, corner),
             ],
 
             // 골라진 표시는 마우스를 안 올려도 항상 보입니다. 여러 장을
@@ -270,59 +272,72 @@ class _BoardCardViewState extends State<BoardCardView> {
   }
 
   /// 마우스를 올렸을 때 카드 아래쪽에 뜨는 제목 띠입니다.
-  Widget _buildTitleBar() {
+  ///
+  /// **내리기(×) 버튼도 여기에 들어있습니다.** 손잡이가 네 모서리 전부로
+  /// 늘어나면서 오른쪽 위가 더는 비어있지 않아, 예전처럼 오른쪽 위에 따로
+  /// 떠 있는 버튼으로 두면 오른쪽 위 손잡이와 겹칩니다. 제목 띠 안에
+  /// 나란히 두면 겹칠 자리가 없습니다.
+  Widget _buildTitleBar(ColorScheme colors) {
     return Positioned(
       left: 0,
       right: 0,
       bottom: 0,
       child: Container(
-        // 오른쪽 아래는 크기 조절 손잡이 자리라 그만큼 비워둡니다.
-        // 안 비우면 제목 띠가 손잡이를 덮어서 잡을 수 없게 됩니다.
-        padding: const EdgeInsets.fromLTRB(
-          10,
-          6,
-          10 + boardResizeHandleSize,
-          6,
+        // 왼쪽 아래·오른쪽 아래 둘 다 크기 조절 손잡이 자리라 양쪽 다
+        // 그만큼 비워둡니다. 안 비우면 제목 띠가 손잡이를 덮어서 잡을 수
+        // 없게 됩니다. (카드는 이보다 작아지지 않으므로 — minBoardCardWidth —
+        // 아무리 좁아져도 이 너비 안에 글자·버튼이 들어갑니다)
+        padding: const EdgeInsets.symmetric(
+          horizontal: boardResizeHandleSize,
+          vertical: 6,
         ),
 
         // 밝은 사진 위에서도 글씨가 보이도록 검은 반투명 바탕을 깝니다.
         color: Colors.black.withValues(alpha: 0.55),
 
-        child: Text(
-          widget.item.title.isEmpty ? '(제목 없음)' : widget.item.title,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: AppText.meta.copyWith(color: Colors.white),
+        child: Row(
+          children: <Widget>[
+            Expanded(
+              child: Text(
+                widget.item.title.isEmpty ? '(제목 없음)' : widget.item.title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: AppText.meta.copyWith(color: Colors.white),
+              ),
+            ),
+
+            // **레퍼런스를 지우는 버튼이 아닙니다.** 판에서만 내려가고
+            // 목록에는 그대로 남습니다. 그래서 아이콘도 휴지통(🗑)이 아니라
+            // 닫기(✕)를 씁니다. 휴지통을 쓰면 사진이 영영 지워지는 줄 알고
+            // 누르기를 무서워하게 됩니다.
+            InkWell(
+              onTap: widget.onRemove,
+              borderRadius: BorderRadius.circular(4),
+              child: const Padding(
+                padding: EdgeInsets.all(1),
+                child: Icon(Icons.close, size: 14, color: Colors.white),
+              ),
+            ),
+          ],
         ),
       ),
     );
   }
 
-  /// 마우스를 올렸을 때 오른쪽 위에 뜨는 "판에서 내리기" 버튼입니다.
-  ///
-  /// **레퍼런스를 지우는 버튼이 아닙니다.** 판에서만 내려가고 목록에는 그대로
-  /// 남습니다. 그래서 아이콘도 휴지통(🗑)이 아니라 닫기(✕)를 씁니다.
-  /// 휴지통을 쓰면 사진이 영영 지워지는 줄 알고 누르기를 무서워하게 됩니다.
-  Widget _buildRemoveButton(ColorScheme colors) {
-    return Positioned(
-      top: 4,
-      right: 4,
-      child: Material(
-        color: colors.surface.withValues(alpha: 0.9),
-        shape: const CircleBorder(),
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: widget.onRemove,
-          child: Padding(
-            padding: const EdgeInsets.all(4),
-            child: Icon(Icons.close, size: 18, color: colors.onSurface),
-          ),
-        ),
-      ),
-    );
+  /// [corner]가 가리키는 커서 모양입니다. 반대쪽 대각선끼리 같은 모양을
+  /// 씁니다(왼쪽 위·오른쪽 아래는 "↖↘", 오른쪽 위·왼쪽 아래는 "↗↙").
+  MouseCursor _cursorFor(BoardResizeCorner corner) {
+    switch (corner) {
+      case BoardResizeCorner.topLeft:
+      case BoardResizeCorner.bottomRight:
+        return SystemMouseCursors.resizeUpLeftDownRight;
+      case BoardResizeCorner.topRight:
+      case BoardResizeCorner.bottomLeft:
+        return SystemMouseCursors.resizeUpRightDownLeft;
+    }
   }
 
-  /// 오른쪽 아래 구석의 크기 조절 손잡이입니다.
+  /// 네 모서리 중 하나에 놓는 크기 조절 손잡이입니다.
   ///
   /// ── 왜 카드 안쪽 구석인가 (바깥으로 튀어나온 점이 아니라) ──
   /// 밖으로 튀어나오게 하려면 카드가 실제 크기보다 커야 하는데, 그러면 카드끼리
@@ -333,19 +348,27 @@ class _BoardCardViewState extends State<BoardCardView> {
   /// 이 GestureDetector가 카드 전체의 것보다 **안쪽에** 있습니다. Flutter는 손가락이
   /// 닿은 지점에서 가장 안쪽 것부터 챙기기 때문에, 손잡이 위에서 시작한 끌기는
   /// 손잡이가 가져가고 카드는 안 움직입니다.
-  Widget _buildResizeHandle(ColorScheme colors) {
+  ///
+  /// ── 이름표(Key)를 붙여둡니다 ──
+  /// 손잡이가 네 개라 아이콘만으로는 테스트에서 어느 것이 어느 모서리인지
+  /// 구분할 수 없습니다. `resize-handle-topLeft` 식으로 모서리 이름을 넣어둡니다.
+  Widget _buildResizeHandle(ColorScheme colors, BoardResizeCorner corner) {
     return Positioned(
-      right: 0,
-      bottom: 0,
+      left: corner.isLeft ? 0 : null,
+      right: corner.isLeft ? null : 0,
+      top: corner.isTop ? 0 : null,
+      bottom: corner.isTop ? null : 0,
       child: MouseRegion(
         // 커서를 대각선 화살표로 바꿔 "여기를 끌면 크기가 바뀐다"를 알립니다.
-        cursor: SystemMouseCursors.resizeDownRight,
+        cursor: _cursorFor(corner),
         child: GestureDetector(
+          key: ValueKey<String>('resize-handle-${corner.name}'),
+
           // 처음 몇 픽셀이 버려지지 않게 합니다.
           // (왜인지는 board_canvas.dart의 같은 줄 설명을 보세요)
           dragStartBehavior: DragStartBehavior.down,
 
-          onPanStart: (DragStartDetails details) => _reportResizeStart(),
+          onPanStart: (DragStartDetails details) => _reportResizeStart(corner),
           onPanUpdate: (DragUpdateDetails details) =>
               widget.onResizeUpdate(details.delta),
           onPanEnd: (DragEndDetails details) => widget.onResizeEnd(),
@@ -366,22 +389,27 @@ class _BoardCardViewState extends State<BoardCardView> {
     );
   }
 
-  /// 왼쪽 위 구석에 뜨는 "골라짐" 표시입니다. (5단계 마퀴 다중선택)
+  /// 카드 위쪽 가운데에 뜨는 "골라짐" 표시입니다. (5단계 마퀴 다중선택)
   ///
-  /// 내리기 버튼(오른쪽 위)과 겹치지 않는 반대쪽 구석에 둡니다.
+  /// ── 왜 구석이 아니라 가운데인가 ──
+  /// 네 구석 전부 크기 조절 손잡이 자리라, 어느 구석에 둬도 마우스를 올렸을
+  /// 때(=손잡이가 함께 뜰 때) 겹칩니다. 손잡이가 없는 위쪽 가운데로 옮겼습니다.
   Widget _buildSelectedBadge(ColorScheme colors) {
     return Positioned(
       top: 4,
-      left: 4,
-      child: Container(
-        width: 20,
-        height: 20,
-        decoration: BoxDecoration(
-          color: colors.primary,
-          shape: BoxShape.circle,
-          border: Border.all(color: colors.surface, width: 1.5),
+      left: 0,
+      right: 0,
+      child: Center(
+        child: Container(
+          width: 20,
+          height: 20,
+          decoration: BoxDecoration(
+            color: colors.primary,
+            shape: BoxShape.circle,
+            border: Border.all(color: colors.surface, width: 1.5),
+          ),
+          child: Icon(Icons.check, size: 14, color: colors.onPrimary),
         ),
-        child: Icon(Icons.check, size: 14, color: colors.onPrimary),
       ),
     );
   }

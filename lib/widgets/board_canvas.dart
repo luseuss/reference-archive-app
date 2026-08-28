@@ -19,6 +19,7 @@ import 'package:flutter/services.dart';
 
 import '../models/board.dart';
 import '../models/reference_item.dart';
+import '../utils/board_card_actions.dart' show BoardResizeCorner;
 import 'board_card_view.dart';
 import 'board_guides.dart';
 
@@ -117,7 +118,10 @@ class BoardCanvas extends StatelessWidget {
   /// (board_card_view.dart의 onMeasured 설명 참고)
   final void Function(BoardCard card, Size size) onMeasured;
 
-  final void Function(BoardCard card, Size currentSize) onResizeStart;
+  /// [corner]는 어느 손잡이를 잡았는지입니다. (board_card_actions.dart의
+  /// BoardResizeCorner 설명 참고)
+  final void Function(BoardCard card, Size currentSize, BoardResizeCorner corner)
+  onResizeStart;
 
   /// 크기 조절 손잡이를 끄는 동안 움직인 만큼을 알려줍니다. (판 좌표)
   final void Function(BoardCard card, Offset delta) onResizeUpdate;
@@ -220,8 +224,8 @@ class BoardCanvas extends StatelessWidget {
             isSelected: selectedCardIds.contains(card.id),
             onRemove: () => onRemoveCard(card),
             onMeasured: (Size size) => onMeasured(card, size),
-            onResizeStart: (Size currentSize) =>
-                onResizeStart(card, currentSize),
+            onResizeStart: (Size currentSize, BoardResizeCorner corner) =>
+                onResizeStart(card, currentSize, corner),
             onResizeUpdate: (Offset delta) => onResizeUpdate(card, delta),
             onResizeEnd: () => onResizeEnd(card),
           ),
