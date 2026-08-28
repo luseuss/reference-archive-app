@@ -85,16 +85,9 @@ class BoardCardsUpdate {
 
 /// 이 카드를 [delta]만큼 옮긴 결과를 돌려줍니다.
 ///
-/// **어느 쪽으로도 붙잡지 않습니다.** 판에 사방으로 끝이 없습니다.
-/// 음수 자리도 괜찮습니다. 그리는 자리가 카드를 따라 움직여서 클릭이
-/// 계속 닿습니다. (board_layout.dart의 boardCanvasRect 설명 참고)
-///
-/// [snap]이 참이면 다른 카드에 착 붙습니다. 평소에는 거짓이고, 사용자가
-/// Alt를 누르고 있을 때만 참으로 넘어옵니다 — 대충 늘어놓을 때가 훨씬
-/// 많고, 줄을 딱 맞추고 싶을 때만 잠깐 켜는 편이 손에 맞았습니다.
-///
-/// [useGrid]는 격자 스냅입니다. **카드끼리 안 맞았을 때만** 쓰입니다.
-/// (board_snap.dart 설명 참고)
+/// [cardId] 한 장만 옮깁니다. 여러 장을 함께 끄는 중이면 [moveCards]를
+/// 쓰세요. 이 함수는 `moveCards(cards, <String>[cardId], primaryId: cardId, ...)`
+/// 를 부르는 것과 같습니다 — 한 장짜리 특별한 경우일 뿐입니다.
 BoardCardsUpdate moveCard(
   List<BoardCard> cards,
   String cardId,
@@ -107,43 +100,92 @@ BoardCardsUpdate moveCard(
   /// (board_layout.dart의 boardCardHeight 설명 참고)
   Map<String, double> measuredHeights = const <String, double>{},
 }) {
-  final int index = indexOfCard(cards, cardId);
-  if (index == -1) {
+  return moveCards(
+    cards,
+    <String>[cardId],
+    primaryId: cardId,
+    delta: delta,
+    snap: snap,
+    useGrid: useGrid,
+    measuredHeights: measuredHeights,
+  );
+}
+
+/// [ids]에 든 카드들을 함께 [delta]만큼 옮긴 결과를 돌려줍니다.
+///
+/// ── 왜 필요한가 (5단계 마퀴 다중선택) ──
+/// 여러 장을 골라 함께 끌 때, 각 카드를 따로따로 옮기면 서로 다른 카드에
+/// 스냅되어 **골라둔 카드들끼리 흩어집니다.** 그래서 [primaryId] 카드
+/// 하나만 스냅을 계산하고, 나머지는 **정확히 같은 보정값**만큼 따라갑니다.
+/// 기존 웹앱도 같은 방식이었습니다.
+///
+/// **어느 쪽으로도 붙잡지 않습니다.** 판에 사방으로 끝이 없습니다(PR #22).
+/// 음수 자리도 괜찮습니다. 그리는 자리가 카드를 따라 움직여서 클릭이
+/// 계속 닿습니다. (board_layout.dart의 boardCanvasRect 설명 참고)
+///
+/// 같은 delta를 묶음 전체에 그대로 더하기만 하므로, 붙잡는 규칙이 없어도
+/// 묶음 안 카드들의 상대 위치는 저절로 지켜집니다.
+///
+/// [snap]이 참이면 다른 카드에 착 붙습니다. 평소에는 거짓이고, 사용자가
+/// Alt를 누르고 있을 때만 참으로 넘어옵니다.
+///
+/// [useGrid]는 격자 스냅입니다. **카드끼리 안 맞았을 때만** 쓰입니다.
+/// (board_snap.dart 설명 참고)
+BoardCardsUpdate moveCards(
+  List<BoardCard> cards,
+  List<String> ids, {
+  required String primaryId,
+  required Offset delta,
+  bool snap = true,
+  bool useGrid = false,
+  Map<String, double> measuredHeights = const <String, double>{},
+}) {
+  if (ids.isEmpty || indexOfCard(cards, primaryId) == -1) {
     return BoardCardsUpdate(cards);
   }
 
-  final BoardCard current = cards[index];
+  final Set<String> idSet = ids.toSet();
 
-  // 먼저 손이 움직인 만큼 그대로 옮깁니다.
-  BoardCard moved = current.copyWith(
-    x: current.x + delta.dx,
-    y: current.y + delta.dy,
-  );
+  // 먼저 손이 움직인 만큼 전부 그대로 옮깁니다. 같은 delta를 더하기만
+  // 하므로 이 시점에서 묶음의 상대 위치는 그대로 유지됩니다.
+  final Map<String, BoardCard> moved = <String, BoardCard>{
+    for (final BoardCard card in cards)
+      if (idSet.contains(card.id))
+        card.id: card.copyWith(x: card.x + delta.dx, y: card.y + delta.dy),
+  };
 
   double? guideX;
   double? guideY;
 
   if (snap) {
-    final BoardSnapResult result = snapMovingCard(
-      moving: boardCardRect(moved, measuredHeights: measuredHeights),
-      // 자기 자신은 후보에서 빼야 합니다. 자기한테 붙으면 안 움직입니다.
-      others: _rectsExcept(cards, cardId, measuredHeights),
-      useGrid: useGrid,
-    );
+    final BoardCard? primary = moved[primaryId];
 
-    moved = moved.copyWith(
-      x: moved.x + result.offset.dx,
-      y: moved.y + result.offset.dy,
-    );
-    guideX = result.guideX;
-    guideY = result.guideY;
+    if (primary != null) {
+      final BoardSnapResult result = snapMovingCard(
+        moving: boardCardRect(primary, measuredHeights: measuredHeights),
+        // 묶음 전체를 후보에서 빼야 합니다. 안 빼면 묶음 안의 카드끼리
+        // 서로 스냅되어 상대 위치가 틀어집니다.
+        others: _rectsExcludingIds(cards, idSet, measuredHeights),
+        useGrid: useGrid,
+      );
+
+      guideX = result.guideX;
+      guideY = result.guideY;
+
+      if (result.offset != Offset.zero) {
+        moved.updateAll(
+          (String id, BoardCard card) => card.copyWith(
+            x: card.x + result.offset.dx,
+            y: card.y + result.offset.dy,
+          ),
+        );
+      }
+    }
   }
 
   return BoardCardsUpdate(
     <BoardCard>[
-      ...cards.sublist(0, index),
-      moved,
-      ...cards.sublist(index + 1),
+      for (final BoardCard card in cards) moved[card.id] ?? card,
     ],
     guideX: guideX,
     guideY: guideY,
@@ -238,9 +280,18 @@ List<Rect> _rectsExcept(
   String cardId,
   Map<String, double> measuredHeights,
 ) {
+  return _rectsExcludingIds(cards, <String>{cardId}, measuredHeights);
+}
+
+/// [excludeIds]에 든 카드들을 뺀 나머지의 네모를 모읍니다. 스냅 후보로 씁니다.
+List<Rect> _rectsExcludingIds(
+  List<BoardCard> cards,
+  Set<String> excludeIds,
+  Map<String, double> measuredHeights,
+) {
   final List<Rect> rects = <Rect>[];
   for (final BoardCard card in cards) {
-    if (card.id != cardId) {
+    if (!excludeIds.contains(card.id)) {
       rects.add(boardCardRect(card, measuredHeights: measuredHeights));
     }
   }

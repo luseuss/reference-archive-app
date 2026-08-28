@@ -61,6 +61,13 @@ abstract class BoardRepository {
   /// 끄는 동안 매 순간 저장하면 1초에 수십 번 데이터베이스에 쓰게 되어 버벅입니다.
   Future<void> saveCard(BoardCard card);
 
+  /// 카드 여러 장의 배치를 한꺼번에 저장합니다.
+  ///
+  /// 여러 장을 함께 선택해서 끌었을 때 씁니다(5단계 마퀴 다중선택). 한 장씩
+  /// saveCard를 부르면 20장을 옮겼을 때 데이터베이스에 20번 오갑니다.
+  /// addCards와 같은 이유로 한꺼번에 보냅니다.
+  Future<void> saveCards(List<BoardCard> cards);
+
   /// 카드를 판에서 내립니다(소프트 삭제).
   ///
   /// **레퍼런스를 지우는 것이 아닙니다.** 판에서만 내려가고 목록에는 그대로 남습니다.

@@ -201,6 +201,110 @@ void main() {
     });
   });
 
+  group('여러 장을 함께 옮기기 (5단계 마퀴 다중선택)', () {
+    test('같은 만큼씩 다 같이 움직인다', () {
+      final List<BoardCard> cards = <BoardCard>[
+        makeCard('a', x: 100, y: 100),
+        makeCard('b', x: 300, y: 300),
+      ];
+
+      final BoardCardsUpdate update = moveCards(
+        cards,
+        <String>['a', 'b'],
+        primaryId: 'a',
+        delta: const Offset(20, 30),
+        snap: false,
+      );
+
+      expect(cardOf(update.cards, 'a').x, 120);
+      expect(cardOf(update.cards, 'a').y, 130);
+      expect(cardOf(update.cards, 'b').x, 320);
+      expect(cardOf(update.cards, 'b').y, 330);
+    });
+
+    test('기준 카드만 스냅되고 나머지는 같은 만큼 따라간다', () {
+      // ── 이게 이 함수의 핵심입니다 ──
+      // 각자 따로 스냅되면 묶어서 끌던 카드들이 서로 흩어집니다. 기준 카드
+      // 하나만 계산하고, 나머지는 정확히 같은 보정값만큼만 더 움직입니다.
+      final List<BoardCard> cards = <BoardCard>[
+        makeCard('anchor', x: 610, y: 100), // 스냅 후보 (묶음 밖, 이웃 거리 안)
+        makeCard('a', x: 100, y: 100),
+        makeCard('b', x: 300, y: 300),
+      ];
+
+      // a를 오른쪽으로 끌어 anchor의 왼쪽(610)에서 3만큼 못 미치게 만듭니다.
+      final BoardCardsUpdate update = moveCards(
+        cards,
+        <String>['a', 'b'],
+        primaryId: 'a',
+        delta: const Offset(507, 0), // 100 -> 607, anchor(610)와 3 차이
+        snap: true,
+      );
+
+      final double snappedDx = cardOf(update.cards, 'a').x - 607;
+      expect(cardOf(update.cards, 'a').x, 610);
+      expect(
+        cardOf(update.cards, 'b').x,
+        300 + 507 + snappedDx,
+        reason: 'b도 a와 똑같은 보정값만큼 움직여야 합니다',
+      );
+    });
+
+    test('묶음끼리는 서로 스냅되지 않는다', () {
+      // 묶음을 후보에서 빼지 않으면, 끄는 도중 a가 b에 스냅되어 서로 달라
+      // 붙어버립니다. 묶어서 끄는 의미가 없어집니다.
+      final List<BoardCard> cards = <BoardCard>[
+        makeCard('a', x: 100, y: 100),
+        makeCard('b', x: 305, y: 100), // a 오른쪽(320)에 아주 가까움
+      ];
+
+      final BoardCardsUpdate update = moveCards(
+        cards,
+        <String>['a', 'b'],
+        primaryId: 'a',
+        delta: const Offset(3, 0), // a 오른쪽이 323, b 왼쪽(305)과 가까워짐
+        snap: true,
+      );
+
+      // 스냅이 안 걸려서 그냥 delta만큼만 움직여야 합니다.
+      expect(cardOf(update.cards, 'a').x, 103);
+      expect(cardOf(update.cards, 'b').x, 308);
+    });
+
+    test('목록에 없는 번호는 조용히 무시한다', () {
+      final List<BoardCard> cards = <BoardCard>[makeCard('a', x: 100)];
+
+      final BoardCardsUpdate update = moveCards(
+        cards,
+        <String>['없는번호'],
+        primaryId: '없는번호',
+        delta: const Offset(50, 0),
+      );
+
+      expect(update.cards, cards);
+    });
+
+    test('한 장짜리 moveCard와 결과가 같다', () {
+      // moveCard는 moveCards의 한 장짜리 특별한 경우여야 합니다.
+      final List<BoardCard> cardsA = <BoardCard>[makeCard('a', x: 100, y: 100)];
+      final List<BoardCard> cardsB = <BoardCard>[makeCard('a', x: 100, y: 100)];
+
+      final BoardCardsUpdate viaMoveCard = moveCard(
+        cardsA,
+        'a',
+        const Offset(40, 0),
+      );
+      final BoardCardsUpdate viaMoveCards = moveCards(
+        cardsB,
+        <String>['a'],
+        primaryId: 'a',
+        delta: const Offset(40, 0),
+      );
+
+      expect(cardOf(viaMoveCard.cards, 'a').x, cardOf(viaMoveCards.cards, 'a').x);
+    });
+  });
+
   group('크기 바꾸기', () {
     test('가로로 끈 만큼 넓어진다', () {
       final List<BoardCard> cards = <BoardCard>[makeCard('a', x: 0)];

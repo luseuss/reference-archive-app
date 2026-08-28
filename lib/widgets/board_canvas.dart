@@ -15,6 +15,7 @@
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../models/board.dart';
 import '../models/reference_item.dart';
@@ -32,6 +33,8 @@ class BoardCanvas extends StatelessWidget {
     required this.itemsById,
     required this.imagePaths,
     required this.activeCardId,
+    required this.selectedCardIds,
+    required this.onCardPressed,
     required this.onDragStart,
     required this.onDragUpdate,
     required this.onDragEnd,
@@ -75,6 +78,15 @@ class BoardCanvas extends StatelessWidget {
 
   /// 지금 끌거나 크기를 바꾸고 있는 카드의 번호입니다. 없으면 null입니다.
   final String? activeCardId;
+
+  /// 지금 골라져 있는 카드들의 번호입니다. (5단계 마퀴 다중선택)
+  final Set<String> selectedCardIds;
+
+  /// 카드를 누른 순간 알려줍니다. [shiftHeld]는 그때 Shift가 눌려 있었는지입니다.
+  ///
+  /// 실제로 끌리기 전에 "무엇이 선택돼야 하는지"를 정하는 자리입니다.
+  /// (board_interaction_controller.dart의 onCardPressed 설명 참고)
+  final void Function(BoardCard card, {required bool shiftHeld}) onCardPressed;
 
   /// 카드를 잡았을 때 알려줍니다.
   final ValueChanged<BoardCard> onDragStart;
@@ -173,31 +185,46 @@ class BoardCanvas extends StatelessWidget {
       // 사용자가 크기를 조절하면 그때 값이 채워집니다.
       height: card.height,
 
-      child: GestureDetector(
-        // ── dragStartBehavior를 down으로 두는 이유 ──
-        // Flutter는 "진짜 끄는 것인지" 확인하려고 처음 몇 픽셀을 지켜본 뒤에야
-        // 끌기로 인정합니다. 기본값(start)은 그 몇 픽셀을 **버립니다.** 그러면
-        // 카드가 손가락보다 조금씩 뒤처져서, 끌 때마다 어긋난 자리에 놓입니다.
-        // down은 누른 자리부터 세기 때문에 버려지는 거리가 없습니다.
-        dragStartBehavior: DragStartBehavior.down,
+      // ── 선택은 Listener로 알아챕니다(GestureDetector가 아닙니다) ──
+      // 처음에는 GestureDetector.onTapDown을 썼는데, 그러면 이 카드의 끌기
+      // 인식기가 **탭 인식기와 경쟁하게 됩니다.** 살짝만 끄는 경우(10픽셀
+      // 안팎) 탭이 이겨버려서 끌기 자체가 시작되지 않는 회귀가 생겼습니다
+      // (제스처 아레나 문제 — 위 import의 dragStartBehavior 설명과 같은
+      // 종류입니다). Listener는 아레나에 끼지 않고 날것 신호만 보므로,
+      // 아래 GestureDetector의 끌기 인식은 전혀 안 건드립니다.
+      child: Listener(
+        onPointerDown: (PointerDownEvent event) => onCardPressed(
+          card,
+          shiftHeld: HardwareKeyboard.instance.isShiftPressed,
+        ),
+        child: GestureDetector(
+          // ── dragStartBehavior를 down으로 두는 이유 ──
+          // Flutter는 "진짜 끄는 것인지" 확인하려고 처음 몇 픽셀을 지켜본 뒤에야
+          // 끌기로 인정합니다. 기본값(start)은 그 몇 픽셀을 **버립니다.** 그러면
+          // 카드가 손가락보다 조금씩 뒤처져서, 끌 때마다 어긋난 자리에 놓입니다.
+          // down은 누른 자리부터 세기 때문에 버려지는 거리가 없습니다.
+          dragStartBehavior: DragStartBehavior.down,
 
-        onPanStart: (DragStartDetails details) => onDragStart(card),
+          onPanStart: (DragStartDetails details) => onDragStart(card),
 
-        // delta = 지난 순간부터 지금까지 움직인 거리입니다.
-        onPanUpdate: (DragUpdateDetails details) =>
-            onDragUpdate(card, details.delta),
+          // delta = 지난 순간부터 지금까지 움직인 거리입니다.
+          onPanUpdate: (DragUpdateDetails details) =>
+              onDragUpdate(card, details.delta),
 
-        onPanEnd: (DragEndDetails details) => onDragEnd(card),
+          onPanEnd: (DragEndDetails details) => onDragEnd(card),
 
-        child: BoardCardView(
-          item: item,
-          imagePath: imagePaths[card.referenceId],
-          isActive: activeCardId == card.id,
-          onRemove: () => onRemoveCard(card),
-          onMeasured: (Size size) => onMeasured(card, size),
-          onResizeStart: (Size currentSize) => onResizeStart(card, currentSize),
-          onResizeUpdate: (Offset delta) => onResizeUpdate(card, delta),
-          onResizeEnd: () => onResizeEnd(card),
+          child: BoardCardView(
+            item: item,
+            imagePath: imagePaths[card.referenceId],
+            isActive: activeCardId == card.id,
+            isSelected: selectedCardIds.contains(card.id),
+            onRemove: () => onRemoveCard(card),
+            onMeasured: (Size size) => onMeasured(card, size),
+            onResizeStart: (Size currentSize) =>
+                onResizeStart(card, currentSize),
+            onResizeUpdate: (Offset delta) => onResizeUpdate(card, delta),
+            onResizeEnd: () => onResizeEnd(card),
+          ),
         ),
       ),
     );

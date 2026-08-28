@@ -21,9 +21,11 @@ import 'package:reference_archive_app/repositories/local_board_repository.dart';
 import 'package:reference_archive_app/repositories/local_reference_repository.dart';
 import 'package:reference_archive_app/screens/board_screen.dart';
 import 'package:reference_archive_app/utils/id_generator.dart';
+import 'package:reference_archive_app/widgets/board_canvas.dart';
 import 'package:reference_archive_app/widgets/board_viewport.dart';
 import 'package:reference_archive_app/widgets/board_card_view.dart';
 import 'package:reference_archive_app/widgets/board_guides.dart';
+import 'package:reference_archive_app/widgets/board_selection_bar.dart';
 
 import '../fakes/fake_image_storage.dart';
 
@@ -775,5 +777,195 @@ void main() {
       findsNothing,
       reason: '안내선이 클릭을 받고 있습니다',
     );
+  });
+
+  // ── 여기서부터는 5단계 마퀴 다중선택입니다 ──
+
+  /// 카드 하나의 BoardCardView를 찾아 isSelected 값을 돌려줍니다.
+  bool isCardSelected(WidgetTester tester, String cardId) {
+    final Finder finder = find.descendant(
+      of: find.byKey(ValueKey<String>(cardId)),
+      matching: find.byType(BoardCardView),
+    );
+    return tester.widget<BoardCardView>(finder).isSelected;
+  }
+
+  testWidgets('Alt+빈 곳 끌기로 걸리는 카드만 선택된다', (WidgetTester tester) async {
+    final String refA = await saveReference('가');
+    final String refB = await saveReference('나');
+
+    final BoardCard a = await putCardOnBoard(referenceId: refA, x: 100, y: 100);
+    final BoardCard b = await putCardOnBoard(referenceId: refB, x: 700, y: 100);
+
+    await openBoard(tester);
+
+    // 창의 빈 구석(화면에 실제로 보이는 자리)에서 카드 a를 완전히 감싸도록
+    // 마퀴를 끕니다. 카드 a는 걸리고, 멀리 있는 b는 안 걸려야 합니다.
+    //
+    // ── BoardCanvas의 왼쪽 위가 아니라 BoardViewport의 왼쪽 위를 씁니다 ──
+    // BoardCanvas는 카드 둘레에 넉넉한 여백(canvasBreathingRoom)까지 포함한
+    // 큰 상자라 그 모서리가 화면 밖으로 한참 벗어나 있습니다. 실제로 클릭이
+    // 닿는 자리는 화면에 보이는 BoardViewport 안쪽이어야 합니다.
+    final Offset viewportTopLeft = tester.getTopLeft(find.byType(BoardViewport));
+    final Offset start = viewportTopLeft + const Offset(10, 10);
+    final Offset aCenter = tester.getCenter(
+      find.byKey(ValueKey<String>(a.id)),
+    );
+
+    await withAltPressed(tester, () async {
+      final TestGesture drag = await tester.startGesture(start);
+      await tester.pump();
+      await drag.moveTo(aCenter + const Offset(40, 20));
+      await tester.pump();
+      await drag.up();
+      await tester.pumpAndSettle();
+    });
+
+    expect(isCardSelected(tester, a.id), isTrue, reason: 'a는 마퀴에 걸려야 합니다');
+    expect(isCardSelected(tester, b.id), isFalse, reason: 'b는 멀리 있어 안 걸려야 합니다');
+    expect(find.byType(BoardSelectionBar), findsOneWidget);
+    expect(find.text('1개 선택됨'), findsOneWidget);
+  });
+
+  testWidgets('Shift+클릭으로 선택을 더하고 뺀다', (WidgetTester tester) async {
+    final String refA = await saveReference('가');
+    final String refB = await saveReference('나');
+
+    final BoardCard a = await putCardOnBoard(referenceId: refA, x: 100, y: 100);
+    final BoardCard b = await putCardOnBoard(referenceId: refB, x: 700, y: 300);
+
+    await openBoard(tester);
+
+    // 먼저 a를 그냥 클릭합니다. a 하나만 선택돼야 합니다.
+    await tester.tap(find.byKey(ValueKey<String>(a.id)));
+    await tester.pumpAndSettle();
+    expect(isCardSelected(tester, a.id), isTrue);
+
+    // Shift를 누른 채 b를 클릭하면 b가 선택에 더해지고, a는 그대로 남습니다.
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+    await tester.tap(find.byKey(ValueKey<String>(b.id)));
+    await tester.pumpAndSettle();
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+
+    expect(isCardSelected(tester, a.id), isTrue, reason: 'a가 선택에서 빠지면 안 됩니다');
+    expect(isCardSelected(tester, b.id), isTrue);
+    expect(find.text('2개 선택됨'), findsOneWidget);
+
+    // Shift를 누른 채 a를 다시 클릭하면 a만 선택에서 빠집니다.
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+    await tester.tap(find.byKey(ValueKey<String>(a.id)));
+    await tester.pumpAndSettle();
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+
+    expect(isCardSelected(tester, a.id), isFalse);
+    expect(isCardSelected(tester, b.id), isTrue);
+  });
+
+  testWidgets('여러 장이 선택된 상태에서 하나를 끌면 다 같이 움직인다', (
+    WidgetTester tester,
+  ) async {
+    final String refA = await saveReference('가');
+    final String refB = await saveReference('나');
+
+    final BoardCard a = await putCardOnBoard(referenceId: refA, x: 100, y: 100);
+    final BoardCard b = await putCardOnBoard(referenceId: refB, x: 700, y: 300);
+
+    await openBoard(tester);
+
+    // 둘 다 선택해둡니다.
+    await tester.tap(find.byKey(ValueKey<String>(a.id)));
+    await tester.pumpAndSettle();
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+    await tester.tap(find.byKey(ValueKey<String>(b.id)));
+    await tester.pumpAndSettle();
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+
+    final double scale = shownScale(tester);
+
+    // a를 끌면 선택된 그 전부(a, b)가 같이 움직여야 합니다.
+    await tester.drag(
+      find.byKey(ValueKey<String>(a.id)),
+      Offset(50 * scale, 0),
+    );
+    await tester.pumpAndSettle();
+
+    final BoardCard savedA = await reloadCard(a.id);
+    final BoardCard savedB = await reloadCard(b.id);
+
+    expect(savedA.x, closeTo(150, 1), reason: '잡은 카드가 안 움직였습니다');
+    expect(savedB.x, closeTo(750, 1), reason: '같이 선택된 카드가 안 따라왔습니다');
+  });
+
+  testWidgets('선택 삭제를 누르면 골라둔 카드가 전부 판에서 내려간다', (
+    WidgetTester tester,
+  ) async {
+    final String refA = await saveReference('가');
+    final String refB = await saveReference('나');
+    final String refC = await saveReference('다');
+
+    final BoardCard a = await putCardOnBoard(referenceId: refA, x: 100, y: 100);
+    await putCardOnBoard(referenceId: refB, x: 700, y: 300);
+    await putCardOnBoard(referenceId: refC, x: 1300, y: 100);
+
+    await openBoard(tester);
+
+    // a만 선택하고 삭제합니다. b, c는 남아야 합니다.
+    await tester.tap(find.byKey(ValueKey<String>(a.id)));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('선택 삭제'));
+    await tester.pumpAndSettle();
+
+    final List<BoardCard> remaining = await boardRepository.getCards(board.id);
+    expect(remaining.length, 2);
+    expect(remaining.any((BoardCard c) => c.id == a.id), isFalse);
+
+    // 선택도 함께 비워져서 선택 띠가 사라져야 합니다.
+    expect(find.byType(BoardSelectionBar), findsNothing);
+  });
+
+  testWidgets('빈 곳을 그냥 클릭하면 선택이 풀린다', (WidgetTester tester) async {
+    final String refA = await saveReference('가');
+    final BoardCard a = await putCardOnBoard(referenceId: refA, x: 100, y: 100);
+
+    await openBoard(tester);
+
+    await tester.tap(find.byKey(ValueKey<String>(a.id)));
+    await tester.pumpAndSettle();
+    expect(isCardSelected(tester, a.id), isTrue);
+
+    // 카드에서 멀리 떨어진 빈 곳을 클릭합니다(끌지 않습니다).
+    // BoardCanvas가 아니라 BoardViewport 기준입니다 — 위 테스트의 설명 참고.
+    final Offset viewportTopLeft = tester.getTopLeft(find.byType(BoardViewport));
+    await tester.tapAt(viewportTopLeft + const Offset(10, 10));
+    await tester.pumpAndSettle();
+
+    expect(isCardSelected(tester, a.id), isFalse);
+    expect(find.byType(BoardSelectionBar), findsNothing);
+  });
+
+  testWidgets('빈 곳을 클릭해도 판 이동에는 영향이 없다', (WidgetTester tester) async {
+    // 회귀 확인: 클릭 판정을 Listener로 따로 보느라 판 이동(Pan)이
+    // 망가지면 안 됩니다.
+    final String refA = await saveReference('가');
+    await putCardOnBoard(referenceId: refA, x: 100, y: 100);
+
+    await openBoard(tester);
+
+    final Offset before = tester.getTopLeft(find.byType(BoardCanvas));
+
+    // AppBar 아래, 화면에 실제로 보이는 자리에서 끕니다. (30, 30)처럼
+    // 화면 맨 위쪽 좌표를 그대로 쓰면 AppBar 위를 눌러버립니다.
+    final Offset viewportTopLeft = tester.getTopLeft(find.byType(BoardViewport));
+    await tester.dragFrom(
+      viewportTopLeft + const Offset(30, 30),
+      const Offset(90, 60),
+    );
+    await tester.pumpAndSettle();
+
+    final Offset after = tester.getTopLeft(find.byType(BoardCanvas));
+
+    expect(after.dx - before.dx, closeTo(90, 1));
+    expect(after.dy - before.dy, closeTo(60, 1));
   });
 }

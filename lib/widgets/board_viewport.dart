@@ -17,9 +17,18 @@
 // 경계가 없으니 그릴 테두리도 없습니다.
 //
 // ── 조작 방법 ──
-//   빈 곳을 끌기      → 판 이동
-//   마우스 휠         → 커서 자리를 기준으로 확대·축소
-//   오른쪽 아래 버튼  → 확대 / 축소 / 카드 전부 보기
+//   빈 곳을 끌기          → 판 이동
+//   Alt + 빈 곳을 끌기    → 마퀴(선택 네모) 그리기
+//   빈 곳을 그냥 클릭     → 선택 지우기
+//   마우스 휠             → 커서 자리를 기준으로 확대·축소
+//   오른쪽 아래 버튼      → 확대 / 축소 / 카드 전부 보기
+//
+// ── 마퀴는 왜 여기 있나 (5단계 마퀴 다중선택) ──
+// 이 파일이 카드가 뭔지 모른다는 원칙은 그대로입니다. 마퀴 네모를
+// **화면 좌표로 그리고, 판 좌표로 바꿔서 위로 보고할 뿐** — "어느 카드가
+// 걸렸는지"는 이 파일이 아니라 board_interaction_controller.dart가
+// 정합니다. 판을 옮기는 손잡이와 같은 층에 있어서, 판 이동과 마퀴가
+// 같은 "빈 곳 끌기" 하나를 Alt 여부로 나눠 쓰게 만들기 쉬웠습니다.
 //
 // ── 왜 스크롤 위젯을 안 쓰나 (중요) ──
 // 1단계에서 스크롤로 만들었다가 **끌기가 스크롤에 져서 카드가 아예 안 잡혔습니다.**
@@ -32,6 +41,7 @@
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../theme/app_metrics.dart';
 import '../theme/app_palette.dart';
@@ -45,6 +55,10 @@ class BoardViewport extends StatefulWidget {
     required this.canvasRect,
     required this.contentBounds,
     required this.viewResetCount,
+    required this.onMarqueeBegin,
+    required this.onMarqueeUpdate,
+    required this.onMarqueeEnd,
+    required this.onEmptyTap,
     required this.child,
   });
 
@@ -78,6 +92,27 @@ class BoardViewport extends StatefulWidget {
   /// 부르는 쪽에서 1씩 올려주면 됩니다.
   final int viewResetCount;
 
+  /// Alt+빈 곳 끌기로 마퀴를 시작하는 순간 알려줍니다.
+  ///
+  /// [additive]는 그 순간 Shift가 눌려 있었는지입니다. 참이면 "지금까지의
+  /// 선택에 더하기", 거짓이면 "마퀴로 통째로 바꾸기"라는 뜻입니다.
+  final void Function({required bool additive}) onMarqueeBegin;
+
+  /// 마퀴를 끄는 동안, 지금까지 그려진 네모를 **판 좌표**로 알려줍니다.
+  ///
+  /// 화면 좌표가 아닙니다 — 카드 자리와 견주려면 판 좌표라야 하는데,
+  /// 그 변환(이동·배율 되돌리기)은 이 파일만 압니다.
+  final ValueChanged<Rect> onMarqueeUpdate;
+
+  /// 마퀴에서 손을 뗐을 때 알려줍니다.
+  final VoidCallback onMarqueeEnd;
+
+  /// 빈 곳을 **끌지 않고 그냥 클릭**했을 때 알려줍니다.
+  ///
+  /// [shiftHeld]는 그때 Shift가 눌려 있었는지입니다. 대개 "선택을
+  /// 지워라"는 뜻으로 쓰지만, Shift가 눌려 있었다면 아무것도 안 지웁니다.
+  final void Function({required bool shiftHeld}) onEmptyTap;
+
   /// 판 안에 그릴 것입니다. 크기가 [canvasRect]의 크기라고 보고 그립니다.
   ///
   /// 빈 자리는 **클릭을 받지 않아야** 합니다. 받아버리면 빈 곳을 끌어도
@@ -101,6 +136,20 @@ class _BoardViewportState extends State<BoardViewport> {
 
   /// 지금 이동값입니다(화면 좌표). null이면 아직 손대지 않은 상태입니다.
   Offset? _offset;
+
+  /// 지금 마퀴를 그리는 중인지 여부입니다.
+  ///
+  /// Alt를 누른 채로 빈 곳 끌기를 시작하면 참이 됩니다. 참인 동안에는
+  /// 빈 곳 끌기가 판 이동이 아니라 마퀴로 갑니다.
+  bool _marqueeActive = false;
+
+  /// 마퀴의 시작점과 지금 위치입니다. **화면 좌표**입니다.
+  ///
+  /// 그리는 사각형(_buildMarqueeRect)은 이 화면 좌표를 그대로 씁니다.
+  /// 판 좌표로 바꾸는 것은 [widget.onMarqueeUpdate]를 부를 때뿐입니다 —
+  /// 화면에 그릴 때까지 매번 바꿀 이유가 없습니다.
+  Offset? _marqueeStart;
+  Offset? _marqueeCurrent;
 
   /// 부모가 [BoardViewport.viewResetCount]를 올리면 보던 화면을 되돌립니다.
   ///
@@ -177,6 +226,107 @@ class _BoardViewportState extends State<BoardViewport> {
     });
   }
 
+  /// 빈 곳을 눌렀을 때의 화면 좌표입니다. 클릭인지 끌기인지 가리는 데 씁니다.
+  Offset? _emptyPointerDownAt;
+
+  /// 눌린 뒤로 조금이라도 움직였는지 여부입니다. 클릭 여부를 가릴 때 씁니다.
+  bool _emptyPointerMoved = false;
+
+  /// 빈 곳을 눌렀을 때 실행됩니다. 클릭 판정을 위해 시작점을 기억해둡니다.
+  void _onEmptyPointerDown(PointerDownEvent event) {
+    _emptyPointerDownAt = event.position;
+    _emptyPointerMoved = false;
+  }
+
+  /// 눌린 채로 움직이는 동안 실행됩니다. 조금이라도 움직였으면 표시해둡니다.
+  ///
+  /// `kTouchSlop`은 Flutter가 "진짜 움직인 것"으로 쳐주는 최소 거리입니다.
+  /// 그보다 짧으면 손이 살짝 떨린 것으로 보고 클릭 판정을 유지합니다.
+  void _onEmptyPointerMove(PointerMoveEvent event) {
+    final Offset? downAt = _emptyPointerDownAt;
+    if (downAt == null) {
+      return;
+    }
+
+    if ((event.position - downAt).distance > kTouchSlop) {
+      _emptyPointerMoved = true;
+    }
+  }
+
+  /// 빈 곳에서 손을 뗐을 때 실행됩니다.
+  ///
+  /// 눌린 뒤로 움직이지 않았다면 **클릭**입니다. 그때만
+  /// [BoardViewport.onEmptyTap]을 부릅니다. 판을 끌었을 때는(움직였을
+  /// 때는) 부르지 않습니다 — 판을 옮기다 손을 뗀 것뿐인데 선택이
+  /// 지워지면 당황스럽습니다.
+  void _onEmptyPointerUp(PointerUpEvent event) {
+    if (!_emptyPointerMoved) {
+      widget.onEmptyTap(shiftHeld: HardwareKeyboard.instance.isShiftPressed);
+    }
+    _emptyPointerDownAt = null;
+  }
+
+  /// 화면 좌표를 판 좌표로 바꿉니다. 확대·이동의 반대 방향 계산입니다.
+  ///
+  ///   화면 = 이동 + 판×배율   →   판 = (화면 − 이동) ÷ 배율
+  Offset _toCanvasPoint(Offset screenPoint, Size viewport) {
+    final double scale = _scaleFor(viewport);
+    final Offset offset = _offsetFor(viewport, scale);
+    return (screenPoint - offset) / scale;
+  }
+
+  /// 빈 곳에서 끌기가 시작될 때 실행됩니다.
+  ///
+  /// Alt가 눌려 있으면 마퀴를, 아니면 판 이동을 시작합니다. **여기서
+  /// 한 번만** 확인합니다 — 끄는 도중에 Alt를 떼거나 눌러도 이미 정해진
+  /// 쪽으로 계속 갑니다. 도중에 바뀌면 마퀴가 판이 됐다 다시 마퀴가 됐다
+  /// 하며 뒤죽박죽이 됩니다.
+  void _onEmptyDragStart(DragStartDetails details) {
+    if (!HardwareKeyboard.instance.isAltPressed) {
+      return;
+    }
+
+    setState(() {
+      _marqueeActive = true;
+      _marqueeStart = details.localPosition;
+      _marqueeCurrent = details.localPosition;
+    });
+
+    widget.onMarqueeBegin(additive: HardwareKeyboard.instance.isShiftPressed);
+  }
+
+  /// 빈 곳을 끄는 동안 실행됩니다. 마퀴 중이면 마퀴를, 아니면 판을 옮깁니다.
+  void _onEmptyDragUpdate(DragUpdateDetails details, Size viewport) {
+    if (!_marqueeActive) {
+      _pan(details.delta, viewport);
+      return;
+    }
+
+    setState(() {
+      _marqueeCurrent = (_marqueeCurrent ?? details.localPosition) +
+          details.delta;
+    });
+
+    final Offset a = _toCanvasPoint(_marqueeStart!, viewport);
+    final Offset b = _toCanvasPoint(_marqueeCurrent!, viewport);
+    widget.onMarqueeUpdate(Rect.fromPoints(a, b));
+  }
+
+  /// 빈 곳에서 손을 뗐을 때 실행됩니다. 마퀴 중이었으면 마무리합니다.
+  void _onEmptyDragEnd(DragEndDetails details) {
+    if (!_marqueeActive) {
+      return;
+    }
+
+    setState(() {
+      _marqueeActive = false;
+      _marqueeStart = null;
+      _marqueeCurrent = null;
+    });
+
+    widget.onMarqueeEnd();
+  }
+
   /// 배율을 [nextScale]로 바꿉니다. [focalPoint] 자리는 그대로 있게 합니다.
   ///
   /// 확대·축소 버튼과 마우스 휠이 둘 다 이 함수를 씁니다. 다른 것은
@@ -248,6 +398,7 @@ class _BoardViewportState extends State<BoardViewport> {
   @override
   Widget build(BuildContext context) {
     final AppPalette palette = AppPalette.of(context);
+    final ColorScheme colors = Theme.of(context).colorScheme;
 
     // LayoutBuilder = "지금 내가 쓸 수 있는 자리가 얼마나 되는지" 알려주는 위젯입니다.
     // 창 크기가 바뀌면 다시 실행되므로, 창을 줄이면 판도 따라서 조정됩니다.
@@ -278,13 +429,31 @@ class _BoardViewportState extends State<BoardViewport> {
                 child: MouseRegion(
                   // 끌어서 옮길 수 있다는 것을 커서 모양으로 알려줍니다.
                   cursor: SystemMouseCursors.grab,
-                  child: GestureDetector(
-                    // opaque = 색이 없는 곳도 눌린 것으로 칩니다.
-                    // 안 그러면 투명한 부분에서는 끌기가 시작되지 않습니다.
-                    behavior: HitTestBehavior.opaque,
-                    onPanUpdate: (DragUpdateDetails details) =>
-                        _pan(details.delta, viewport),
-                    child: ColoredBox(color: palette.background),
+
+                  // ── 클릭 여부는 Listener로 따로 봅니다 ──
+                  // 처음에는 GestureDetector.onTap을 같이 뒀는데, 그러면
+                  // 판 이동 인식기가 **탭 인식기와 경쟁하게 됩니다.** 그
+                  // 결과 짧게 끄는 순간 처음 몇 픽셀이 더 버려져서, 90픽셀
+                  // 끌었는데 70픽셀만 움직이는 회귀가 생겼습니다(제스처
+                  // 아레나 문제). Listener는 아레나에 안 끼므로 아래
+                  // GestureDetector의 판 이동은 전혀 안 건드립니다.
+                  child: Listener(
+                    onPointerDown: _onEmptyPointerDown,
+                    onPointerMove: _onEmptyPointerMove,
+                    onPointerUp: _onEmptyPointerUp,
+                    child: GestureDetector(
+                      // opaque = 색이 없는 곳도 눌린 것으로 칩니다.
+                      // 안 그러면 투명한 부분에서는 끌기가 시작되지 않습니다.
+                      behavior: HitTestBehavior.opaque,
+
+                      // Alt 여부로 마퀴/판 이동을 가릅니다. (_onEmptyDragStart 설명 참고)
+                      onPanStart: _onEmptyDragStart,
+                      onPanUpdate: (DragUpdateDetails details) =>
+                          _onEmptyDragUpdate(details, viewport),
+                      onPanEnd: _onEmptyDragEnd,
+
+                      child: ColoredBox(color: palette.background),
+                    ),
                   ),
                 ),
               ),
@@ -317,7 +486,24 @@ class _BoardViewportState extends State<BoardViewport> {
                 ),
               ),
 
-              // ── 3층: 확대·축소 버튼 ──
+              // ── 3층: 마퀴 네모 ──
+              // 화면 좌표를 그대로 씁니다(판 좌표로 안 바꿉니다). 카드 위에
+              // 그려서 뭐가 걸리는지 보이게 하고, IgnorePointer로 감싸
+              // 클릭을 가로채지 않게 합니다. (board_guides.dart와 같은 이유)
+              if (_marqueeStart != null && _marqueeCurrent != null)
+                Positioned.fromRect(
+                  rect: Rect.fromPoints(_marqueeStart!, _marqueeCurrent!),
+                  child: IgnorePointer(
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: colors.primary.withValues(alpha: 0.12),
+                        border: Border.all(color: colors.primary, width: 1.5),
+                      ),
+                    ),
+                  ),
+                ),
+
+              // ── 4층: 확대·축소 버튼 ──
               Positioned(
                 right: 16,
                 bottom: 16,
