@@ -455,8 +455,8 @@ lib/
     의뢰인이 써보니 "붙는 게 부자연스럽다"고 했습니다. 카드를 대충 늘어놓는
     시간이 훨씬 많고, 줄을 딱 맞추고 싶을 때만 가끔 스냅을 켜는 편이 손에
     맞았습니다. `HardwareKeyboard.instance.isAltPressed`로 봅니다 — 키
-    입력 위젯을 따로 만들 필요가 없습니다. (`board_screen.dart`의
-    `_snapEnabled`)
+    입력 위젯을 따로 만들 필요가 없습니다. (`board_interaction_controller.dart`의
+    `snapEnabled` — 조작 상태를 이 파일로 뺀 뒤 옮겨졌습니다)
   - **카드가 자기 실제 높이를 알려줍니다** (`onMeasured`). 이게 없으면
     세로 스냅이 **눈에 보이지도 않는 자리**에 붙습니다. 카드 높이는 보통
     저장돼 있지 않고 그림 비율이 정하는데, 4:3으로 어림잡으면 3:2 사진에서
@@ -527,22 +527,24 @@ lib/
 
   그다음은 **호버 미리보기 부분**(`_onCardHoverChanged` / `_startPreview` /
   `_stopPreview` / `_previewServer`)입니다.
-- **`lib/screens/board_screen.dart`가 436줄** (PR #23 기준, 300줄 기준 초과).
-  스냅이 들어오면서 넘었습니다.
+- ~~`lib/screens/board_screen.dart`가 436줄이라 300줄 기준 초과~~ ✅ **완료**
+  (5번을 시작하기 전에 처리). "조작" 부분(끌기·크기 조절·스냅 상태와
+  동작 전부)을 `lib/screens/board_interaction_controller.dart`
+  (`ChangeNotifier`)로 뺐습니다. `board_screen.dart` 436 → **265줄**,
+  컨트롤러 **287줄**. 순수 리팩터라 기존 위젯 테스트 460건이 그대로
+  통과하는 것으로 검증했습니다(회귀 없음).
 
-  뺄 후보는 **"조작" 부분**입니다 — `_onDragStart` / `_onDragUpdate` /
-  `_onDragEnd` / `_onResizeStart` / `_onResizeUpdate` / `_onResizeEnd` /
-  `_snapEnabled` / `_clearGuides`. 묶으면 150줄쯤 빠집니다.
+  카드 목록(`cards`)도 함께 옮겼습니다 — 끌기·크기조절뿐 아니라 레퍼런스
+  담기·내리기도 같은 목록을 건드리기 때문입니다. 화면에는 대화상자를 여는
+  `_addCards`만 남았고, 저장하고 목록에 넣는 부분은 컨트롤러의
+  `addCards()`가 합니다.
 
-  다만 이것들은 `_cards`·`_guideX`·`_resizeDelta` 같은 **화면 상태를 함께
-  건드립니다.** 그냥 다른 파일로 옮기면 상태를 인자로 주고받느라 오히려
-  읽기 어려워집니다. 상태까지 함께 옮길 작은 클래스를 만드는 편이 맞습니다.
-  **5번(마퀴 다중선택)을 시작하기 전에 하는 것이 좋습니다** — 다중선택이
-  들어오면 조작 부분이 또 늘어납니다.
-- **다른 무드보드 파일들은 아직 여유가 있습니다** (PR #23 기준):
-  `board_viewport.dart` 345줄, `board_card_actions.dart` 233줄,
-  `board_canvas.dart` 197줄, `board_snap.dart` 181줄,
-  `board_view.dart` 164줄, `board_layout.dart` 152줄.
+  **다음에 무드보드 조작을 고칠 때는 이 컨트롤러를 보세요.**
+  `board_screen.dart`는 이제 읽어오기·화면 조립만 합니다.
+- **다른 무드보드 파일들은 아직 여유가 있습니다** (이 정리 기준):
+  `board_viewport.dart` 345줄, `board_interaction_controller.dart` 287줄,
+  `board_card_actions.dart` 233줄, `board_canvas.dart` 197줄,
+  `board_snap.dart` 181줄, `board_view.dart` 164줄, `board_layout.dart` 152줄.
 - **파트를 지울 때 그 안의 레퍼런스가 미아가 됩니다** (PR #16에서 빠뜨린 것).
   `lib/repositories/local_taxonomy_repository.dart`의 `delete()`가 폴더·카테고리는
   정리해주는데 **`partId`만 안 지웁니다.** 파트를 지우면 그 레퍼런스들이
