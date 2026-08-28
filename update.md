@@ -2582,3 +2582,61 @@ Alt를 안 눌러 두 개가 빨갛게 됐습니다. `withAltPressed` 도우미
 - 폰에는 Alt가 없습니다. 터치에서 스냅을 켜는 방법은 아직 없습니다.
 - **`board_screen.dart`가 436줄로 300줄 기준을 넘었습니다.**
   5번(마퀴 다중선택)을 시작하기 전에 조작 부분을 정리하기로 했습니다.
+
+---
+
+## PR #24 — 무드보드 정리: board_screen.dart의 조작 부분을 컨트롤러로 빼기
+
+기능 추가가 아니라 **정리 작업**입니다. `board_screen.dart`가 436줄로
+300줄 기준을 넘었습니다(PR #23에서 스냅이 들어오며 넘었고, 5번을
+시작하기 전에 하기로 적어뒀던 것입니다).
+
+### 새 파일 — `BoardInteractionController`
+
+`lib/screens/board_interaction_controller.dart`. 이미 프로젝트에 있는
+패턴을 따랐습니다(`lib/services/app_settings.dart`의 `AppSettings` +
+`ListenableBuilder`).
+
+카드 목록(`cards`)과 그걸 만지는 모든 상태·동작을 통째로 옮겼습니다.
+
+```
+cards, activeCardId, resizeStartSize, resizeDelta, guideX/guideY,
+measuredHeights, gridSnap, snapEnabled
+setCards / addCards / removeCard
+onDragStart/Update/End, onResizeStart/Update/End, onCardMeasured
+```
+
+**함수만 옮기지 않고 상태까지 함께 옮겼습니다.** 그냥 함수만 다른
+파일로 옮기면 이 값들을 인자로 주고받아야 해서 오히려 읽기 어려워집니다.
+
+**카드 목록도 함께 옮긴 이유**: 끌기·크기조절뿐 아니라 레퍼런스
+담기·내리기도 같은 목록을 건드립니다. 목록을 화면과 컨트롤러가 나눠
+갖고 있으면 "어느 쪽이 진짜인지" 헷갈립니다. 하나로 모았습니다.
+
+### `board_screen.dart`에 남은 것
+
+**읽어오기와 화면 조립만** 남았습니다. 레퍼런스 고르는 대화상자
+(`_addCards`)는 `context`가 필요해서 남아 있지만, 저장하고 목록에 넣는
+일은 컨트롤러의 `addCards()`로 넘겼습니다.
+
+`ListenableBuilder`로 감싸서 컨트롤러가 바뀔 때만 그 부분을 다시
+그립니다. 격자 토글 버튼과 본문(`_buildBody`)을 따로 감쌌습니다 —
+카드를 끌 때마다 AppBar 전체가 다시 그려질 필요는 없습니다.
+
+### 줄 수
+
+| 파일 | 전 | 후 |
+|---|---|---|
+| `board_screen.dart` | 436 | **265** |
+| `board_interaction_controller.dart` (새로) | — | 287 |
+
+### 어떻게 확인했나 — 순수 리팩터입니다
+
+새 테스트는 안 붙였습니다. **기존 위젯 테스트 460건을 회귀 검사로
+썼습니다.** 동작이 하나도 안 바뀌었다는 것을 그걸로 확인합니다.
+
+`flutter analyze` 문제 없음 · `flutter test` **460건 그대로 통과** ·
+`flutter build windows` 성공 · 실제 앱으로 확인
+
+### 알고 있는 한계
+없음(정리 작업이라 새로 생긴 한계가 없습니다).
