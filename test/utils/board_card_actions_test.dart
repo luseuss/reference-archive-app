@@ -313,6 +313,8 @@ void main() {
         cards,
         'a',
         startSize: const Size(200, 150),
+        startPosition: const Offset(0, 100),
+        corner: BoardResizeCorner.bottomRight,
         movedSoFar: const Offset(100, 0),
       ).cards;
 
@@ -328,6 +330,8 @@ void main() {
         cards,
         'a',
         startSize: const Size(200, 150),
+        startPosition: const Offset(0, 100),
+        corner: BoardResizeCorner.bottomRight,
         movedSoFar: const Offset(100, 0),
       ).cards;
 
@@ -344,12 +348,16 @@ void main() {
         cards,
         'a',
         startSize: const Size(200, 150),
+        startPosition: const Offset(0, 100),
+        corner: BoardResizeCorner.bottomRight,
         movedSoFar: const Offset(100, 0),
       ).cards;
       final List<BoardCard> withHeight = resizeCard(
         cards,
         'a',
         startSize: const Size(200, 150),
+        startPosition: const Offset(0, 100),
+        corner: BoardResizeCorner.bottomRight,
         movedSoFar: const Offset(100, 400),
       ).cards;
 
@@ -363,6 +371,8 @@ void main() {
         cards,
         'a',
         startSize: const Size(200, 150),
+        startPosition: const Offset(0, 100),
+        corner: BoardResizeCorner.bottomRight,
         movedSoFar: const Offset(-9999, 0),
       ).cards;
 
@@ -378,6 +388,8 @@ void main() {
         cards,
         'a',
         startSize: const Size(200, 150),
+        startPosition: const Offset(0, 100),
+        corner: BoardResizeCorner.bottomRight,
         movedSoFar: const Offset(9999, 0),
       ).cards;
 
@@ -393,12 +405,16 @@ void main() {
         near,
         'a',
         startSize: const Size(220, 293),
+        startPosition: const Offset(0, 0),
+        corner: BoardResizeCorner.bottomRight,
         movedSoFar: const Offset(400, 0),
       ).cards;
       final List<BoardCard> farResult = resizeCard(
         far,
         'a',
         startSize: const Size(220, 293),
+        startPosition: const Offset(9000, 7000),
+        corner: BoardResizeCorner.bottomRight,
         movedSoFar: const Offset(400, 0),
       ).cards;
 
@@ -416,6 +432,8 @@ void main() {
         cards,
         'a',
         startSize: const Size(220, 293),
+        startPosition: const Offset(0, 0),
+        corner: BoardResizeCorner.bottomRight,
         movedSoFar: const Offset(9999, 0),
       ).cards;
 
@@ -433,10 +451,106 @@ void main() {
         cards,
         'a',
         startSize: Size.zero,
+        startPosition: const Offset(100, 100),
+        corner: BoardResizeCorner.bottomRight,
         movedSoFar: const Offset(100, 0),
       ).cards;
 
       expect(result, cards);
+    });
+  });
+
+  group('네 모서리 손잡이 (반대쪽 모서리 고정)', () {
+    // 카드: x=100, y=100, startSize 200×150 (비율 0.75)
+    // 반대쪽 모서리(고정돼야 할 곳)를 확인하는 것이 핵심입니다.
+
+    test('왼쪽 위 손잡이 — 오른쪽 아래 모서리가 고정된다', () {
+      final List<BoardCard> cards = <BoardCard>[makeCard('a', x: 100, y: 100)];
+
+      // 왼쪽으로 50 끌면(dx=-50) 왼쪽 손잡이는 커지는 방향이라 가로가 250이 됩니다.
+      final BoardCard result = cardOf(
+        resizeCard(
+          cards,
+          'a',
+          startSize: const Size(200, 150),
+          startPosition: const Offset(100, 100),
+          corner: BoardResizeCorner.topLeft,
+          movedSoFar: const Offset(-50, 0),
+        ).cards,
+        'a',
+      );
+
+      expect(result.width, 250);
+      expect(result.height, closeTo(187.5, 0.001));
+      // 오른쪽 아래 모서리는 원래(300, 250) 그대로여야 합니다.
+      expect(result.x + result.width, 300);
+      expect(result.y + result.height!, 250);
+    });
+
+    test('오른쪽 위 손잡이 — 왼쪽 아래 모서리가 고정된다', () {
+      final List<BoardCard> cards = <BoardCard>[makeCard('a', x: 100, y: 100)];
+
+      final BoardCard result = cardOf(
+        resizeCard(
+          cards,
+          'a',
+          startSize: const Size(200, 150),
+          startPosition: const Offset(100, 100),
+          corner: BoardResizeCorner.topRight,
+          movedSoFar: const Offset(50, 0),
+        ).cards,
+        'a',
+      );
+
+      expect(result.width, 250);
+      expect(result.height, closeTo(187.5, 0.001));
+      // 왼쪽 아래 모서리는 원래(100, 250) 그대로여야 합니다.
+      expect(result.x, 100);
+      expect(result.y + result.height!, 250);
+    });
+
+    test('왼쪽 아래 손잡이 — 오른쪽 위 모서리가 고정된다', () {
+      final List<BoardCard> cards = <BoardCard>[makeCard('a', x: 100, y: 100)];
+
+      final BoardCard result = cardOf(
+        resizeCard(
+          cards,
+          'a',
+          startSize: const Size(200, 150),
+          startPosition: const Offset(100, 100),
+          corner: BoardResizeCorner.bottomLeft,
+          movedSoFar: const Offset(-50, 0),
+        ).cards,
+        'a',
+      );
+
+      expect(result.width, 250);
+      expect(result.height, closeTo(187.5, 0.001));
+      // 오른쪽 위 모서리는 원래(300, 100) 그대로여야 합니다.
+      expect(result.x + result.width, 300);
+      expect(result.y, 100);
+    });
+
+    test('오른쪽 아래 손잡이 — 왼쪽 위 모서리가 고정된다 (기존과 같음)', () {
+      final List<BoardCard> cards = <BoardCard>[makeCard('a', x: 100, y: 100)];
+
+      final BoardCard result = cardOf(
+        resizeCard(
+          cards,
+          'a',
+          startSize: const Size(200, 150),
+          startPosition: const Offset(100, 100),
+          corner: BoardResizeCorner.bottomRight,
+          movedSoFar: const Offset(50, 0),
+        ).cards,
+        'a',
+      );
+
+      expect(result.width, 250);
+      expect(result.height, closeTo(187.5, 0.001));
+      // 왼쪽 위 모서리는 원래(100, 100) 그대로여야 합니다.
+      expect(result.x, 100);
+      expect(result.y, 100);
     });
   });
 

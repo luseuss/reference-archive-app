@@ -185,10 +185,40 @@ void main() {
         resizing: rect(500, 300, 203),
         others: <Rect>[rect(500, 100, 200)],
         useGrid: false,
+        onLeftEdge: false,
       );
 
       expect(result.offset.dx, -3);
       expect(result.guideX, 700);
+    });
+
+    test('왼쪽 손잡이면 왼쪽 모서리가 다른 카드에 붙는다', () {
+      // 왼쪽 위·아래 손잡이로 끄는 중입니다. 내 왼쪽이 497, 다른 카드의
+      // 왼쪽이 500이면 3만큼 밀립니다.
+      final BoardSnapResult result = snapResizingCard(
+        resizing: rect(497, 300, 200),
+        others: <Rect>[rect(500, 100, 200)],
+        useGrid: false,
+        onLeftEdge: true,
+      );
+
+      expect(result.offset.dx, 3);
+      expect(result.guideX, 500);
+    });
+
+    test('왼쪽 손잡이일 때는 오른쪽 모서리를 안 본다', () {
+      // 오른쪽 모서리가 가까운 후보와 딱 맞아떨어져도, 왼쪽 손잡이로
+      // 끄는 중이면 왼쪽 모서리만 봐야 합니다.
+      final BoardSnapResult result = snapResizingCard(
+        resizing: rect(500, 300, 200), // 오른쪽 끝 = 700
+        others: <Rect>[rect(350, 100, 350)], // 오른쪽 끝 = 700 (딱 맞음)
+        useGrid: false,
+        onLeftEdge: true,
+      );
+
+      // 왼쪽(500)에서 가장 가까운 후보(가운데, 525)도 25만큼 떨어져
+      // 임계값(8) 밖이니 안 붙어야 합니다.
+      expect(result.offset.dx, 0);
     });
 
     test('세로는 안 본다', () {
@@ -198,6 +228,7 @@ void main() {
         resizing: rect(500, 900, 200, 203),
         others: <Rect>[rect(5000, 900, 200, 200)],
         useGrid: false,
+        onLeftEdge: false,
       );
 
       expect(result.offset.dy, 0);
@@ -209,6 +240,7 @@ void main() {
         resizing: rect(500, 300, 220),
         others: <Rect>[rect(500, 100, 200)],
         useGrid: false,
+        onLeftEdge: false,
       );
 
       expect(result.offset.dx, 0);

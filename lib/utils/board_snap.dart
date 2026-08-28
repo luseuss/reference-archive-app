@@ -189,26 +189,35 @@ BoardSnapResult snapMovingCard({
   );
 }
 
-/// **크기를 바꾸는 중인** 카드의 오른쪽 모서리를 다른 카드에 붙입니다.
+/// **크기를 바꾸는 중인** 카드의 **움직이는 모서리**를 다른 카드에 붙입니다.
 ///
-/// ── 왜 오른쪽만 보나 ──
-/// 이 앱의 크기 조절은 **가로세로 비율을 고정**합니다. 세로는 가로를 따라
-/// 정해지므로, 아래 모서리를 따로 붙이면 비율이 깨집니다. 사용자가 실제로
-/// 끄는 것도 가로 방향이라, 오른쪽만 보는 편이 예측하기 쉽습니다.
+/// ── 어느 모서리를 보는가 ──
+/// 손잡이가 오른쪽에 있으면(오른쪽 위·아래) 오른쪽 모서리가 움직이고,
+/// 왼쪽에 있으면(왼쪽 위·아래) 왼쪽 모서리가 움직입니다. [onLeftEdge]로
+/// 어느 쪽인지 알려주세요. **위아래(세로)는 안 봅니다** — 이 앱의 크기
+/// 조절은 가로세로 비율을 고정합니다. 세로는 가로를 따라 정해지므로,
+/// 위·아래 모서리를 따로 붙이면 비율이 깨집니다.
 ///
-/// 아래 모서리를 맞추고 싶을 때는 6번(정렬·분배 툴바)을 쓰게 됩니다.
+/// 위아래를 맞추고 싶을 때는 6번(정렬·분배 툴바)을 쓰게 됩니다.
 ///
-/// 돌려주는 [BoardSnapResult.offset]의 dx는 **가로 크기에 더할 값**입니다.
-/// 자리를 옮기는 값이 아닙니다. dy는 언제나 0입니다.
+/// 돌려주는 [BoardSnapResult.offset]의 dx는 **그 모서리를 얼마나 밀어야
+/// 하는지**입니다. 오른쪽 모서리가 움직이는 중이면 그대로 가로 크기에
+/// 더하면 되고, 왼쪽 모서리가 움직이는 중이면 **반대 부호로** 가로 크기에
+/// 반영해야 합니다(왼쪽 모서리가 오른쪽으로 밀리면 카드는 그만큼 좁아지기
+/// 때문입니다). 이 부호 처리는 board_card_actions.dart의 resizeCard가 합니다.
+/// dy는 언제나 0입니다.
 BoardSnapResult snapResizingCard({
   required Rect resizing,
   required List<Rect> others,
   required bool useGrid,
+  required bool onLeftEdge,
 }) {
+  final double edge = onLeftEdge ? resizing.left : resizing.right;
+
   final _AxisSnap x = _snapAxis(
-    points: <double>[resizing.right],
+    points: <double>[edge],
     candidates: snapCandidatesX(resizing, others),
-    gridBase: resizing.right,
+    gridBase: edge,
     useGrid: useGrid,
   );
 
