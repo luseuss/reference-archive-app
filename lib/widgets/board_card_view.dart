@@ -38,6 +38,7 @@ class BoardCardView extends StatefulWidget {
     required this.onResizeUpdate,
     required this.onResizeEnd,
     this.isActive = false,
+    this.isSelected = false,
   });
 
   /// 이 카드가 보여주는 레퍼런스입니다.
@@ -84,6 +85,15 @@ class BoardCardView extends StatefulWidget {
   /// 살짝 들어 올려서 "지금 잡고 있는 것이 이것"임을 보여줍니다.
   /// 표시가 없으면 여러 장이 겹쳐 있을 때 무엇이 따라오는지 알기 어렵습니다.
   final bool isActive;
+
+  /// 지금 이 카드가 **마퀴로 골라져 있는지** 여부입니다. (5단계 마퀴 다중선택)
+  ///
+  /// ── isActive와 무엇이 다른가 ──
+  /// isActive는 "지금 이 카드가 끌리고 있다"는 뜻이라 손을 떼면 사라집니다.
+  /// isSelected는 "여러 장을 함께 다루려고 골라뒀다"는 뜻이라, 손을 떼도
+  /// **마우스를 올리지 않아도** 계속 보여야 합니다. 안 그러면 뭘 골랐는지
+  /// 잊어버립니다.
+  final bool isSelected;
 
   @override
   State<BoardCardView> createState() => _BoardCardViewState();
@@ -149,6 +159,10 @@ class _BoardCardViewState extends State<BoardCardView> {
     // 잡고 있거나 마우스를 올렸으면 도드라지게 합니다.
     final bool isRaised = widget.isActive || _isHovered;
 
+    // 테두리·그림자는 raised와 selected 둘 중 하나만 있어도 보입니다.
+    // 마우스를 안 올려도 "무엇을 골라뒀는지"가 계속 보여야 하기 때문입니다.
+    final bool isHighlighted = isRaised || widget.isSelected;
+
     return MouseRegion(
       // 손가락 터치로는 아무 일도 일어나지 않아서 폰에서는 저절로 조용합니다.
       onEnter: (PointerEnterEvent event) => setState(() => _isHovered = true),
@@ -166,10 +180,12 @@ class _BoardCardViewState extends State<BoardCardView> {
           color: palette.surface,
           borderRadius: BorderRadius.circular(appCornerRadius),
           border: Border.all(
-            color: isRaised ? colors.primary : palette.border,
-            width: isRaised ? 2 : 1,
+            color: isHighlighted ? colors.primary : palette.border,
+            width: isHighlighted ? 2 : 1,
           ),
-          boxShadow: isRaised ? palette.cardShadowHovered : palette.cardShadow,
+          boxShadow: isHighlighted
+              ? palette.cardShadowHovered
+              : palette.cardShadow,
         ),
 
         // 그림이 둥근 모서리 밖으로 삐져나오지 않게 잘라냅니다.
@@ -189,6 +205,11 @@ class _BoardCardViewState extends State<BoardCardView> {
               _buildRemoveButton(colors),
               _buildResizeHandle(colors),
             ],
+
+            // 골라진 표시는 마우스를 안 올려도 항상 보입니다. 여러 장을
+            // 골라뒀을 때, 마우스를 하나하나 올려보지 않고도 한눈에
+            // "이만큼 골랐다"를 알 수 있어야 합니다.
+            if (widget.isSelected) _buildSelectedBadge(colors),
           ],
         ),
       ),
@@ -341,6 +362,26 @@ class _BoardCardViewState extends State<BoardCardView> {
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  /// 왼쪽 위 구석에 뜨는 "골라짐" 표시입니다. (5단계 마퀴 다중선택)
+  ///
+  /// 내리기 버튼(오른쪽 위)과 겹치지 않는 반대쪽 구석에 둡니다.
+  Widget _buildSelectedBadge(ColorScheme colors) {
+    return Positioned(
+      top: 4,
+      left: 4,
+      child: Container(
+        width: 20,
+        height: 20,
+        decoration: BoxDecoration(
+          color: colors.primary,
+          shape: BoxShape.circle,
+          border: Border.all(color: colors.surface, width: 1.5),
+        ),
+        child: Icon(Icons.check, size: 14, color: colors.onPrimary),
       ),
     );
   }

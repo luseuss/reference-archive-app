@@ -159,6 +159,22 @@ class LocalBoardRepository implements BoardRepository {
     await _db.into(_db.boardCards).insertOnConflictUpdate(_toCompanion(card));
   }
 
+  /// 카드 여러 장의 배치를 한꺼번에 저장합니다.
+  @override
+  Future<void> saveCards(List<BoardCard> cards) async {
+    if (cards.isEmpty) {
+      return;
+    }
+
+    // addCards와 같은 방식입니다. 하나씩 saveCard를 부르면 여러 번 오갑니다.
+    await _db.batch((Batch batch) {
+      batch.insertAllOnConflictUpdate(
+        _db.boardCards,
+        cards.map(_toCompanion).toList(),
+      );
+    });
+  }
+
   /// 카드를 판에서 내립니다(소프트 삭제).
   @override
   Future<void> removeCard(String cardId) async {

@@ -372,7 +372,7 @@ lib/
 - **3단계 — 유튜브** ✅ 완료 (PR #9~#10)
   링크 저장, 제목·썸네일 자동 수집, 앱 안에서 재생, 호버 미리보기(데스크톱만)
   기존 웹앱의 임베드 우회법(PR #26~#31)은 그대로 옮기지 않고 처음부터 Flutter 방식으로 구현
-- **4단계 — 무드보드** ← 현재 여기 (1~4번 완료, **5번부터 이어서**)
+- **4단계 — 무드보드** ← 현재 여기 (1~5번 완료, **6번부터 이어서**)
   자유 배치 캔버스, 무한 캔버스, 스냅, 마퀴 다중선택/그룹화,
   정렬·분배 툴바, 이미지 내보내기, 떠 있는 창
 
@@ -383,8 +383,11 @@ lib/
   2. ~~크기 조절 + 줌·팬~~ ✅ **PR #18**
   3. ~~**무한 캔버스**~~ ✅ **PR #21** (+ 사방 무한 보완 **PR #22**)
   4. ~~**스냅** — 카드끼리 + 격자~~ ✅ **PR #23**
-  5. 마퀴 다중선택 + 그룹화 ← **다음**
-  6. 정렬·분배 툴바
+  5. ~~**마퀴 다중선택**~~ ✅ **PR #25**. **그룹화(저장되는 묶음)는 아직입니다** —
+     선택은 판을 나갔다 오면 풀립니다. 여러 장을 계속 묶어두고 싶으면
+     다음 조각에서 `groupId` 칸을 더하는 별도 작업이 필요합니다(저장
+     구조 v5 마이그레이션). 5번 안에서 일부러 미뤘습니다.
+  6. 정렬·분배 툴바 ← **다음**
   7. 이미지 내보내기
   8. **떠 있는 창** — 무드보드를 항상 위에
 
@@ -479,6 +482,32 @@ lib/
   - 격자를 켠 것은 **기억하지 않습니다.** 판을 나갔다 오면 꺼집니다.
     기존 웹앱과 같습니다.
 
+  **마퀴 다중선택은 이렇게 되어 있습니다 (PR #25):**
+  - **Alt+빈 곳 끌기가 마퀴입니다.** 평소 빈 곳 끌기(판 이동)와 같은
+    손잡이를 공유하고, `_onEmptyDragStart`에서 그 순간 Alt가 눌려
+    있었는지로 한 번만 가릅니다. 끄는 도중에 Alt를 떼거나 눌러도
+    이미 정해진 쪽으로 계속 갑니다 — 안 그러면 마퀴가 판이 됐다 다시
+    마퀴가 됐다 하며 뒤죽박죽이 됩니다. (`board_viewport.dart`)
+  - **선택·클릭 판정은 GestureDetector가 아니라 `Listener`로 봅니다.**
+    처음에는 `onTapDown`/`onTap`을 카드·빈 곳의 기존 `GestureDetector`에
+    같이 뒀는데, 그러면 **끌기 인식기가 탭 인식기와 경쟁하게 됩니다.**
+    살짝만 끄는 경우(10픽셀 안팎) 탭이 이겨버려서 끌기 자체가 시작되지
+    않는 회귀가 실제로 났습니다(제스처 아레나 문제 — `CLAUDE.md`가 PR
+    #17부터 경고해온 바로 그것이 또 나왔습니다). `Listener`는 아레나에
+    안 끼고 날것 신호만 보므로, 끌기 인식은 전혀 안 건드립니다.
+    (`board_canvas.dart`의 카드 `Listener.onPointerDown`,
+    `board_viewport.dart`의 빈 곳 `Listener.onPointerDown/Move/Up`)
+  - **여러 장을 함께 끌 때는 기준 카드 하나만 스냅됩니다.** 각자 따로
+    스냅되면 골라둔 카드들끼리 흩어집니다. 기준 카드의 보정값을 나머지
+    전부에 그대로 더합니다. (`board_card_actions.dart`의 `moveCards`)
+  - **그룹은 없습니다.** 선택은 저장하지 않고, 판을 나갔다 오면 풀립니다.
+    저장되는 묶음(그룹화)은 5번에서 일부러 미뤘습니다(위 참고).
+  - 카드를 몇 번째냐로 찾지 말라는 규칙(PR #18)이 테스트를 쓸 때 또
+    나왔습니다. 화면 좌표를 구할 때 `find.byType(BoardCanvas)`가 아니라
+    `find.byType(BoardViewport)`를 기준으로 삼아야 합니다 — `BoardCanvas`는
+    카드 둘레 여백(`canvasBreathingRoom`)까지 포함한 큰 상자라 그 모서리가
+    화면 밖으로 한참 벗어나 있습니다. (`test/screens/board_screen_test.dart`)
+
   **판이 사방으로 무한합니다 (PR #22에서 벽을 없앰):**
   처음에는 왼쪽 위 (0, 0)에 벽이 있었습니다. 음수 자리에서는 클릭이 안
   닿기 때문이었는데, 의뢰인이 써보니 **자주 부딪혔습니다.**
@@ -541,10 +570,29 @@ lib/
 
   **다음에 무드보드 조작을 고칠 때는 이 컨트롤러를 보세요.**
   `board_screen.dart`는 이제 읽어오기·화면 조립만 합니다.
-- **다른 무드보드 파일들은 아직 여유가 있습니다** (이 정리 기준):
-  `board_viewport.dart` 345줄, `board_interaction_controller.dart` 287줄,
-  `board_card_actions.dart` 233줄, `board_canvas.dart` 197줄,
-  `board_snap.dart` 181줄, `board_view.dart` 164줄, `board_layout.dart` 152줄.
+- **PR #25(마퀴 다중선택)로 두 파일이 다시 300줄을 넘었습니다:**
+  `board_viewport.dart` 531줄, `board_interaction_controller.dart` 494줄.
+  마퀴(빈 곳 Listener·좌표 변환·사각형 그리기)와 선택(선택 상태·마퀴
+  판정·여러 장 함께 옮기기)이 각각 통째로 더해져서입니다.
+
+  뺄 후보는 **`board_viewport.dart`의 마퀴 부분**입니다 —
+  `_onEmptyPointerDown/Move/Up`, `_onEmptyDragStart/Update/End`,
+  `_marqueeActive`/`_marqueeStart`/`_marqueeCurrent`, `_toCanvasPoint`.
+  판 이동(팬)과 성격이 다른 별개의 손잡이라 나눌 수 있습니다. 다만
+  `_scaleFor`/`_offsetFor`(좌표 변환)를 공유하고 있어서, 마퀴 클래스에
+  그 둘을 인자로 넘기거나 콜백으로 받는 모양을 먼저 정해야 합니다.
+
+  `board_interaction_controller.dart`는 **선택 관련 메서드**
+  (`onCardPressed`/`beginMarquee`/`updateMarquee`/`endMarquee`/
+  `removeSelectedCards`/`_toggleSelection`)가 후보입니다. 다만 `_cards`를
+  같이 봐야 하는 메서드가 많아서(마퀴 판정이 카드 목록과 겹치는지 봐야
+  함), 통째로 빼기보다는 **6번(정렬·분배 툴바)이 들어올 때 다시 판단**
+  하는 편이 낫습니다 — 그때 또 늘어날 것이 확실하기 때문입니다.
+- **다른 무드보드 파일들은 아직 여유가 있습니다** (PR #25 기준):
+  `board_card_view.dart` 398줄, `board_card_actions.dart` 299줄,
+  `board_canvas.dart` 232줄, `board_snap.dart` 181줄,
+  `board_view.dart` 164줄, `board_layout.dart` 152줄,
+  `board_selection_bar.dart` 82줄.
 - **파트를 지울 때 그 안의 레퍼런스가 미아가 됩니다** (PR #16에서 빠뜨린 것).
   `lib/repositories/local_taxonomy_repository.dart`의 `delete()`가 폴더·카테고리는
   정리해주는데 **`partId`만 안 지웁니다.** 파트를 지우면 그 레퍼런스들이

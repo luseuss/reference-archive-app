@@ -29,6 +29,7 @@ import '../services/image_storage.dart';
 import '../services/reference_lookup.dart';
 import '../utils/board_layout.dart';
 import '../widgets/board_canvas.dart';
+import '../widgets/board_selection_bar.dart';
 import '../widgets/board_viewport.dart';
 import '../widgets/empty_state_message.dart';
 import '../widgets/pick_references_dialog.dart';
@@ -223,27 +224,58 @@ class _BoardScreenState extends State<BoardScreen> {
 
         // 판을 확대·이동해서 보여주는 일은 BoardViewport가 맡습니다.
         // 카드를 놓고 조작을 알아채는 일만 BoardCanvas가 합니다.
-        return BoardViewport(
-          canvasRect: canvasRect,
-          contentBounds: boardContentBounds(cards),
-          viewResetCount: _viewResetCount,
-          child: BoardCanvas(
-            cards: cards,
-            canvasRect: canvasRect,
-            guideX: _interaction.guideX,
-            guideY: _interaction.guideY,
-            itemsById: _lookup.itemsById,
-            imagePaths: _lookup.imagePaths,
-            activeCardId: _interaction.activeCardId,
-            onDragStart: _interaction.onDragStart,
-            onDragUpdate: _interaction.onDragUpdate,
-            onDragEnd: _interaction.onDragEnd,
-            onMeasured: _interaction.onCardMeasured,
-            onResizeStart: _interaction.onResizeStart,
-            onResizeUpdate: _interaction.onResizeUpdate,
-            onResizeEnd: _interaction.onResizeEnd,
-            onRemoveCard: _interaction.removeCard,
-          ),
+        //
+        // 선택 툴바는 Stack으로 그 위에 얹습니다. BoardViewport는 카드가
+        // 뭔지 몰라서 "몇 장 골랐는지"를 스스로 그릴 수 없습니다.
+        return Stack(
+          children: <Widget>[
+            BoardViewport(
+              canvasRect: canvasRect,
+              contentBounds: boardContentBounds(cards),
+              viewResetCount: _viewResetCount,
+              onMarqueeBegin: ({required bool additive}) =>
+                  _interaction.beginMarquee(additive: additive),
+              onMarqueeUpdate: _interaction.updateMarquee,
+              onMarqueeEnd: _interaction.endMarquee,
+              onEmptyTap: ({required bool shiftHeld}) =>
+                  _interaction.handleEmptyTap(shiftHeld: shiftHeld),
+              child: BoardCanvas(
+                cards: cards,
+                canvasRect: canvasRect,
+                guideX: _interaction.guideX,
+                guideY: _interaction.guideY,
+                itemsById: _lookup.itemsById,
+                imagePaths: _lookup.imagePaths,
+                activeCardId: _interaction.activeCardId,
+                selectedCardIds: _interaction.selectedCardIds,
+                onCardPressed: (BoardCard card, {required bool shiftHeld}) =>
+                    _interaction.onCardPressed(card, shiftHeld: shiftHeld),
+                onDragStart: _interaction.onDragStart,
+                onDragUpdate: _interaction.onDragUpdate,
+                onDragEnd: _interaction.onDragEnd,
+                onMeasured: _interaction.onCardMeasured,
+                onResizeStart: _interaction.onResizeStart,
+                onResizeUpdate: _interaction.onResizeUpdate,
+                onResizeEnd: _interaction.onResizeEnd,
+                onRemoveCard: _interaction.removeCard,
+              ),
+            ),
+
+            // 카드를 하나라도 골랐을 때만 아래쪽에 떠 있는 선택 띠입니다.
+            if (_interaction.selectedCardIds.isNotEmpty)
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 16,
+                child: Center(
+                  child: BoardSelectionBar(
+                    count: _interaction.selectedCardIds.length,
+                    onRemoveSelected: _interaction.removeSelectedCards,
+                    onClearSelection: _interaction.clearSelection,
+                  ),
+                ),
+              ),
+          ],
         );
       },
     );

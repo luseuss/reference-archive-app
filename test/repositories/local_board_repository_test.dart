@@ -215,6 +215,27 @@ void main() {
       expect(cards.first.y, 400);
     });
 
+    test('여러 장을 한꺼번에 옮긴 위치가 저장된다', () async {
+      // 5단계 마퀴 다중선택 — 여러 장을 함께 끌었을 때 씁니다.
+      final BoardCard a = makeCard(boardId: board.id, x: 10, y: 20);
+      final BoardCard b = makeCard(boardId: board.id, x: 50, y: 60);
+      await repository.addCards(<BoardCard>[a, b]);
+
+      await repository.saveCards(<BoardCard>[
+        a.copyWith(x: 110, y: 120),
+        b.copyWith(x: 150, y: 160),
+      ]);
+
+      final List<BoardCard> cards = await repository.getCards(board.id);
+      expect(cards.length, 2, reason: '옮긴 것이 새 카드로 늘어나면 안 됩니다');
+      expect(cards.firstWhere((BoardCard c) => c.id == a.id).x, 110);
+      expect(cards.firstWhere((BoardCard c) => c.id == b.id).y, 160);
+    });
+
+    test('빈 목록을 저장해도 오류가 나지 않는다', () async {
+      await repository.saveCards(<BoardCard>[]);
+    });
+
     test('내린 카드는 목록에서 빠진다', () async {
       final BoardCard card = makeCard(boardId: board.id);
       await repository.addCards(<BoardCard>[card]);

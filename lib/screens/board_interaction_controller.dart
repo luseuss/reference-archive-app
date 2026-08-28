@@ -46,6 +46,12 @@ class BoardInteractionController extends ChangeNotifier {
   String? get activeCardId => _activeCardId;
   String? _activeCardId;
 
+  /// 지금 함께 끌리고 있는 카드들의 번호입니다. 끄는 중이 아니면 비어 있습니다.
+  ///
+  /// 여러 장을 골라 끄는 중이면 그 전부, 아니면 [_activeCardId] 하나만
+  /// 들어있습니다. (onDragStart에서 정합니다)
+  Set<String> _draggingIds = <String>{};
+
   /// 크기 조절 손잡이를 잡은 순간의 카드 크기입니다. 조절 중이 아니면 null입니다.
   ///
   /// 저장된 값이 아니라 **실제로 그려져 있던 크기**입니다. 카드 높이는 보통
@@ -84,6 +90,29 @@ class BoardInteractionController extends ChangeNotifier {
   double? _guideX;
   double? _guideY;
 
+  /// 지금 선택된 카드들의 번호입니다. (5단계 마퀴 다중선택)
+  ///
+  /// 저장하지 않습니다 — 판을 나갔다 오면 비워집니다. "무엇이 골라져
+  /// 있는지"는 지금 보고 있는 화면에서만 뜻이 있는 값이라, 다음에 판을
+  /// 열었을 때까지 기억할 이유가 없습니다.
+  Set<String> get selectedCardIds => _selectedCardIds;
+  Set<String> _selectedCardIds = <String>{};
+
+  /// 마퀴(드래그로 그리는 네모)를 시작할 때, 그 전까지 골라져 있던 카드들의
+  /// 번호입니다. Shift를 누른 채 시작했으면(=더하기) 마퀴가 끝나도 이 카드들이
+  /// 계속 선택에 남습니다. Shift 없이 시작했으면 빈 목록입니다.
+  Set<String> _marqueeBase = <String>{};
+
+  /// Shift를 누른 채 마퀴를 시작했는지 여부입니다. "더하기" 모드입니다.
+  bool _marqueeAdditive = false;
+
+  /// 마퀴를 시작한 뒤 조금이라도 움직였는지 여부입니다.
+  ///
+  /// 움직이지 않고 그냥 뗐다면 "클릭"으로 봅니다. Shift 없이 그런 클릭을
+  /// 했다면 선택을 지웁니다 — 빈 곳을 눌렀는데 아무 반응이 없으면
+  /// "선택을 지우고 싶었는데 안 지워졌다"는 인상을 줍니다.
+  bool _marqueeMoved = false;
+
   /// 지금 스냅을 걸어야 하는지 알려줍니다.
   ///
   /// ── 기본은 자유롭게, Alt를 누르면 붙습니다 ──
@@ -108,6 +137,19 @@ class BoardInteractionController extends ChangeNotifier {
   /// 격자 스냅을 켜고 끕니다. 위쪽 막대 버튼이 부릅니다.
   void toggleGridSnap() {
     _gridSnap = !_gridSnap;
+    notifyListeners();
+  }
+
+  /// 선택을 지웁니다. 선택 툴바의 "×" 버튼이 부릅니다.
+  ///
+  /// 빈 곳을 클릭해도 같은 일이 일어나지만(handleEmptyTap), 마우스를
+  /// 옮기지 않고 바로 누를 수 있는 버튼을 하나 더 둔 것입니다.
+  void clearSelection() {
+    if (_selectedCardIds.isEmpty) {
+      return;
+    }
+
+    _selectedCardIds = <String>{};
     notifyListeners();
   }
 
@@ -162,24 +204,65 @@ class BoardInteractionController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// 카드를 잡았을 때 실행됩니다. 잡은 카드를 맨 위로 올립니다.
+  /// 카드를 누른 순간 실행됩니다. 실제로 끌리기 전에, "무엇이 선택돼야
+  /// 하는지"를 여기서 먼저 정합니다.
   ///
-  /// 규칙 자체는 utils/board_card_actions.dart에 있습니다. 여기서는
-  /// "지금 무엇을 잡고 있는지"만 기억하고 결과를 반영합니다.
+  /// ── 왜 끌기 시작이 아니라 누른 순간인가 ──
+  /// Shift+클릭처럼 **끌지 않고 선택만** 하는 조작도 있습니다. 끌기가
+  /// 시작될 때까지 기다리면 그런 클릭에서는 아무 일도 안 일어납니다.
+  ///
+  /// [shiftHeld]가 참이면 이 카드를 선택에 더하거나 뺍니다(끌지 않습니다).
+  /// 거짓이면, **이미 여러 장이 선택된 상태에서 그중 하나를 눌렀을 때만**
+  /// 선택을 그대로 두고(다 같이 끌 수 있게), 그 외에는 이 카드 하나만
+  /// 선택합니다.
+  void onCardPressed(BoardCard card, {required bool shiftHeld}) {
+    if (shiftHeld) {
+      _toggleSelection(card.id);
+      return;
+    }
+
+    if (!(_selectedCardIds.contains(card.id) && _selectedCardIds.length > 1)) {
+      _selectedCardIds = <String>{card.id};
+      notifyListeners();
+    }
+  }
+
+  /// 카드를 잡았을 때(실제로 끌리기 시작할 때) 실행됩니다.
+  ///
+  /// **Shift를 누르고 있으면 끌지 않습니다.** Shift는 선택을 더하고 빼는
+  /// 키라, Shift를 누른 채로도 카드가 끌려버리면 정밀하게 고르기가
+  /// 어려워집니다.
+  ///
+  /// 함께 끌 카드들(같이 선택돼 있으면 전부, 아니면 이 카드 하나)을 정해
+  /// [_draggingIds]에 기억해두고, 잡은 카드를 맨 위로 올립니다.
   void onDragStart(BoardCard card) {
+    if (HardwareKeyboard.instance.isShiftPressed) {
+      return;
+    }
+
     _activeCardId = card.id;
+    _draggingIds = _selectedCardIds.contains(card.id) && _selectedCardIds.length > 1
+        ? _selectedCardIds
+        : <String>{card.id};
     _cards = raiseCardToTop(_cards, card.id);
     notifyListeners();
   }
 
   /// 카드를 끄는 동안 실행됩니다. **화면에서만** 옮기고 저장은 하지 않습니다.
   ///
-  /// [delta]는 이번 순간에 움직인 거리입니다.
+  /// [delta]는 이번 순간에 움직인 거리입니다. [_draggingIds]에 든 카드
+  /// 전부가 같이 움직입니다 — 여러 장을 골라 끄는 중이면 다 같이,
+  /// 아니면 이 카드 하나만입니다.
   void onDragUpdate(BoardCard card, Offset delta) {
-    final BoardCardsUpdate update = moveCard(
+    if (_draggingIds.isEmpty) {
+      return;
+    }
+
+    final BoardCardsUpdate update = moveCards(
       _cards,
-      card.id,
-      delta,
+      _draggingIds.toList(),
+      primaryId: card.id,
+      delta: delta,
       snap: snapEnabled,
       useGrid: _gridSnap,
       measuredHeights: _measuredHeights,
@@ -192,12 +275,21 @@ class BoardInteractionController extends ChangeNotifier {
   }
 
   /// 카드에서 손을 뗐을 때 실행됩니다. **여기서 한 번만 저장합니다.**
+  ///
+  /// 끌던 카드가 여러 장이었으면 **전부** 저장합니다. 한 장만 저장하면
+  /// 같이 끌린 나머지는 화면에는 옮겨져 있는데 다시 켰을 때 원래 자리로
+  /// 돌아가 있는, 앞뒤가 안 맞는 상태가 됩니다.
   Future<void> onDragEnd(BoardCard card) async {
+    final Set<String> draggedIds = _draggingIds.isEmpty
+        ? <String>{card.id}
+        : _draggingIds;
+
     _activeCardId = null;
+    _draggingIds = <String>{};
     _clearGuides();
     notifyListeners();
 
-    await _saveCard(card.id);
+    await _saveCards(draggedIds);
   }
 
   /// 크기 조절 손잡이를 잡았을 때 실행됩니다.
@@ -283,5 +375,120 @@ class BoardInteractionController extends ChangeNotifier {
     }
 
     await boardRepository.saveCard(_cards[index]);
+  }
+
+  /// 여러 카드의 지금 상태를 한꺼번에 저장합니다.
+  ///
+  /// 여러 장을 함께 끌었을 때 씁니다(5단계 마퀴 다중선택).
+  Future<void> _saveCards(Set<String> cardIds) async {
+    final List<BoardCard> toSave = _cards
+        .where((BoardCard card) => cardIds.contains(card.id))
+        .toList();
+
+    if (toSave.isEmpty) {
+      return;
+    }
+
+    await boardRepository.saveCards(toSave);
+  }
+
+  // ── 여기서부터는 선택·마퀴(5단계 마퀴 다중선택)입니다 ──
+
+  /// [cardId]가 선택돼 있으면 빼고, 아니면 더합니다. (Shift+클릭)
+  void _toggleSelection(String cardId) {
+    final Set<String> next = Set<String>.of(_selectedCardIds);
+    if (!next.remove(cardId)) {
+      next.add(cardId);
+    }
+    _selectedCardIds = next;
+    notifyListeners();
+  }
+
+  /// 빈 곳을 눌렀을 때 실행됩니다.
+  ///
+  /// [shiftHeld]가 거짓이면 선택을 지웁니다. 참이면 아무 일도 안 합니다 —
+  /// Shift는 "선택에 손대지 않는다"는 뜻으로 씁니다.
+  ///
+  /// **끌었는지(마퀴)는 여기서 안 봅니다.** 마퀴는 [endMarquee]가 따로
+  /// 처리합니다. 이건 **끌지 않고 그냥 눌렀을 때**만 board_viewport.dart가
+  /// 부릅니다.
+  void handleEmptyTap({required bool shiftHeld}) {
+    if (shiftHeld || _selectedCardIds.isEmpty) {
+      return;
+    }
+
+    _selectedCardIds = <String>{};
+    notifyListeners();
+  }
+
+  /// 마퀴(드래그로 그리는 선택 네모)를 시작합니다.
+  ///
+  /// [additive]는 Shift를 누른 채 시작했는지입니다. 참이면 지금까지의
+  /// 선택을 남겨두고 마퀴에 걸리는 카드를 더합니다. 거짓이면 마퀴에 걸리는
+  /// 카드로 통째로 바꿉니다.
+  void beginMarquee({required bool additive}) {
+    _marqueeBase = Set<String>.of(_selectedCardIds);
+    _marqueeAdditive = additive;
+    _marqueeMoved = false;
+  }
+
+  /// 마퀴를 끄는 동안 실행됩니다. [canvasRect]는 지금까지 그려진 네모입니다(판 좌표).
+  ///
+  /// ── 살짝이라도 겹치면 골라집니다 ──
+  /// 카드 전체가 네모 안에 다 들어와야 하는 것이 아니라, **한 귀퉁이라도
+  /// 걸치면** 선택됩니다. 기존 웹앱과 같은 규칙입니다. 카드가 큰 판에서는
+  /// "다 담아야 골라진다"가 오히려 손이 많이 갑니다.
+  ///
+  /// 매 순간 그때까지의 결과를 바로 selectedCardIds에 반영합니다. 그래야
+  /// 마퀴를 끄는 동안 카드가 실시간으로 파랗게 물듭니다.
+  void updateMarquee(Rect canvasRect) {
+    _marqueeMoved = true;
+
+    final Set<String> hits = <String>{
+      for (final BoardCard card in _cards)
+        if (boardCardRect(
+          card,
+          measuredHeights: _measuredHeights,
+        ).overlaps(canvasRect))
+          card.id,
+    };
+
+    _selectedCardIds = _marqueeAdditive
+        ? <String>{..._marqueeBase, ...hits}
+        : hits;
+    notifyListeners();
+  }
+
+  /// 마퀴에서 손을 뗐을 때 실행됩니다.
+  ///
+  /// 움직이지 않고 그냥 뗐다면(=클릭) [handleEmptyTap]과 같은 규칙을
+  /// 적용합니다. Shift 없이 눌렀다 뗐을 뿐이라면 선택을 지웁니다.
+  void endMarquee() {
+    if (!_marqueeMoved && !_marqueeAdditive) {
+      _selectedCardIds = <String>{};
+      notifyListeners();
+    }
+  }
+
+  /// 선택된 카드를 전부 판에서 내립니다.
+  ///
+  /// 한 장 내리는 것(removeCard)과 같은 이유로 확인을 묻지 않습니다.
+  /// 판에서만 내려가고 레퍼런스 목록에는 그대로 남습니다.
+  Future<void> removeSelectedCards() async {
+    if (_selectedCardIds.isEmpty) {
+      return;
+    }
+
+    final Set<String> toRemove = _selectedCardIds;
+
+    for (final String cardId in toRemove) {
+      await boardRepository.removeCard(cardId);
+    }
+
+    _cards = _cards
+        .where((BoardCard card) => !toRemove.contains(card.id))
+        .toList();
+    _selectedCardIds = <String>{};
+    notifyListeners();
   }
 }

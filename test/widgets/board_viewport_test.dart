@@ -57,6 +57,13 @@ void main() {
             canvasRect: testCanvas,
             contentBounds: content,
             viewResetCount: viewResetCount,
+            // 마퀴·빈 곳 클릭은 이 파일에서 안 봅니다. 그건
+            // board_screen_test.dart가 봅니다(카드가 있어야 뜻이 있는
+            // 조작이라, 카드를 모르는 이 창만으로는 확인할 수 없습니다).
+            onMarqueeBegin: ({required bool additive}) {},
+            onMarqueeUpdate: (Rect rect) {},
+            onMarqueeEnd: () {},
+            onEmptyTap: ({required bool shiftHeld}) {},
             child: const SizedBox.expand(key: contentKey),
           ),
         ),
