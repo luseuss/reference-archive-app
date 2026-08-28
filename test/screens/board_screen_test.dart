@@ -978,4 +978,103 @@ void main() {
     expect(after.dx - before.dx, closeTo(90, 1));
     expect(after.dy - before.dy, closeTo(60, 1));
   });
+
+  // ── 여기서부터는 6단계 정렬·분배 툴바입니다 ──
+
+  testWidgets('왼쪽 정렬을 누르면 선택된 카드들이 나란히 맞춰진다', (
+    WidgetTester tester,
+  ) async {
+    final String refA = await saveReference('가');
+    final String refB = await saveReference('나');
+
+    final BoardCard a = await putCardOnBoard(referenceId: refA, x: 100, y: 100);
+    final BoardCard b = await putCardOnBoard(referenceId: refB, x: 500, y: 400);
+
+    await openBoard(tester);
+
+    await tester.tap(find.byKey(ValueKey<String>(a.id)));
+    await tester.pumpAndSettle();
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+    await tester.tap(find.byKey(ValueKey<String>(b.id)));
+    await tester.pumpAndSettle();
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+
+    await tester.tap(find.byTooltip('왼쪽 정렬'));
+    await tester.pumpAndSettle();
+
+    final BoardCard savedA = await reloadCard(a.id);
+    final BoardCard savedB = await reloadCard(b.id);
+
+    // a의 왼쪽(100)이 더 왼쪽이라, b가 a의 왼쪽에 맞춰져야 합니다.
+    expect(savedA.x, 100);
+    expect(savedB.x, 100);
+  });
+
+  testWidgets('카드 하나만 선택했을 때는 정렬 버튼이 안 눌린다', (
+    WidgetTester tester,
+  ) async {
+    final String refA = await saveReference('가');
+    final BoardCard a = await putCardOnBoard(referenceId: refA, x: 100, y: 100);
+
+    await openBoard(tester);
+
+    await tester.tap(find.byKey(ValueKey<String>(a.id)));
+    await tester.pumpAndSettle();
+
+    // 버튼은 떠 있지만 disabled라 눌러도 아무 일이 없어야 합니다.
+    // 정렬은 "여럿을 나란히 맞추는" 동작이라 한 장으로는 뜻이 없습니다.
+    await tester.tap(find.byTooltip('왼쪽 정렬'), warnIfMissed: false);
+    await tester.pumpAndSettle();
+
+    expect((await reloadCard(a.id)).x, 100);
+  });
+
+  testWidgets('크기 맞추기를 누르면 맨 위 카드 기준으로 크기가 맞춰진다', (
+    WidgetTester tester,
+  ) async {
+    final String refA = await saveReference('가');
+    final String refB = await saveReference('나');
+
+    final BoardCard a = await putCardOnBoard(
+      referenceId: refA,
+      x: 100,
+      y: 100,
+      width: 300,
+      zOrder: 1,
+    );
+    final BoardCard b = await putCardOnBoard(
+      referenceId: refB,
+      x: 500,
+      y: 400,
+      width: 150,
+      zOrder: 9, // 맨 위 — 크기 맞추기의 기준이 됩니다.
+    );
+
+    await openBoard(tester);
+
+    await tester.tap(find.byKey(ValueKey<String>(a.id)));
+    await tester.pumpAndSettle();
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+    await tester.tap(find.byKey(ValueKey<String>(b.id)));
+    await tester.pumpAndSettle();
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+
+    // ── b를 다시 한 번, Shift 없이 눌러 맨 위로 올립니다 ──
+    // 카드를 누르면(끌지 않아도) 맨 위로 올라옵니다 — 여러 장이 겹쳐 있을
+    // 때 방금 잡은 게 뭔지 보여주려고 만든 동작입니다(board_canvas.dart
+    // 설명 참고). b가 이미 선택돼 있고 선택이 2장 이상이라, 이렇게 다시
+    // 눌러도 선택은 그대로 유지됩니다("이미 여러 장 선택된 상태에서
+    // 그중 하나를 클릭하면 선택 유지" 규칙). 이 방식으로 "크기를 맞출
+    // 기준"을 원하는 카드로 고를 수 있습니다.
+    await tester.tap(find.byKey(ValueKey<String>(b.id)));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('크기 맞추기 (맨 위 카드 기준)'));
+    await tester.pumpAndSettle();
+
+    // 맨 위로 올라온 b의 폭(150)으로 a가 맞춰져야 합니다.
+    expect((await reloadCard(a.id)).width, 150);
+    // 기준이었던 b 자신은 그대로입니다.
+    expect((await reloadCard(b.id)).width, 150);
+  });
 }

@@ -21,6 +21,7 @@ import 'package:flutter/services.dart';
 
 import '../models/board.dart';
 import '../repositories/board_repository.dart';
+import '../utils/board_align.dart';
 import '../utils/board_card_actions.dart';
 import '../utils/board_layout.dart';
 import '../utils/id_generator.dart';
@@ -512,5 +513,55 @@ class BoardInteractionController extends ChangeNotifier {
         .toList();
     _selectedCardIds = <String>{};
     notifyListeners();
+  }
+
+  // ── 여기서부터는 정렬·분배(6단계)입니다 ──
+
+  /// 선택된 카드들을 [mode] 방향으로 나란히 맞추고 저장합니다.
+  ///
+  /// 선택이 2장 미만이면 아무 일도 안 합니다 — 정렬은 "여럿을 나란히
+  /// 맞추는" 동작이라 기준으로 삼을 다른 카드가 없으면 뜻이 없습니다.
+  Future<void> alignSelected(BoardAlignMode mode) async {
+    if (_selectedCardIds.length < 2) {
+      return;
+    }
+
+    _cards = alignSelectedCards(
+      _cards,
+      _selectedCardIds,
+      mode,
+      measuredHeights: _measuredHeights,
+    );
+    notifyListeners();
+
+    await _saveCards(_selectedCardIds);
+  }
+
+  /// 선택된 카드들의 크기를 하나로 맞추고 저장합니다. 자리(x, y)는 그대로입니다.
+  ///
+  /// ── 기준 카드를 어떻게 고르나 ──
+  /// **맨 위에 그려진 카드**(zOrder가 가장 큰 카드)를 기준으로 삼습니다.
+  /// 카드를 마지막으로 만지면(잡거나 새로 담으면) 맨 위로 올라오기 때문에,
+  /// 대개 "방금 크기를 확인한 카드"와 일치합니다.
+  Future<void> matchSizeSelected() async {
+    if (_selectedCardIds.length < 2) {
+      return;
+    }
+
+    final BoardCard reference = _cards
+        .where((BoardCard card) => _selectedCardIds.contains(card.id))
+        .reduce(
+          (BoardCard a, BoardCard b) => a.zOrder > b.zOrder ? a : b,
+        );
+
+    _cards = matchSizeSelectedCards(
+      _cards,
+      _selectedCardIds,
+      reference.id,
+      measuredHeights: _measuredHeights,
+    );
+    notifyListeners();
+
+    await _saveCards(_selectedCardIds);
   }
 }
