@@ -192,14 +192,33 @@ BoardCardsUpdate moveCards(
   );
 }
 
+/// 카드 크기 조절 손잡이가 **어느 모서리**에 있는지입니다.
+///
+/// 손잡이를 잡은 모서리의 **반대쪽 모서리는 고정된 채** 크기가 바뀝니다.
+/// 오른쪽 아래를 끌면 왼쪽 위가, 왼쪽 위를 끌면 오른쪽 아래가 그 자리에
+/// 그대로 남습니다.
+enum BoardResizeCorner {
+  topLeft,
+  topRight,
+  bottomLeft,
+  bottomRight;
+
+  /// 이 손잡이가 카드의 **왼쪽**에 있는지 여부입니다.
+  bool get isLeft => this == topLeft || this == bottomLeft;
+
+  /// 이 손잡이가 카드의 **위쪽**에 있는지 여부입니다.
+  bool get isTop => this == topLeft || this == topRight;
+}
+
 /// 이 카드의 크기를 바꾼 결과를 돌려줍니다.
 ///
-/// [startSize]는 **손잡이를 잡던 순간** 카드가 실제로 그려져 있던 크기이고,
-/// [movedSoFar]는 그 뒤로 지금까지 끈 거리의 합입니다.
+/// [startSize]와 [startPosition]은 **손잡이를 잡던 순간** 카드가 실제로
+/// 그려져 있던 크기·자리이고, [movedSoFar]는 그 뒤로 지금까지 끈 거리의
+/// 합입니다. [corner]는 어느 손잡이를 잡았는지입니다.
 ///
-/// ── 매번 처음 크기부터 다시 계산하는 이유 ──
-/// 매 순간의 움직임을 카드 크기에 바로바로 더하면, 조금씩 어긋난 값이 쌓여서
-/// 손가락과 카드 모서리가 점점 벌어집니다. "처음 크기 + 지금까지의 합"으로
+/// ── 매번 처음 크기·자리부터 다시 계산하는 이유 ──
+/// 매 순간의 움직임을 카드에 바로바로 더하면, 조금씩 어긋난 값이 쌓여서
+/// 손가락과 카드 모서리가 점점 벌어집니다. "처음 값 + 지금까지의 합"으로
 /// 매번 새로 구하면 어긋날 일이 없습니다.
 ///
 /// ── 가로세로 비율을 고정합니다 ──
@@ -210,13 +229,23 @@ BoardCardsUpdate moveCards(
 /// 세로로 끈 거리(`movedSoFar.dy`)는 일부러 안 씁니다. 가로세로를 함께 보면
 /// 어느 쪽을 따를지 정해야 하는데, 어느 쪽으로 정해도 다른 쪽으로 끌 때
 /// 손가락과 모서리가 어긋납니다. 가로 하나만 보는 편이 훨씬 예측하기 쉽습니다.
+/// 왼쪽 손잡이는 왼쪽으로 끌수록(가로가 줄수록) 커지므로, 그쪽은 부호를
+/// 뒤집어서 씁니다.
 ///
-/// 스냅은 **오른쪽 모서리만** 봅니다. 세로가 비율을 따라오기 때문입니다.
+/// ── 반대쪽 모서리를 고정합니다 ──
+/// [corner]의 반대쪽 모서리(가만히 있어야 할 쪽)를 [startSize]와
+/// [startPosition]에서 구해두고, 크기가 정해지면 그 반대쪽 모서리를
+/// 기준으로 [corner] 쪽 자리를 다시 계산합니다.
+///
+/// 스냅은 [corner]가 있는 쪽(왼쪽 손잡이면 왼쪽 모서리, 오른쪽 손잡이면
+/// 오른쪽 모서리)만 봅니다. 세로가 비율을 따라오기 때문입니다.
 /// (board_snap.dart의 snapResizingCard 설명 참고)
 BoardCardsUpdate resizeCard(
   List<BoardCard> cards,
   String cardId, {
   required Size startSize,
+  required Offset startPosition,
+  required BoardResizeCorner corner,
   required Offset movedSoFar,
   bool snap = true,
   bool useGrid = false,
@@ -239,35 +268,65 @@ BoardCardsUpdate resizeCard(
   // 세로 ÷ 가로. 크기를 바꾸는 내내 이 비율을 그대로 지킵니다.
   final double heightPerWidth = startSize.height / startSize.width;
 
+  // 고정돼야 할 반대쪽 모서리의 판 좌표입니다. 예를 들어 오른쪽 아래
+  // 손잡이를 잡았으면 반대쪽인 왼쪽 위(startPosition)가 그대로 고정됩니다.
+  final double anchorX = corner.isLeft
+      ? startPosition.dx + startSize.width // 반대쪽(오른쪽) 모서리
+      : startPosition.dx; // 반대쪽(왼쪽) 모서리
+  final double anchorY = corner.isTop
+      ? startPosition.dy + startSize.height // 반대쪽(아래) 모서리
+      : startPosition.dy; // 반대쪽(위) 모서리
+
   // 가로를 먼저 정하고 세로는 비율대로 따라갑니다.
+  // 왼쪽 손잡이는 왼쪽으로 끌수록(dx가 음수일수록) 커지므로 부호를 뒤집습니다.
   // 판에 끝이 없어서 이제 최소·최대 크기만 봅니다.
   // (자세한 이유는 board_layout.dart의 clampResizedCardWidth 설명을 보세요)
-  double width = clampResizedCardWidth(startSize.width + movedSoFar.dx);
+  final double rawWidth = corner.isLeft
+      ? startSize.width - movedSoFar.dx
+      : startSize.width + movedSoFar.dx;
+  double width = clampResizedCardWidth(rawWidth);
 
   double? guideX;
 
   if (snap) {
+    // 지금 손잡이가 있는 자리(움직이는 모서리)를 구해서 스냅 후보와 견줍니다.
+    final double movingEdgeX = corner.isLeft ? anchorX - width : anchorX + width;
+    final double movingEdgeY = corner.isTop
+        ? anchorY - width * heightPerWidth
+        : anchorY;
+
     final BoardSnapResult result = snapResizingCard(
       resizing: Rect.fromLTWH(
-        current.x,
-        current.y,
+        corner.isLeft ? movingEdgeX : anchorX,
+        corner.isTop ? movingEdgeY : anchorY,
         width,
         width * heightPerWidth,
       ),
       others: _rectsExcept(cards, cardId, measuredHeights),
       useGrid: useGrid,
+      onLeftEdge: corner.isLeft,
     );
 
-    // 여기서 offset.dx는 **자리**가 아니라 **가로 크기**에 더하는 값입니다.
-    // 왼쪽 위는 그대로 두고 오른쪽으로만 늘어나기 때문입니다.
-    width = clampResizedCardWidth(width + result.offset.dx);
+    // snapResizingCard가 돌려주는 offset.dx는 "그 모서리를 얼마나 밀어야
+    // 하는지"입니다. 오른쪽 모서리가 밀리면 그만큼 넓어지고, 왼쪽 모서리가
+    // 밀리면 그만큼 좁아집니다(반대 부호). (board_snap.dart 설명 참고)
+    final double widthOffset = corner.isLeft
+        ? -result.offset.dx
+        : result.offset.dx;
+    width = clampResizedCardWidth(width + widthOffset);
     guideX = result.guideX;
   }
+
+  final double height = width * heightPerWidth;
+
+  // 반대쪽 모서리는 그대로 두고, 손잡이 쪽 모서리 위치를 새 크기로 다시 구합니다.
+  final double x = corner.isLeft ? anchorX - width : anchorX;
+  final double y = corner.isTop ? anchorY - height : anchorY;
 
   return BoardCardsUpdate(
     <BoardCard>[
       ...cards.sublist(0, index),
-      current.copyWith(width: width, height: width * heightPerWidth),
+      current.copyWith(x: x, y: y, width: width, height: height),
       ...cards.sublist(index + 1),
     ],
     guideX: guideX,

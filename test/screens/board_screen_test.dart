@@ -342,7 +342,13 @@ void main() {
     }
   }
 
-  /// 카드의 크기 조절 손잡이를 [dx]만큼 오른쪽으로 끕니다. (화면 좌표 기준)
+  /// 카드의 **오른쪽 아래** 크기 조절 손잡이를 [dx]만큼 오른쪽으로 끕니다.
+  /// (화면 좌표 기준)
+  ///
+  /// 손잡이가 이제 네 모서리라 아이콘만으로는 어느 것인지 구분할 수
+  /// 없습니다. 이름표(Key)로 오른쪽 아래를 콕 집습니다 — 기존 동작(오른쪽
+  /// 아래만 붙던 시절)과 같은 결과를 확인하는 테스트들이라, 그 손잡이를
+  /// 그대로 씁니다.
   ///
   /// 손잡이는 마우스를 올렸을 때만 나타나므로, 진짜 마우스처럼 움직이는
   /// 포인터를 만들어 카드 위로 옮긴 뒤 끕니다.
@@ -356,7 +362,9 @@ void main() {
     await mouse.moveTo(tester.getCenter(find.byType(BoardCardView)));
     await tester.pumpAndSettle();
 
-    final Offset handle = tester.getCenter(find.byIcon(Icons.open_in_full));
+    final Offset handle = tester.getCenter(
+      find.byKey(const ValueKey<String>('resize-handle-bottomRight')),
+    );
     await mouse.moveTo(handle);
     await tester.pumpAndSettle();
 
@@ -491,7 +499,9 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(
-      find.byIcon(Icons.open_in_full).hitTestable(),
+      find
+          .byKey(const ValueKey<String>('resize-handle-bottomRight'))
+          .hitTestable(),
       findsOneWidget,
       reason: '⛶를 눌러도 손잡이를 다시 잡을 수 없습니다',
     );
