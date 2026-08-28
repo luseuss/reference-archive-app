@@ -76,20 +76,27 @@ class BoardSelectionBar extends StatelessWidget {
             _divider(colors),
 
             // ── 가로 정렬 세 개 ──
+            //
+            // ── 왜 align_horizontal_*가 아니라 format_align_*인가 ──
+            // 처음에는 align_horizontal_left/center/right를 썼는데, 위치는
+            // 잡히는데(버튼 자리는 있는데) 아이콘이 안 보였습니다. 비교적
+            // 나중에 추가된 아이콘이라 이 앱이 쓰는 아이콘 폰트에 그 글자가
+            // 없었던 것으로 보입니다. format_align_*는 Flutter 초창기부터
+            // 있던 훨씬 오래된 아이콘이라 안전합니다.
             _alignButton(
-              icon: Icons.align_horizontal_left,
+              icon: Icons.format_align_left,
               tooltip: '왼쪽 정렬',
               enabled: canAlign,
               onPressed: () => onAlign(BoardAlignMode.left),
             ),
             _alignButton(
-              icon: Icons.align_horizontal_center,
+              icon: Icons.format_align_center,
               tooltip: '가운데 정렬(가로)',
               enabled: canAlign,
               onPressed: () => onAlign(BoardAlignMode.hcenter),
             ),
             _alignButton(
-              icon: Icons.align_horizontal_right,
+              icon: Icons.format_align_right,
               tooltip: '오른쪽 정렬',
               enabled: canAlign,
               onPressed: () => onAlign(BoardAlignMode.right),
@@ -98,20 +105,21 @@ class BoardSelectionBar extends StatelessWidget {
             _divider(colors),
 
             // ── 세로 정렬 세 개 ──
+            // 같은 이유로 align_vertical_*이 아니라 vertical_align_*을 씁니다.
             _alignButton(
-              icon: Icons.align_vertical_top,
+              icon: Icons.vertical_align_top,
               tooltip: '위 정렬',
               enabled: canAlign,
               onPressed: () => onAlign(BoardAlignMode.top),
             ),
             _alignButton(
-              icon: Icons.align_vertical_center,
+              icon: Icons.vertical_align_center,
               tooltip: '가운데 정렬(세로)',
               enabled: canAlign,
               onPressed: () => onAlign(BoardAlignMode.vcenter),
             ),
             _alignButton(
-              icon: Icons.align_vertical_bottom,
+              icon: Icons.vertical_align_bottom,
               tooltip: '아래 정렬',
               enabled: canAlign,
               onPressed: () => onAlign(BoardAlignMode.bottom),
@@ -121,7 +129,7 @@ class BoardSelectionBar extends StatelessWidget {
 
             IconButton(
               onPressed: canAlign ? onMatchSize : null,
-              icon: const Icon(Icons.photo_size_select_large_outlined),
+              icon: const Icon(Icons.photo_size_select_large),
               tooltip: '크기 맞추기 (맨 위 카드 기준)',
               iconSize: 18,
             ),
