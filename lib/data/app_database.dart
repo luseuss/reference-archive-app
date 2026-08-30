@@ -6,6 +6,8 @@
 // 이 파일을 고친 뒤에는 반드시 아래를 실행해야 반영됩니다.
 //   dart run build_runner build
 
+import 'dart:convert';
+
 import 'package:drift/drift.dart';
 import 'package:drift_flutter/drift_flutter.dart';
 import 'package:path_provider/path_provider.dart';
@@ -55,8 +57,9 @@ class AppDatabase extends _$AppDatabase {
   ///   1 — 처음 만든 구조
   ///   2 — References에 partId 추가 (파트 기능). PR #16
   ///   3 — Boards, BoardCards 표 추가 (무드보드). PR #17
+  ///   4 — References.memo를 순수 텍스트에서 Delta(JSON)로. 5단계 1번
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 4;
 
   /// 데이터베이스를 처음 만들 때, 그리고 구조가 바뀌었을 때 무엇을 할지 정합니다.
   @override
@@ -86,6 +89,12 @@ class AppDatabase extends _$AppDatabase {
         // 위의 2단계를 먼저 거친 뒤 여기까지 이어서 실행됩니다.
         if (from < 3) {
           await _upgradeToVersion3(m);
+        }
+
+        // `if (from < 4)`도 마찬가지입니다. v1이나 v2에 머물러 있던
+        // 사용자는 위 단계를 먼저 거친 뒤 여기까지 이어서 실행됩니다.
+        if (from < 4) {
+          await _upgradeToVersion4();
         }
       },
 
@@ -132,6 +141,38 @@ class AppDatabase extends _$AppDatabase {
   Future<void> _upgradeToVersion3(Migrator m) async {
     await m.createTable(boards);
     await m.createTable(boardCards);
+  }
+
+  /// 버전 3 → 4. 메모를 순수 텍스트에서 리치텍스트(Delta JSON)로 바꿉니다.
+  ///
+  /// ── 칼럼을 추가하는 게 아니라 값을 다시 씁니다 ──
+  /// memo 칼럼 자체는 그대로 TEXT입니다. 안에 들어가는 내용의 뜻만
+  /// "순수 글자"에서 "서식이 붙은 JSON"으로 바뀝니다. 그래서 addColumn이
+  /// 아니라 update를 씁니다.
+  ///
+  /// memo가 비어있는(null) 레퍼런스는 손대지 않습니다 — 빈 메모는 그대로
+  /// 빈 메모입니다.
+  Future<void> _upgradeToVersion4() async {
+    final List<ReferenceRow> rows = await select(references).get();
+
+    for (final ReferenceRow row in rows) {
+      final String? memo = row.memo;
+      if (memo == null || memo.isEmpty) {
+        continue;
+      }
+
+      // 최소 Delta로 감쌉니다: "이 글자를 그대로 넣어라"는 명령 하나뿐인
+      // 문서입니다. 새 편집기로 열면 서식 없는 원래 글자가 그대로 보입니다.
+      final String delta = jsonEncode(<Map<String, String>>[
+        <String, String>{'insert': '$memo\n'},
+      ]);
+
+      await (update(
+        references,
+      )..where(($ReferencesTable t) => t.id.equals(row.id))).write(
+        ReferencesCompanion(memo: Value<String?>(delta)),
+      );
+    }
   }
 
   /// 기본 파트를 만듭니다. 이미 있으면 아무 일도 하지 않습니다.
