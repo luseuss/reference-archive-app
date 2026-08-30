@@ -686,22 +686,26 @@ lib/
 
   **다음에 무드보드 조작을 고칠 때는 이 컨트롤러를 보세요.**
   `board_screen.dart`는 이제 읽어오기·화면 조립만 합니다.
-- **세 파일이 300줄을 넘습니다** (PR #28 기준):
+- **`board_screen.dart`는 정리했습니다** (8번을 시작하기 전, 별도 PR —
+  "board-screen-export-refactor"). 397줄이던 것을 **321줄**로 줄였습니다.
+  `_isExporting` 상태와 `_exportBoardImage()`를
+  `lib/screens/board_export_controller.dart`(새 파일,
+  `BoardInteractionController`와 같은 `ChangeNotifier` 패턴)로 뺐고,
+  위쪽 AppBar 버튼 세 개(격자·내보내기·담기)를
+  `lib/widgets/board_toolbar_actions.dart`(새 파일)로 뺐습니다.
+  순수 리팩터라 기존 위젯 테스트 499건이 그대로 통과하는 것으로
+  검증했습니다(회귀 없음).
+
+  **321줄이라 300줄 기준을 여전히 살짝 넘습니다.** 남은 것은 화면을
+  읽어오고 조립하는 코드 자체라, 더 잘게 쪼개면 오히려 따라가기
+  어려워질 것 같아 여기서 멈췄습니다. 굳이 더 뺄 곳을 찾자면
+  `_loadBoard`/`_addCards`를 "읽기 전용 화면 진입점" 클래스로 한 번 더
+  뺄 수는 있지만, 지금은 우선순위가 낮습니다.
+- **두 파일은 여전히 300줄을 넘습니다:**
   `board_viewport.dart` 531줄(PR #25 이후 그대로),
   `board_interaction_controller.dart` 567줄(PR #26에서 494 → 545 →
-  PR #27에서 567), **`board_screen.dart` 397줄**(PR #28에서 새로
-  넘음 — 내보내기 버튼·저장 대화상자 연결 코드가 들어오면서).
-  6번을 시작하기 전에 "정리하라"고 적어뒀는데 7번(이미지 내보내기)도
-  그냥 진행했습니다 — export 자체는 새 파일(`board_exporter.dart`,
-  227줄)로 분리했지만, `board_screen.dart`에 붙인 연결 코드가 다른
-  파일들을 정리하지 않은 채로 그 파일 자체를 기준을 넘게 만들었습니다.
-  **8번(떠 있는 창)을 시작하기 전에는 미루지 마세요** — 매번 다음으로
-  미루면서 계속 커지고 있습니다.
-
-  `board_screen.dart`에서 뺄 후보: `_exportBoardImage`와
-  관련 상태(`_isExporting`)를 `board_interaction_controller.dart` 쪽
-  성격의 "저장/내보내기 담당" 작은 클래스로 옮기거나, `_addCards`와
-  함께 "대화상자를 여는 일" 전용 헬퍼로 묶는 방법이 있습니다.
+  PR #27에서 567). 뺄 후보는 이전 메모(마퀴 부분, 정렬·선택 관련
+  메서드) 그대로입니다 — 아직 손대지 않았습니다.
 
   뺄 후보는 **`board_viewport.dart`의 마퀴 부분**입니다 —
   `_onEmptyPointerDown/Move/Up`, `_onEmptyDragStart/Update/End`,
