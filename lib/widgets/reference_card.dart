@@ -15,6 +15,7 @@ import '../theme/app_metrics.dart';
 import '../theme/app_palette.dart';
 import '../theme/app_text.dart';
 import '../utils/date_format.dart';
+import '../utils/rich_text_memo.dart';
 
 /// 레퍼런스 한 건을 보여주는 카드입니다.
 class ReferenceCard extends StatelessWidget {
@@ -209,10 +210,13 @@ class ReferenceCard extends StatelessWidget {
 
           if (_tagNames().isNotEmpty) _bodyGap(_buildTags(palette)),
 
-          if (item.memo != null && item.memo!.trim().isNotEmpty)
+          if (plainTextFromMemo(item.memo).isNotEmpty)
             _bodyGap(
               Text(
-                item.memo!.trim(),
+                // 메모는 이제 서식이 붙은 Delta(JSON)일 수 있습니다.
+                // 카드 미리보기는 글자만 보여주면 되므로 서식을 뺀
+                // plainTextFromMemo를 거칩니다(utils/rich_text_memo.dart).
+                plainTextFromMemo(item.memo),
                 // 메모가 길어도 카드가 한없이 길어지지 않게 세 줄로 자릅니다.
                 // 전체는 편집 화면에서 봅니다.
                 maxLines: 3,

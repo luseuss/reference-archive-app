@@ -152,6 +152,21 @@ void main() {
     expect(find.text('색감이 마음에 든다'), findsOneWidget);
   });
 
+  testWidgets('서식이 붙은 메모도 글자만 카드에 보인다', (WidgetTester tester) async {
+    // Delta(JSON) — "색감이" 는 굵게, " 마음에 든다"는 그냥 글자입니다.
+    const String delta =
+        '[{"insert":"색감이","attributes":{"bold":true}},'
+        '{"insert":" 마음에 든다\\n"}]';
+
+    await saveReference(memo: delta);
+
+    await openApp(tester);
+
+    // 서식 정보(JSON 문법)는 안 보이고 글자만 보여야 합니다.
+    expect(find.text('색감이 마음에 든다'), findsOneWidget);
+    expect(find.textContaining('"insert"'), findsNothing);
+  });
+
   testWidgets('넣은 날짜가 카드에 보인다', (WidgetTester tester) async {
     // 현지 시각으로 만든 뒤 UTC로 저장합니다. 실제 저장 경로와 같습니다.
     final DateTime created = DateTime(2026, 3, 9, 21, 40);
