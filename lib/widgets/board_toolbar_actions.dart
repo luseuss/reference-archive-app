@@ -1,5 +1,5 @@
-// 무드보드 화면 위쪽 AppBar에 뜨는 버튼 세 개(격자 토글·이미지로 내보내기·
-// 레퍼런스 담기)를 한데 모은 위젯입니다.
+// 무드보드 화면 위쪽 AppBar에 뜨는 버튼들(격자 토글·항상 위 토글·이미지로
+// 내보내기·레퍼런스 담기)을 한데 모은 위젯입니다.
 //
 // ── 왜 board_screen.dart에서 뺐나 ──
 // 버튼 세 개 모두 "무엇을 누를 수 있는지"를 컨트롤러 상태(카드가 있는지,
@@ -17,6 +17,7 @@ import 'package:flutter/material.dart';
 
 import '../screens/board_export_controller.dart';
 import '../screens/board_interaction_controller.dart';
+import '../screens/board_window_controller.dart';
 
 /// 무드보드 화면 위쪽 AppBar의 액션 버튼들입니다.
 class BoardToolbarActions extends StatelessWidget {
@@ -25,6 +26,7 @@ class BoardToolbarActions extends StatelessWidget {
     required this.isLoading,
     required this.interaction,
     required this.export,
+    required this.window,
     required this.onExport,
     required this.onAddCards,
   });
@@ -41,6 +43,11 @@ class BoardToolbarActions extends StatelessWidget {
   /// [onExport]를 통해 board_screen.dart가 합니다.
   final BoardExportController export;
 
+  /// 창이 항상 위로 떠 있는지 상태만 봅니다. 켜고 끄는 일은
+  /// 이 위젯이 [window]를 직접 불러 합니다 — 다른 버튼과 달리 화면
+  /// 쪽(context)이 필요 없는 동작이라 콜백 없이 바로 합니다.
+  final BoardWindowController window;
+
   /// 이미지로 내보내기 버튼을 눌렀을 때 알려줍니다.
   final VoidCallback onExport;
 
@@ -49,11 +56,12 @@ class BoardToolbarActions extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // interaction과 export, 두 컨트롤러 중 어느 쪽이 바뀌어도 다시
+    // interaction·export·window, 세 컨트롤러 중 어느 것이 바뀌어도 다시
     // 그려야 합니다(예: 카드가 담겨서 interaction이 바뀌거나, 내보내기가
-    // 끝나서 export가 바뀌거나). Listenable.merge로 둘을 하나로 묶습니다.
+    // 끝나서 export가 바뀌거나, 항상 위를 켜서 window가 바뀌거나).
+    // Listenable.merge로 셋을 하나로 묶습니다.
     return ListenableBuilder(
-      listenable: Listenable.merge(<Listenable>[interaction, export]),
+      listenable: Listenable.merge(<Listenable>[interaction, export, window]),
       builder: (BuildContext context, Widget? child) {
         final bool canExport =
             !isLoading && !export.isExporting && interaction.cards.isNotEmpty;
@@ -71,6 +79,17 @@ class BoardToolbarActions extends StatelessWidget {
               isSelected: interaction.gridSnap,
               tooltip: interaction.gridSnap ? '격자에 맞추기 끄기' : '격자에 맞추기',
             ),
+
+            // 항상 위 토글. **데스크톱(창이 있는 기기)에서만 보입니다.**
+            // 폰·태블릿에는 "다른 앱 위에 떠 있기"라는 개념 자체가 없어서
+            // 버튼을 아예 숨깁니다(못 누르게 막는 것과 다릅니다).
+            if (supportsAlwaysOnTopWindow)
+              IconButton(
+                onPressed: isLoading ? null : window.toggle,
+                icon: const Icon(Icons.push_pin),
+                isSelected: window.alwaysOnTop,
+                tooltip: window.alwaysOnTop ? '항상 위 끄기' : '항상 위로 띄우기',
+              ),
 
             // 이미지로 내보내기. 카드가 없으면 눌러도 뜻이 없어서 막아둡니다.
             IconButton(
