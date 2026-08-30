@@ -19,6 +19,8 @@ import '../models/taxonomy_item.dart';
 import '../repositories/reference_repository.dart';
 import '../repositories/taxonomy_repository.dart';
 import '../services/image_storage.dart';
+import '../utils/rich_text_memo.dart';
+import '../widgets/rich_memo_editor.dart';
 import '../widgets/taxonomy_multi_field.dart';
 import '../widgets/taxonomy_single_field.dart';
 import 'youtube_player_screen.dart';
@@ -48,8 +50,9 @@ class _ReferenceDetailScreenState extends State<ReferenceDetailScreen> {
   /// 제목 입력창을 다루는 도구입니다.
   late final TextEditingController _titleController;
 
-  /// 메모 입력창을 다루는 도구입니다.
-  late final TextEditingController _memoController;
+  /// 지금 편집기에 있는 메모입니다(Delta JSON 문자열). RichMemoEditor의
+  /// onChanged가 부를 때마다 갱신됩니다. 저장을 누를 때만 실제로 씁니다.
+  String? _memoJson;
 
   /// 화면에서 고치는 중인 값들입니다.
   /// 저장을 누르기 전까지는 데이터베이스에 반영되지 않습니다.
@@ -81,7 +84,7 @@ class _ReferenceDetailScreenState extends State<ReferenceDetailScreen> {
 
     // 넘겨받은 레퍼런스의 값으로 화면을 채웁니다.
     _titleController = TextEditingController(text: widget.item.title);
-    _memoController = TextEditingController(text: widget.item.memo ?? '');
+    _memoJson = widget.item.memo;
     _folderId = widget.item.folderId;
     _categoryId = widget.item.categoryId;
     _partId = widget.item.partId;
@@ -98,7 +101,6 @@ class _ReferenceDetailScreenState extends State<ReferenceDetailScreen> {
   @override
   void dispose() {
     _titleController.dispose();
-    _memoController.dispose();
     super.dispose();
   }
 
@@ -153,8 +155,12 @@ class _ReferenceDetailScreenState extends State<ReferenceDetailScreen> {
     });
 
     // 메모는 비어 있으면 null로 저장합니다.
-    // 빈 글자와 "적지 않음"을 굳이 구분할 이유가 없습니다.
-    final String memoText = _memoController.text.trim();
+    // 빈 글자와 "적지 않음"을 굳이 구분할 이유가 없습니다. RichMemoEditor는
+    // 빈 문서여도 항상 뭔가(최소한의 Delta)를 돌려주므로, 순수 글자만
+    // 뽑아봐서 비어 있는지 판단합니다.
+    final String? memoJson = _memoJson;
+    final bool memoIsEmpty =
+        memoJson == null || plainTextFromMemo(memoJson).isEmpty;
 
     // ── 여기서 copyWith를 쓰지 않는 이유 (중요) ──
     // copyWith는 넘긴 값이 null이면 "안 바꿈"으로 취급합니다. 그래서
@@ -182,7 +188,7 @@ class _ReferenceDetailScreenState extends State<ReferenceDetailScreen> {
 
       // 아래부터가 이 화면에서 고친 값들입니다.
       title: _titleController.text.trim(),
-      memo: memoText.isEmpty ? null : memoText,
+      memo: memoIsEmpty ? null : memoJson,
       folderId: _folderId,
       categoryId: _categoryId,
       partId: _partId,
@@ -248,15 +254,11 @@ class _ReferenceDetailScreenState extends State<ReferenceDetailScreen> {
         ),
         const SizedBox(height: 16),
 
-        TextField(
-          controller: _memoController,
-          // 메모는 여러 줄을 적을 수 있어야 합니다.
-          maxLines: 4,
-          decoration: const InputDecoration(
-            labelText: '메모',
-            alignLabelWithHint: true,
-            border: OutlineInputBorder(),
-          ),
+        Text('메모', style: Theme.of(context).textTheme.labelLarge),
+        const SizedBox(height: 8),
+        RichMemoEditor(
+          initialMemo: widget.item.memo,
+          onChanged: (String updated) => _memoJson = updated,
         ),
         const SizedBox(height: 24),
 

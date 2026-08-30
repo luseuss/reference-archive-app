@@ -8,6 +8,8 @@
 
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:flutter_quill/flutter_quill.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:reference_archive_app/data/app_database.dart';
 import 'package:reference_archive_app/models/enums.dart';
@@ -83,8 +85,19 @@ void main() {
   }
 
   /// 편집 화면만 띄우는 테스트용 앱을 만들어 돌려줍니다.
+  ///
+  /// 메모 칸이 RichMemoEditor(flutter_quill)로 바뀌면서, 그 툴바가
+  /// 필요로 하는 언어 지원(delegate)을 여기서도 등록해야 합니다.
+  /// 안 하면 화면을 여는 모든 테스트가 실패합니다.
   Widget makeScreen(ReferenceItem item) {
     return MaterialApp(
+      localizationsDelegates: <LocalizationsDelegate<dynamic>>[
+        FlutterQuillLocalizations.delegate,
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+      supportedLocales: const <Locale>[Locale('en')],
       home: ReferenceDetailScreen(
         item: item,
         referenceRepository: repository,
@@ -92,6 +105,11 @@ void main() {
         imageStorage: FakeImageStorage(),
       ),
     );
+  }
+
+  /// 화면에 지금 떠 있는 메모 편집기의 컨트롤러를 찾아줍니다.
+  QuillController memoControllerOf(WidgetTester tester) {
+    return tester.widget<QuillEditor>(find.byType(QuillEditor)).controller;
   }
 
   testWidgets('기존 제목과 메모가 입력창에 채워져 있다', (WidgetTester tester) async {
@@ -104,7 +122,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('노을 사진'), findsOneWidget);
-    expect(find.text('색감 참고'), findsOneWidget);
+    expect(memoControllerOf(tester).document.toPlainText().trim(), '색감 참고');
   });
 
   testWidgets('제목을 고치고 저장하면 데이터베이스에 반영된다', (WidgetTester tester) async {
@@ -133,7 +151,9 @@ void main() {
     await tester.pumpAndSettle();
 
     // 빈 글자와 "적지 않음"을 굳이 구분할 이유가 없어서 null로 저장합니다.
-    await tester.enterText(find.widgetWithText(TextField, '지울 메모'), '');
+    memoControllerOf(tester).clear();
+    await tester.pump();
+
     await tester.tap(find.text('저장'));
     await tester.pumpAndSettle();
 
