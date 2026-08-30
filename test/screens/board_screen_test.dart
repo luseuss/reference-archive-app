@@ -177,6 +177,46 @@ void main() {
     expect(find.text('판이 비어 있습니다'), findsNothing);
   });
 
+  /// "이미지로 내보내기" 아이콘 버튼을 찾습니다.
+  ///
+  /// `find.byTooltip`은 Tooltip 위젯 자체를 찾아주기 때문에, 그 안의
+  /// IconButton까지 한 번 더 내려가야 합니다.
+  Finder findExportButton() {
+    return find.ancestor(
+      of: find.byTooltip('이미지로 내보내기'),
+      matching: find.byType(IconButton),
+    );
+  }
+
+  testWidgets('판이 비어 있으면 이미지로 내보내기 버튼이 안 눌린다', (
+    WidgetTester tester,
+  ) async {
+    await openBoard(tester);
+
+    final IconButton button = tester.widget<IconButton>(findExportButton());
+
+    // 내보낼 카드가 하나도 없으면 눌러도 뜻이 없습니다.
+    expect(button.onPressed, isNull);
+  });
+
+  testWidgets('카드가 있으면 이미지로 내보내기 버튼이 눌린다', (
+    WidgetTester tester,
+  ) async {
+    final String referenceId = await saveReference('노을');
+    await putCardOnBoard(referenceId: referenceId);
+
+    await openBoard(tester);
+
+    final IconButton button = tester.widget<IconButton>(findExportButton());
+
+    expect(button.onPressed, isNotNull);
+
+    // 실제로 눌러서 저장 대화상자까지 여는 것은 여기서 확인하지 않습니다.
+    // file_picker가 진짜 운영체제 창을 띄우려고 해서, 위젯 테스트 안에서는
+    // 끝없이 멈춥니다. 사진이 제대로 찍히는지·저장되는지는 앱을 켜서
+    // 눈으로 확인합니다. (update.md 참고)
+  });
+
   testWidgets('카드를 끌면 화면에서 옮겨진다', (WidgetTester tester) async {
     final String referenceId = await saveReference('노을');
     await putCardOnBoard(referenceId: referenceId, x: 100, y: 100);
