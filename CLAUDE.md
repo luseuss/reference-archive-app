@@ -678,8 +678,47 @@ lib/
     (`lib/widgets/board_card_view.dart`의 `isRaised`)
   - 카드가 아주 많아지면 느려질 수 있습니다. 화면 밖 이미지 언로드는
     **느려지는 것을 확인한 뒤에** 합니다. 미리 최적화하지 마세요.
-- **5단계 — 메모(스티키노트)** ← 현재 여기
+- **5단계 — 메모(스티키노트)** ✅ 완료 (PR #31)
   리치텍스트, 글자색/형광펜/배경색, 서식, 링크, 목록, 정렬
+
+  **5단계(메모)는 이렇게 되어 있습니다:**
+  - **`flutter_quill` 패키지**로 편집기를 만들었습니다. 요구된 기능
+    (색·형광펜·굵게/기울임/밑줄·링크·목록·정렬)을 패키지가 기본
+    제공하는 툴바 그대로 씁니다. 저장 형식은 Delta(JSON) 문자열이고,
+    `memo` 칼럼 타입은 그대로 TEXT입니다 — 안에 들어가는 내용의 뜻만
+    "순수 글자"에서 "서식이 붙은 JSON"으로 바뀌었습니다.
+  - **저장 구조 v4**로 기존 순수 텍스트 메모를 최소 Delta로 감쌌습니다
+    (`lib/data/app_database.dart`의 `_upgradeToVersion4`). 표 구조
+    자체는 안 바뀝니다(`addColumn` 없음) — 있는 `memo` 값을 다시
+    써주는 것이 전부입니다.
+  - **Delta ↔ 순수 텍스트 변환은 `lib/utils/rich_text_memo.dart`**에
+    순수 함수로 모여 있습니다. 편집기(`lib/widgets/rich_memo_editor.dart`의
+    `RichMemoEditor`)와 목록 카드 미리보기(`lib/widgets/reference_card.dart`)
+    둘 다 이 파일의 `documentFromMemo`/`memoFromDocument`/
+    `plainTextFromMemo`를 씁니다.
+  - **`flutter_quill`의 툴바는 Flutter 로컬라이제이션 설정이 없으면
+    바로 죽습니다 — 계획에서 예상 못 한 부분이라 여기 남겨둡니다.**
+    `QuillSimpleToolbar`가 내부적으로 `FlutterQuillLocalizations`를
+    찾는데, 이 앱의 `MaterialApp`(`lib/main.dart`)에는 원래 로컬
+    라이제이션 델리게이트 자체가 없었습니다(지금까지 필요한 적이
+    없었습니다). 그래서 `flutter_localizations`를 `dependencies`로
+    옮기고(SDK 패키지라 `dev_dependencies`가 아닙니다),
+    `MaterialApp`에 `localizationsDelegates`
+    (`FlutterQuillLocalizations.delegate` + Flutter 표준 델리게이트 셋)와
+    `supportedLocales`(`ko`, `en`)를 추가해야 했습니다. **새 패키지가
+    자기만의 로컬라이제이션을 요구하면, `MaterialApp`에 델리게이트가
+    없는지부터 의심하세요** — 에러 메시지만 봐서는 원인을 짐작하기
+    어려운 부류입니다(NuGet·개발자 모드와 같은 사정).
+  - **검색은 손대지 않았습니다.** Delta JSON 안에도 실제 글자가 그대로
+    부분 문자열로 남아있어서 대체로 계속 찾아집니다. 문제가 실제로
+    나타나면 그때 고칩니다.
+  - **무드보드용 가벼운 주석은 이번에 포함하지 않았습니다.** 레퍼런스
+    메모와는 저장 구조가 다른 별도 기능이라, "무드보드 추가 제안"
+    표에 그대로 남겨뒀습니다.
+  - **의뢰인이 실제 앱에서 서식·색·목록·링크·정렬 버튼을 직접 눌러보는
+    확인은 아직입니다.** 자동화 테스트로는 "버튼 하나하나가 실제로
+    먹는지"를 잡을 수 없어서(위젯 테스트가 못 잡는 부류 — 아래 계획
+    문서 참고), 병합 전에 의뢰인이 직접 켜서 확인해야 합니다.
 - **6단계 — 유사도 엔진** 태그 Jaccard + 카테고리/폴더/프로젝트 보너스 + dHash 퍼셉추얼 해시
 - **그 이후(별도 논의)** 동기화 서버, 공유 스페이스/협업
 
