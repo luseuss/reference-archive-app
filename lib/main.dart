@@ -18,6 +18,8 @@
 // 붙이게 됩니다. 필요해지기 전에 미리 붙이면 코드만 복잡해집니다.
 
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:flutter_quill/flutter_quill.dart' show FlutterQuillLocalizations;
 
 import 'data/app_database.dart';
 import 'repositories/board_repository.dart';
@@ -115,6 +117,19 @@ class ReferenceArchiveApp extends StatelessWidget {
           // 오른쪽 위에 뜨는 "DEBUG" 리본을 숨깁니다.
           // 개발 중에도 실제 모습을 보기 위함입니다.
           debugShowCheckedModeBanner: false,
+
+          // flutter_quill과 Flutter 표준 위젯들의 로컬라이제이션 설정입니다.
+          // RichMemoEditor(Task 4)가 QuillToolbar를 사용하기 위해 필요합니다.
+          localizationsDelegates: const <LocalizationsDelegate<dynamic>>[
+            FlutterQuillLocalizations.delegate,
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+          supportedLocales: const <Locale>[
+            Locale('ko'),
+            Locale('en'),
+          ],
 
           // 밝은 모드 / 어두운 모드 테마를 각각 지정하고,
           // 어느 쪽을 쓸지는 themeMode로 정합니다.
