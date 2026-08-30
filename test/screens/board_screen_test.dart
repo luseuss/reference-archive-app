@@ -167,6 +167,22 @@ void main() {
     expect(find.text('겨울 무드'), findsOneWidget);
   });
 
+  testWidgets('테스트 환경(데스크톱이 아닌 곳)에서는 항상 위 버튼이 안 보인다', (
+    WidgetTester tester,
+  ) async {
+    // 항상 위는 데스크톱에서만 뜻이 있는 기능이라 그 기기가 아니면
+    // 버튼을 통째로 숨깁니다. (board_window_controller_test.dart가
+    // supportsAlwaysOnTopWindow 자체를 자세히 확인합니다 — 여기서는
+    // "실제 화면에도 반영되는지"만 봅니다)
+    //
+    // 데스크톱으로 바꿔서 확인하지 않는 이유: 그러면 BoardWindowController
+    // 가 진짜 window_manager 플러그인 통로를 부르려고 하는데, 위젯
+    // 테스트 환경에는 그 통로가 없어서 오류가 납니다(웹뷰와 같은 사정).
+    await openBoard(tester);
+
+    expect(find.byIcon(Icons.push_pin), findsNothing);
+  });
+
   testWidgets('올려둔 카드가 판에 보인다', (WidgetTester tester) async {
     final String referenceId = await saveReference('노을');
     await putCardOnBoard(referenceId: referenceId);

@@ -389,7 +389,7 @@ lib/
      구조 v5 마이그레이션). 5번 안에서 일부러 미뤘습니다.
   6. ~~**정렬·분배 툴바**~~ ✅ **PR #26**
   7. ~~**이미지 내보내기**~~ ✅ **PR #28**
-  8. **떠 있는 창** — 무드보드를 항상 위에 ← **다음**
+  8. ~~**떠 있는 창** — 무드보드를 항상 위에~~ ✅ **PR #30**
 
   **3번(무한 캔버스)을 왜 앞으로 당겼나 (2026-08-27):**
   원래 스냅이 3번이었는데, 스냅 설계를 짜다가 **"판 가장자리에 붙기"가
@@ -407,24 +407,49 @@ lib/
     잃어버리지 않는 유일한 이유입니다. **없애지 마세요.**
   - 계산 파일을 둘로 나눴습니다 — `board_layout.dart`(카드가 어디 놓이나),
     `board_view.dart`(어느 배율로 어디를 보나).
-  **8번(떠 있는 창) — 되는 것을 확인했습니다 (2026-08-27):**
-  `window_manager` 패키지로 시험해서 **실제로 Windows에서 항상 위가
-  됩니다.** 빌드도 통과하고 다른 프로그램 위에 계속 떠 있는 것까지
-  눈으로 확인했습니다. 쓸 수 있는 것들:
+  **8번(떠 있는 창)은 이렇게 되어 있습니다 (PR #30):**
+  - **이번엔 "항상 위" 토글 하나만 넣었습니다.** 창 테두리 없애기
+    (frameless)·반투명·클릭 통과는 2026-08-27에 시험해서 되는 것까지는
+    확인했지만(아래 표), 이번 PR에는 일부러 안 넣었습니다 — frameless는
+    창을 닫는 버튼을 따로 만들어야 하는 등 손이 더 가서, 의뢰인이
+    "항상 위 토글만"을 골랐습니다. 필요해지면 다시 꺼내 씁니다.
 
-  | 기능 | 메서드 |
-  |---|---|
-  | 항상 위 | `setAlwaysOnTop()` |
-  | 창 테두리 없애기 | `setAsFrameless()` / `setTitleBarStyle()` |
-  | 반투명 | `setOpacity()` |
-  | **클릭 통과** | `setIgnoreMouseEvents()` |
+    | 기능 | 메서드 | 이번에 씀 |
+    |---|---|---|
+    | 항상 위 | `setAlwaysOnTop()` | ✅ |
+    | 창 테두리 없애기 | `setAsFrameless()` / `setTitleBarStyle()` | 아직 |
+    | 반투명 | `setOpacity()` | 아직 |
+    | 클릭 통과 | `setIgnoreMouseEvents()` | 아직 |
 
-  Windows/macOS/Linux만 지원합니다(모바일은 항상 위라는 개념이 없어서
-  맞습니다). **`setAsFrameless()`를 켤 때는 창을 닫는 방법을 반드시 함께
-  만드세요.** 제목 표시줄이 사라지면 앱에 갇힙니다.
-
-  시험 코드는 남기지 않았습니다(버리는 코드였음). 정식으로 만들 때 다시
-  붙입니다.
+    Windows/macOS/Linux만 지원합니다(모바일은 항상 위라는 개념이 없어서
+    맞습니다). **나중에 `setAsFrameless()`를 켤 때는 창을 닫는 방법을
+    반드시 함께 만드세요.** 제목 표시줄이 사라지면 앱에 갇힙니다.
+  - **`lib/screens/board_window_controller.dart`**(새 파일)가 상태와
+    동작을 담습니다. `BoardExportController`와 같은 `ChangeNotifier`
+    패턴입니다.
+  - **상태를 기억합니다.** 한 번 켜두면 앱을 다시 켜도 그대로 켜져
+    있습니다. `shared_preferences`에 자체 키(`boardAlwaysOnTop`)로
+    저장합니다 — `AppSettings`(밝기 모드·이름)에는 안 넣었습니다.
+    설정 화면에는 이 값을 안 넣기로 했고(CLAUDE.md 위쪽 "설정에 들어갈
+    것" 참고), 무드보드 화면 버튼으로만 켜고 끄는 창 자체의 성질이라
+    따로 뒀습니다.
+  - **창의 "항상 위" 상태는 운영체제가 기억해주지 않습니다.** 앱을 새로
+    켤 때마다 꺼진 채로 시작합니다. 그래서 무드보드 화면을 열 때마다
+    `BoardWindowController.load()`가 저장해둔 값을 읽어서 **다시
+    적용**합니다(`windowManager.setAlwaysOnTop(...)`를 다시 부릅니다).
+  - **데스크톱(Windows/macOS/Linux)에서만 버튼이 보입니다.** 폰·태블릿엔
+    "다른 앱 위에 떠 있기"라는 개념 자체가 없어서, 여느 플랫폼 차이
+    처리처럼(`home_screen.dart`의 `supportsHoverPreview`와 같은 방식)
+    버튼을 통째로 숨깁니다(`supportsAlwaysOnTopWindow`).
+  - **테스트에서는 이 값이 항상 거짓입니다** (`debugDefaultTargetPlatformOverride`로
+    바꾸지 않는 한). 그래서 `BoardWindowController.load()`/`toggle()`이
+    실제 `window_manager` 플러그인 통로를 부르지 않고 조용히 넘어가고,
+    위젯 테스트가 오류 없이 돕니다. `board_window_controller_test.dart`가
+    이 플랫폼 판정 자체를 확인하고, `board_screen_test.dart`는 "테스트
+    환경에서는 버튼이 안 보이는지"만 확인합니다 — **데스크톱으로
+    바꿔서 버튼을 실제로 눌러보는 테스트는 못 씁니다**(눌렀을 때 진짜
+    플러그인을 부르려고 해서 테스트 환경에서 오류가 납니다). 실제로
+    켜지는지는 `flutter run -d windows`로 눈으로 봐야 합니다.
 
   **다음 조각을 시작하기 전에 알아둘 것 (PR #17~#21에서 정해진 것들):**
   - 확대·축소·이동은 `lib/widgets/board_viewport.dart`, 카드 배치는

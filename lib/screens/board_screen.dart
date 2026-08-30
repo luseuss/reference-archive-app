@@ -5,8 +5,10 @@
 //     바꾸고, 담고, 내리는** 상태와 동작 전부. (2026-08-29에 이 파일에서 뺐습니다)
 //   board_export_controller.dart — **이미지로 내보내는** 상태와 동작.
 //     (2026-08-31에 이 파일에서 뺐습니다)
-//   board_toolbar_actions.dart — 위쪽 AppBar 버튼 세 개(격자·내보내기·
-//     담기)가 어떤 모양·상태여야 하는지. (2026-08-31에 이 파일에서 뺐습니다)
+//   board_window_controller.dart — 창을 **항상 위**로 띄우는 상태와 동작.
+//     (4단계 8번)
+//   board_toolbar_actions.dart — 위쪽 AppBar 버튼들(격자·항상 위·내보내기·
+//     담기)이 어떤 모양·상태여야 하는지. (2026-08-31에 이 파일에서 뺐습니다)
 //   board_viewport.dart      — 판을 확대·축소하고 이동해서 보여줍니다(줌·팬).
 //   board_canvas.dart        — 카드를 좌표대로 놓고, 조작을 알아챕니다.
 //   board_card_view.dart     — 카드 한 장이 어떻게 생겼는지.
@@ -42,6 +44,7 @@ import '../widgets/empty_state_message.dart';
 import '../widgets/pick_references_dialog.dart';
 import 'board_export_controller.dart';
 import 'board_interaction_controller.dart';
+import 'board_window_controller.dart';
 
 /// 무드보드 판 하나를 보여주는 화면입니다.
 class BoardScreen extends StatefulWidget {
@@ -76,6 +79,9 @@ class _BoardScreenState extends State<BoardScreen> {
   /// 판을 이미지로 내보내는 일을 맡습니다.
   final BoardExportController _export = BoardExportController();
 
+  /// 창을 항상 위로 띄우는 일을 맡습니다.
+  final BoardWindowController _window = BoardWindowController();
+
   /// 카드가 보여줄 레퍼런스를 번호로 찾을 수 있게 정리해둔 것입니다.
   ///
   /// 카드에는 번호만 들어있어서, 제목과 그림을 보여주려면 짝을 지어야 합니다.
@@ -105,6 +111,11 @@ class _BoardScreenState extends State<BoardScreen> {
     );
 
     _loadBoard();
+
+    // 저장해둔 "항상 위" 상태를 불러와 창에 다시 적용합니다. 데스크톱이
+    // 아니면(supportsAlwaysOnTopWindow가 거짓이면) 조용히 아무 일도
+    // 안 합니다.
+    _window.load();
   }
 
   /// 컨트롤러가 안 쓰는 자원을 붙잡고 있지 않도록 정리합니다.
@@ -112,6 +123,7 @@ class _BoardScreenState extends State<BoardScreen> {
   void dispose() {
     _interaction.dispose();
     _export.dispose();
+    _window.dispose();
     super.dispose();
   }
 
@@ -211,6 +223,7 @@ class _BoardScreenState extends State<BoardScreen> {
             isLoading: _isLoading,
             interaction: _interaction,
             export: _export,
+            window: _window,
             onExport: _exportBoardImage,
             onAddCards: _addCards,
           ),
