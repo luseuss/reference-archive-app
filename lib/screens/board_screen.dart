@@ -20,11 +20,15 @@
 // 컨트롤러가 합니다). 저장 버튼을 두면 사용자는 언제 눌러야 하는지 신경
 // 쓰게 되고, 안 누르고 나갔다가 배치를 통째로 잃습니다.
 
+import 'dart:typed_data';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import '../models/board.dart';
 import '../repositories/board_repository.dart';
 import '../repositories/reference_repository.dart';
+import '../services/board_exporter.dart';
 import '../services/image_storage.dart';
 import '../services/reference_lookup.dart';
 import '../utils/board_layout.dart';
@@ -82,6 +86,13 @@ class _BoardScreenState extends State<BoardScreen> {
 
   /// 아직 읽어오는 중인지 여부입니다.
   bool _isLoading = true;
+
+  /// 지금 이미지로 내보내는 중인지 여부입니다.
+  ///
+  /// 사진을 미리 읽고 찍는 데 잠깐 시간이 걸립니다. 그 사이 버튼을 다시
+  /// 누르면 내보내기가 겹쳐 실행되므로, 끝날 때까지 버튼을 눌러도 반응하지
+  /// 않게 막아둡니다.
+  bool _isExporting = false;
 
   /// 화면이 만들어질 때 컨트롤러를 준비하고 판의 내용을 읽어옵니다.
   @override
@@ -158,6 +169,69 @@ class _BoardScreenState extends State<BoardScreen> {
     });
   }
 
+  /// 판에 놓인 카드 전체를 사진(PNG) 한 장으로 내보냅니다.
+  ///
+  /// **지금 화면에 보이는 부분이 아니라 카드 전체입니다.** 팀에 공유할
+  /// 때 화면 밖에 있던 카드가 잘려나가면 안 되기 때문입니다.
+  /// (services/board_exporter.dart 설명 참고)
+  Future<void> _exportBoardImage() async {
+    if (_isExporting) {
+      return;
+    }
+
+    setState(() {
+      _isExporting = true;
+    });
+
+    try {
+      final Uint8List? bytes = await exportBoardImage(
+        context: context,
+        cards: _interaction.cards,
+        itemsById: _lookup.itemsById,
+        imagePaths: _lookup.imagePaths,
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      if (bytes == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('내보낼 카드가 없습니다.')),
+        );
+        return;
+      }
+
+      // 저장 대화상자를 엽니다. Windows에서는 사용자가 고른 자리에
+      // file_picker가 bytes를 그대로 파일로 씁니다.
+      final String? savedPath = await FilePicker.saveFile(
+        dialogTitle: '무드보드 이미지 저장',
+        fileName: '${widget.board.name}.png',
+        type: FileType.custom,
+        allowedExtensions: <String>['png'],
+        bytes: bytes,
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      // 취소했으면(null) 조용히 아무 일도 안 합니다. 취소는 실패가
+      // 아닙니다.
+      if (savedPath != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('이미지를 저장했습니다.')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isExporting = false;
+        });
+      }
+    }
+  }
+
   /// 화면의 생김새를 만들어 돌려줍니다.
   @override
   Widget build(BuildContext context) {
@@ -180,6 +254,30 @@ class _BoardScreenState extends State<BoardScreen> {
                 icon: const Icon(Icons.grid_4x4),
                 isSelected: _interaction.gridSnap,
                 tooltip: _interaction.gridSnap ? '격자에 맞추기 끄기' : '격자에 맞추기',
+              );
+            },
+          ),
+
+          // 이미지로 내보내기. 카드가 없으면 눌러도 뜻이 없어서 막아둡니다.
+          //
+          // ListenableBuilder로 감싸는 이유는 위 격자 버튼과 같습니다 —
+          // 카드 목록(_interaction.cards)이 바뀔 때만 이 버튼을 다시 그립니다.
+          ListenableBuilder(
+            listenable: _interaction,
+            builder: (BuildContext context, Widget? child) {
+              final bool canExport =
+                  !_isLoading && !_isExporting && _interaction.cards.isNotEmpty;
+
+              return IconButton(
+                onPressed: canExport ? _exportBoardImage : null,
+                icon: _isExporting
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.save_alt),
+                tooltip: '이미지로 내보내기',
               );
             },
           ),
