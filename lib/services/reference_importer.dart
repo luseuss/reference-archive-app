@@ -28,6 +28,7 @@ import '../models/reference_item.dart';
 import '../repositories/reference_repository.dart';
 import '../utils/id_generator.dart';
 import 'dropped_item_reader.dart';
+import 'image_hash.dart';
 import 'image_source.dart';
 import 'image_storage.dart';
 import 'youtube_info_source.dart';
@@ -320,6 +321,9 @@ class ReferenceImporter {
           fileName: savedFileName,
           partId: partId,
           youtubeVideoId: videoId,
+          // 썸네일이 있으면 그 자리에서 dHash도 계산해둡니다. 시각적
+          // 유사도(services/utils/similarity.dart)에 씁니다.
+          pHash: thumbnail == null ? null : dHashFromBytes(thumbnail),
           createdAt: now,
           updatedAt: now,
         ),
@@ -390,6 +394,11 @@ class ReferenceImporter {
           title: title ?? '',
           fileName: savedFileName,
           partId: partId,
+          // 원본 바이트로 dHash를 계산해둡니다. 저장하며 줄인 크기가
+          // 아니라 원본을 쓰는 이유: 어차피 9x8까지 줄여서 비교하므로
+          // 결과가 달라지지 않고, 저장 파일을 다시 읽는 디스크 접근을
+          // 아낄 수 있습니다.
+          pHash: dHashFromBytes(bytes),
           createdAt: now,
           updatedAt: now,
         ),
