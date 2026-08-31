@@ -55,9 +55,9 @@ void main() {
 
     final int? distance = hammingDistance(hashA, hashB);
     expect(distance, isNotNull);
-    // 완전히 같은 밝기 구간 경계에서만 같을 수 있으니 절반 이상 다르면
-    // "뚜렷하게 다르다"고 봅니다.
-    expect(distance!, greaterThan(30));
+    // 왼쪽/오른쪽 단색 이미지는 한 행에 경계선이 하나뿐이라, 행마다 최대 1비트만
+    // 다릅니다. 8행 중 절반 이상(>4)에서 경계 비트가 다르면 뚜렷하게 다르다고 봅니다.
+    expect(distance!, greaterThan(4));
   });
 
   test('그림 파일이 아니면 null을 돌려준다', () {
