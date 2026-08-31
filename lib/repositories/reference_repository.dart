@@ -54,6 +54,14 @@ abstract class ReferenceRepository {
   /// 그러면 나중에 기기 간 동기화가 조용히 틀어집니다.
   Future<void> save(ReferenceItem item);
 
+  /// pHash 한 칸만 채웁니다. save()와 달리 updatedAt을 건드리지 않습니다.
+  ///
+  /// pHash는 사용자가 고친 값이 아니라 **앱이 계산해서 채워 넣는 값**입니다.
+  /// save()로 넣으면 updatedAt이 "지금 막 고친 것"으로 찍혀서, 기기 간
+  /// 동기화가 실제로는 안 바뀐 레퍼런스를 "바뀌었다"고 오해하게 됩니다.
+  /// (자세한 이유는 CLAUDE.md의 "가벼운 변경 추적" 설계 원칙 참고)
+  Future<void> updatePHash(String id, String pHash);
+
   /// 레퍼런스를 지웁니다.
   ///
   /// 진짜로 지우지 않고 deletedAt에 시각을 찍습니다(소프트 삭제).

@@ -11,6 +11,7 @@ import '../data/app_database.dart';
 import '../models/enums.dart';
 import '../models/reference_item.dart';
 import '../models/reference_query.dart';
+import '../utils/similarity.dart';
 import 'reference_repository.dart';
 
 /// 레퍼런스를 이 기기의 데이터베이스에 저장하는 구현체입니다.
@@ -114,6 +115,21 @@ class LocalReferenceRepository implements ReferenceRepository {
     for (final ReferenceRow row in rows) {
       result.add(await _toModel(row));
     }
+
+    // "유사한 것끼리"는 SQL로 못 하므로 여기서 다시 정렬합니다.
+    // 핀 고정된 항목은 유사도 정렬 대상에서 빼고, 이미 SQL이 맨 앞에
+    // 모아준 순서를 그대로 둡니다 — "정렬을 바꿔도 고정한 건 항상 위"
+    // 규칙을 유사도 정렬에도 지키기 위해서입니다.
+    if (query.sortOrder == ReferenceSortOrder.similar) {
+      final List<ReferenceItem> pinned = result
+          .where((ReferenceItem item) => item.isPinned)
+          .toList();
+      final List<ReferenceItem> rest = result
+          .where((ReferenceItem item) => !item.isPinned)
+          .toList();
+      return <ReferenceItem>[...pinned, ...sortBySimilarity(rest)];
+    }
+
     return result;
   }
 
@@ -170,6 +186,12 @@ class LocalReferenceRepository implements ReferenceRepository {
       case ReferenceSortOrder.titleAscending:
         return ($ReferencesTable t) =>
             OrderingTerm(expression: t.title, mode: OrderingMode.asc);
+
+      case ReferenceSortOrder.similar:
+        // 유사도는 SQL로 표현할 수 없어서, 일단 최근 추가한 순서로
+        // 가져온 뒤 search()에서 Dart 쪽으로 다시 정렬합니다.
+        return ($ReferencesTable t) =>
+            OrderingTerm(expression: t.createdAt, mode: OrderingMode.desc);
     }
   }
 
@@ -220,6 +242,13 @@ class LocalReferenceRepository implements ReferenceRepository {
       await _replaceLinks(item.id, TaxonomyKind.tag, item.tagIds, now);
       await _replaceLinks(item.id, TaxonomyKind.project, item.projectIds, now);
     });
+  }
+
+  /// pHash 한 칸만 채웁니다. save()와 달리 updatedAt은 그대로 둡니다.
+  @override
+  Future<void> updatePHash(String id, String pHash) async {
+    await (_db.update(_db.references)..where(($ReferencesTable t) => t.id.equals(id)))
+        .write(ReferencesCompanion(pHash: Value<String?>(pHash)));
   }
 
   /// 레퍼런스를 지웁니다. 진짜로 지우지 않고 deletedAt에 시각을 찍습니다.

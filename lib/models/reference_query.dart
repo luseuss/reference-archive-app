@@ -22,7 +22,11 @@ enum ReferenceSortOrder {
   oldestAdded('오래된 순'),
 
   /// 제목 가나다순
-  titleAscending('제목순');
+  titleAscending('제목순'),
+
+  /// 가장 최근에 추가한 항목을 기준으로, 비슷한 것끼리 모아서
+  /// (utils/similarity.dart의 sortBySimilarity 참고)
+  similar('유사한 것끼리');
 
   const ReferenceSortOrder(this.displayName);
 
