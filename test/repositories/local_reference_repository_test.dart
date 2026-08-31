@@ -8,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:reference_archive_app/data/app_database.dart';
 import 'package:reference_archive_app/models/enums.dart';
 import 'package:reference_archive_app/models/reference_item.dart';
+import 'package:reference_archive_app/models/reference_query.dart';
 import 'package:reference_archive_app/models/taxonomy_item.dart';
 import 'package:reference_archive_app/repositories/local_reference_repository.dart';
 import 'package:reference_archive_app/repositories/local_taxonomy_repository.dart';
@@ -301,6 +302,86 @@ void main() {
       // 현지 시각으로 저장하면 시차가 다른 기기끼리 합칠 때 순서가 뒤집힙니다.
       expect(loaded!.createdAt.isUtc, isTrue);
       expect(loaded.updatedAt.isUtc, isTrue);
+    });
+  });
+
+  group('유사한 것끼리 정렬', () {
+    test('태그가 겹치는 항목이 앞으로 온다', () async {
+      final DateTime now = DateTime.now().toUtc();
+
+      // 태그는 연결 표가 실제 taxonomyItems 행을 inner join으로 찾으므로,
+      // 임의의 문자열이 아니라 실제로 만들어둔 태그 id를 써야 저장 후
+      // 다시 읽어올 때 tagIds가 비어버리지 않습니다.
+      final String sunsetTag = await makeTaxonomy(TaxonomyKind.tag, '노을');
+      final String architectureTag = await makeTaxonomy(TaxonomyKind.tag, '건축');
+
+      final ReferenceItem anchor = ReferenceItem(
+        id: newId(),
+        type: ReferenceType.image,
+        tagIds: <String>[sunsetTag],
+        createdAt: now,
+        updatedAt: now,
+      );
+      final ReferenceItem similar = ReferenceItem(
+        id: newId(),
+        type: ReferenceType.image,
+        tagIds: <String>[sunsetTag],
+        createdAt: now.subtract(const Duration(days: 2)),
+        updatedAt: now.subtract(const Duration(days: 2)),
+      );
+      final ReferenceItem unrelated = ReferenceItem(
+        id: newId(),
+        type: ReferenceType.image,
+        tagIds: <String>[architectureTag],
+        createdAt: now.subtract(const Duration(days: 1)),
+        updatedAt: now.subtract(const Duration(days: 1)),
+      );
+
+      await repository.save(unrelated);
+      await repository.save(similar);
+      await repository.save(anchor); // 가장 최근 -> 기준점
+
+      final List<ReferenceItem> result = await repository.search(
+        const ReferenceQuery(sortOrder: ReferenceSortOrder.similar),
+      );
+
+      expect(result.map((ReferenceItem i) => i.id).toList(), <String>[
+        anchor.id,
+        similar.id,
+        unrelated.id,
+      ]);
+    });
+
+    test('핀 고정된 항목은 유사도와 무관하게 맨 위에 남는다', () async {
+      final DateTime now = DateTime.now().toUtc();
+
+      final String sunsetTag = await makeTaxonomy(TaxonomyKind.tag, '노을');
+      final String architectureTag = await makeTaxonomy(TaxonomyKind.tag, '건축');
+
+      final ReferenceItem pinnedButUnrelated = ReferenceItem(
+        id: newId(),
+        type: ReferenceType.image,
+        tagIds: <String>[architectureTag],
+        isPinned: true,
+        createdAt: now.subtract(const Duration(days: 5)),
+        updatedAt: now.subtract(const Duration(days: 5)),
+      );
+      final ReferenceItem anchor = ReferenceItem(
+        id: newId(),
+        type: ReferenceType.image,
+        tagIds: <String>[sunsetTag],
+        createdAt: now,
+        updatedAt: now,
+      );
+
+      await repository.save(anchor);
+      await repository.save(pinnedButUnrelated);
+
+      final List<ReferenceItem> result = await repository.search(
+        const ReferenceQuery(sortOrder: ReferenceSortOrder.similar),
+      );
+
+      expect(result.first.id, pinnedButUnrelated.id);
     });
   });
 }
