@@ -152,11 +152,38 @@ class AppDatabase extends _$AppDatabase {
   ///
   /// memo가 비어있는(null) 레퍼런스는 손대지 않습니다 — 빈 메모는 그대로
   /// 빈 메모입니다.
+  ///
+  /// ── select(references)가 아니라 raw SQL을 쓰는 이유 (중요) ──
+  /// `select(references).get()`은 drift가 **지금 이 앱 버전**을 기준으로
+  /// 생성해둔 `ReferencesTable` 코드를 거쳐서 읽습니다. 즉 "지금 이 시점까지
+  /// 나온 모든 schemaVersion의 칼럼"을 다 포함한 모양으로 읽으려 듭니다.
+  ///
+  /// 문제는 이 마이그레이션 함수가 실행되는 시점의 **진짜 sqlite 표**는
+  /// 그 모양이 아직 아닐 수 있다는 것입니다. 예를 들어 나중에 schemaVersion
+  /// 5가 addColumn으로 칼럼을 하나 더 추가한다고 하면, 버전 3에서 곧장
+  /// 5로 건너뛰는 사용자의 경우 drift는 `_upgradeToVersion4()`(`if (from < 4)`)를
+  /// **먼저** 실행하고, 그 다음에야 버전 5의 addColumn(`if (from < 5)`)을
+  /// 실행합니다. 이 순간 실제 sqlite 표에는 아직 그 새 칼럼이 없는데,
+  /// `select(references).get()`이 생성한 매핑 코드는 그 칼럼을 읽으려고
+  /// 시도해서 앱이 아예 안 켜지게 됩니다 — 딱 그렇게 여러 버전을 건너뛰어
+  /// 올라오는 사용자한테서만 터지므로 개발 중에는 절대 못 잡는 종류의 버그입니다
+  /// (CLAUDE.md의 "옛 버전에서 여러 단계를 건너뛰어도 되는지" 항목이 경고하는
+  /// 바로 그 상황).
+  ///
+  /// 그래서 이 시점(버전 3 → 4)에 반드시 있다고 보장되는 칼럼(id, memo —
+  /// 둘 다 schemaVersion 1부터 있었습니다)만 raw SQL로 콕 집어 읽고 씁니다.
+  /// `$ReferencesTable`이나 `ReferenceRow` 같은 생성 코드를 아예 거치지
+  /// 않으므로, 나중에 칼럼이 몇 개가 추가되든 이 마이그레이션은 영향을
+  /// 받지 않습니다.
   Future<void> _upgradeToVersion4() async {
-    final List<ReferenceRow> rows = await select(references).get();
+    final List<QueryRow> rows = await customSelect(
+      'SELECT id, memo FROM "references"',
+    ).get();
 
-    for (final ReferenceRow row in rows) {
-      final String? memo = row.memo;
+    for (final QueryRow row in rows) {
+      final String id = row.read<String>('id');
+      final String? memo = row.read<String?>('memo');
+
       if (memo == null || memo.isEmpty) {
         continue;
       }
@@ -167,10 +194,9 @@ class AppDatabase extends _$AppDatabase {
         <String, String>{'insert': '$memo\n'},
       ]);
 
-      await (update(
-        references,
-      )..where(($ReferencesTable t) => t.id.equals(row.id))).write(
-        ReferencesCompanion(memo: Value<String?>(delta)),
+      await customStatement(
+        'UPDATE "references" SET memo = ? WHERE id = ?',
+        <Object?>[delta, id],
       );
     }
   }

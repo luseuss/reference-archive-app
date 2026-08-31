@@ -257,7 +257,22 @@ class _ReferenceDetailScreenState extends State<ReferenceDetailScreen> {
         Text('메모', style: Theme.of(context).textTheme.labelLarge),
         const SizedBox(height: 8),
         RichMemoEditor(
-          initialMemo: widget.item.memo,
+          // widget.item.memo가 아니라 _memoJson을 넘깁니다. 이 편집기는 ListView
+          // 안에 있어서, 포커스를 잃은 채로 화면 밖으로 스크롤되면 통째로 사라졌다
+          // 다시 만들어집니다. 그때 원본(widget.item.memo)을 다시 넘기면 지금까지
+          // 고친 내용이 사라진 것처럼 보입니다.
+          //
+          // RichMemoEditor는 다시 만들어질 때마다 그 순간의 initialMemo로
+          // 새로 채워집니다(test/widgets/rich_memo_editor_test.dart의 "다시
+          // 만들어지면 그 시점의 initialMemo로 새로 채워진다" 참고) — 그래서
+          // 여기서 어떤 값을 넘기느냐가 전부입니다. onChanged로 _memoJson을
+          // 최신으로 유지해두는 것만으로는 부족하고, 이 위젯을 담고 있는
+          // ReferenceDetailScreen 자체가 다시 빌드돼야(예: 폴더를 고르거나
+          // 즐겨찾기를 누르는 등 다른 setState) 그 최신 _memoJson이 이
+          // RichMemoEditor 위젯에 실제로 실립니다 — 타이핑만으로는 이 화면이
+          // 다시 빌드되지 않기 때문입니다(_save를 누르기 전까지는 setState를
+          // 부르지 않는 설계, 위 "저장 시점" 설명 참고).
+          initialMemo: _memoJson,
           onChanged: (String updated) => _memoJson = updated,
         ),
         const SizedBox(height: 24),

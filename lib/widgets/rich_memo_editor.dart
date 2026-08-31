@@ -80,7 +80,15 @@ class _RichMemoEditorState extends State<RichMemoEditor> {
       clipBehavior: Clip.antiAlias,
       child: Column(
         children: <Widget>[
-          QuillSimpleToolbar(controller: _controller),
+          // 정렬 버튼은 flutter_quill 기본값이 꺼져 있습니다(showAlignmentButtons
+          // 기본값 false). 5단계 요구사항에 정렬이 있으므로 여기서 켭니다.
+          QuillSimpleToolbar(
+            controller: _controller,
+            config: const QuillSimpleToolbarConfig(
+              showAlignmentButtons: true,
+              showJustifyAlignment: false, // 왼쪽/가운데/오른쪽만 필요합니다(양쪽 정렬은 요구사항에 없음)
+            ),
+          ),
           Divider(height: 1, color: palette.border),
 
           // 판을 딱 하나만 두는 이유: QuillEditor는 세로 크기가 정해져

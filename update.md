@@ -3265,6 +3265,15 @@ PR #17부터 시작한 4단계가 PR #30으로 끝났습니다. 자유 배치, �
 문자열입니다. 이걸로 **5단계(메모)가 요구한 항목이 전부 끝났습니다**
 (스펙: `docs/superpowers/specs/2026-08-31-rich-text-memo-design.md`).
 
+> **바로잡음 (전체 브랜치 최종 검토, 같은 PR 안에서 수정):** 이 PR이
+> 처음 병합될 뻔했을 때는 사실 정렬 버튼이 **안 보였습니다**.
+> `QuillSimpleToolbar`를 설정 없이 그대로 쓰면 `showAlignmentButtons`
+> 기본값이 `false`라, 위 문단의 "정렬을 지원합니다"는 그 시점엔
+> 틀린 설명이었습니다. `lib/widgets/rich_memo_editor.dart`에
+> `QuillSimpleToolbarConfig(showAlignmentButtons: true)`를 추가해
+> 실제로 버튼이 나타나도록 고쳤습니다. 자세한 내용은 CLAUDE.md의
+> 5단계 항목 참고.
+
 계획은 여섯 조각으로 쪼갰습니다.
 
 1. `flutter_quill` 패키지 추가

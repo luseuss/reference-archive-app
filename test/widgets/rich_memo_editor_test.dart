@@ -68,6 +68,40 @@ void main() {
     expect(controllerOf(tester).document.toPlainText().trim(), '');
   });
 
+  testWidgets(
+    '다시 만들어지면 그 시점의 initialMemo로 새로 채워진다',
+    (WidgetTester tester) async {
+      // RichMemoEditorState는 initState에서 딱 한 번만 initialMemo를 읽어
+      // 문서를 채웁니다(위 pumpEditor의 안내대로, 편집기 자체는 "언제
+      // 저장할지"를 모릅니다). 이 테스트는 그 지점을 직접 확인합니다 —
+      // 첫 번째로 만들어진 편집기를 완전히 없앤 뒤, 다른 initialMemo로
+      // 새로 만들면 새 값이 나와야 합니다(첫 번째 값이 남아있으면 안 됨).
+      //
+      // reference_detail_screen.dart가 initialMemo로 widget.item.memo(원본)가
+      // 아니라 _memoJson(최신 값)을 넘겨야 하는 이유가 바로 이 동작 때문입니다
+      // — 편집기는 "다시 만들어질 때 무엇을 받는지"밖에 모르므로, 최신 값을
+      // 넘기는 책임은 전적으로 이 위젯을 담는 화면 쪽에 있습니다.
+      final String deltaA = memoFromDocument(
+        Document.fromDelta(Delta()..insert('첫 번째 메모\n')),
+      );
+      final String deltaB = memoFromDocument(
+        Document.fromDelta(Delta()..insert('두 번째 메모\n')),
+      );
+
+      await pumpEditor(tester, initialMemo: deltaA, onChanged: (_) {});
+      expect(controllerOf(tester).document.toPlainText().trim(), '첫 번째 메모');
+
+      // 완전히 다른 위젯 트리로 바꿔서 이전 RichMemoEditorState를 확실히
+      // 없앱니다(dispose). ListView 밖으로 스크롤돼 없어지는 상황을
+      // 그대로 재현하기보다, "없어졌다가 다시 만들어지는" 결과 자체를
+      // 직접 만들어내는 쪽이 훨씬 더 안정적으로 확인할 수 있습니다.
+      await tester.pumpWidget(const SizedBox.shrink());
+
+      await pumpEditor(tester, initialMemo: deltaB, onChanged: (_) {});
+      expect(controllerOf(tester).document.toPlainText().trim(), '두 번째 메모');
+    },
+  );
+
   testWidgets('내용을 바꾸면 onChanged로 새 값이 전달된다', (WidgetTester tester) async {
     String? latest;
 

@@ -684,9 +684,16 @@ lib/
   **5단계(메모)는 이렇게 되어 있습니다:**
   - **`flutter_quill` 패키지**로 편집기를 만들었습니다. 요구된 기능
     (색·형광펜·굵게/기울임/밑줄·링크·목록·정렬)을 패키지가 기본
-    제공하는 툴바 그대로 씁니다. 저장 형식은 Delta(JSON) 문자열이고,
+    제공하는 툴바로 보여줍니다. 저장 형식은 Delta(JSON) 문자열이고,
     `memo` 칼럼 타입은 그대로 TEXT입니다 — 안에 들어가는 내용의 뜻만
     "순수 글자"에서 "서식이 붙은 JSON"으로 바뀌었습니다.
+    **정렬 버튼만은 예외입니다** — `QuillSimpleToolbar`의 기본값이
+    `showAlignmentButtons: false`라서 아무 설정 없이 쓰면 정렬 버튼
+    자체가 안 나타납니다. `lib/widgets/rich_memo_editor.dart`에서
+    `QuillSimpleToolbarConfig(showAlignmentButtons: true)`로 켜줘야
+    합니다. **새 flutter_quill 기능을 추가할 때는 "기본값이 꺼져
+    있을 수 있다"를 항상 의심하세요** — 패키지 문서만 보고 "당연히
+    될 것"이라 넘겨짚으면 이런 게 조용히 빠집니다.
   - **저장 구조 v4**로 기존 순수 텍스트 메모를 최소 Delta로 감쌌습니다
     (`lib/data/app_database.dart`의 `_upgradeToVersion4`). 표 구조
     자체는 안 바뀝니다(`addColumn` 없음) — 있는 `memo` 값을 다시
@@ -790,6 +797,11 @@ lib/
   `board_card_actions.dart` 299줄, `board_align.dart` 153줄,
   `board_canvas.dart` 232줄, `board_snap.dart` 181줄,
   `board_view.dart` 164줄, `board_layout.dart` 152줄.
+- **`lib/widgets/reference_card.dart`가 632줄** (300줄 기준 초과, PR #31
+  이전부터 이미 넘어 있었습니다 — 이번에 새로 생긴 초과가 아닙니다).
+  아직 손대지 않았습니다.
+- **`lib/screens/reference_detail_screen.dart`가 464줄** (300줄 기준 초과,
+  이 역시 PR #31 이전부터 이미 넘어 있었습니다). 아직 손대지 않았습니다.
 - **파트를 지울 때 그 안의 레퍼런스가 미아가 됩니다** (PR #16에서 빠뜨린 것).
   `lib/repositories/local_taxonomy_repository.dart`의 `delete()`가 폴더·카테고리는
   정리해주는데 **`partId`만 안 지웁니다.** 파트를 지우면 그 레퍼런스들이
