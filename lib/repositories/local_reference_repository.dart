@@ -244,6 +244,13 @@ class LocalReferenceRepository implements ReferenceRepository {
     });
   }
 
+  /// pHash 한 칸만 채웁니다. save()와 달리 updatedAt은 그대로 둡니다.
+  @override
+  Future<void> updatePHash(String id, String pHash) async {
+    await (_db.update(_db.references)..where(($ReferencesTable t) => t.id.equals(id)))
+        .write(ReferencesCompanion(pHash: Value<String?>(pHash)));
+  }
+
   /// 레퍼런스를 지웁니다. 진짜로 지우지 않고 deletedAt에 시각을 찍습니다.
   @override
   Future<void> delete(String id) async {

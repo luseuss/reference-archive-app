@@ -129,6 +129,25 @@ void main() {
     expect(items.first.pHash, isNull);
   });
 
+  test('updatedAt을 건드리지 않는다', () async {
+    final String fileName = await writeTestImage('updated-at.png');
+    final ReferenceItem original = await saveReference(fileName: fileName);
+
+    final ReferenceItem before = (await repository.getById(original.id))!;
+
+    // 실제 기기 동작을 흉내내기 위해 아주 살짝 시간을 흘려보냅니다.
+    // (updatedAt이 바뀐다면 이 시점보다 뒤 시각으로 찍힐 것입니다)
+    await Future<void>.delayed(const Duration(milliseconds: 5));
+
+    await backfillMissingPHashes(repository: repository, imageStorage: imageStorage);
+
+    final ReferenceItem after = (await repository.getById(original.id))!;
+
+    expect(after.pHash, isNotNull);
+    // 시간이 "가까운" 정도가 아니라, 아예 손대지 않아 완전히 같아야 합니다.
+    expect(after.updatedAt, before.updatedAt);
+  });
+
   test('여러 장을 한 번에 채운다', () async {
     final String fileA = await writeTestImage('a.png');
     final String fileB = await writeTestImage('c.png');

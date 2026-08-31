@@ -45,7 +45,7 @@ Future<void> backfillMissingPHashes({
       if (hash == null) {
         continue;
       }
-      await repository.save(item.copyWith(pHash: hash));
+      await repository.updatePHash(item.id, hash);
     } catch (_) {
       // 파일이 없거나 읽는 중 문제가 생겨도 나머지 레퍼런스는 계속
       // 채워야 하므로 여기서 조용히 넘어갑니다.

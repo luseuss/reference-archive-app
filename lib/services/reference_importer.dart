@@ -395,9 +395,10 @@ class ReferenceImporter {
           fileName: savedFileName,
           partId: partId,
           // 원본 바이트로 dHash를 계산해둡니다. 저장하며 줄인 크기가
-          // 아니라 원본을 쓰는 이유: 어차피 9x8까지 줄여서 비교하므로
-          // 결과가 달라지지 않고, 저장 파일을 다시 읽는 디스크 접근을
-          // 아낄 수 있습니다.
+          // 아니라 원본을 쓰는 이유: image_hash.dart가 9x8까지 average(평균)
+          // 방식으로 줄여서 비교하므로, 원본이든 나중에 저장된 1600px
+          // 파일이든 결과가 달라지지 않고, 저장 파일을 다시 읽는 디스크
+          // 접근을 아낄 수 있습니다.
           pHash: dHashFromBytes(bytes),
           createdAt: now,
           updatedAt: now,

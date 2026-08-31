@@ -34,10 +34,20 @@ String? dHashFromBytes(Uint8List bytes) {
   // 가로세로 비율은 무시하고 강제로 9x8에 맞춥니다. 해시를 만드는 데는
   // 원본 비율이 중요하지 않고, 비교하는 두 이미지가 항상 같은 방식으로
   // 눌려야 공정하게 비교할 수 있습니다.
+  //
+  // interpolation을 average(평균)로 지정하는 이유: 이 앱은 같은 사진을
+  // 서로 다른 해상도에서 두 번 해시합니다 — 들여오는 순간에는 원본
+  // 업로드 바이트를(reference_importer.dart), 나중에 되채울 때는 이미
+  // 1600px로 줄여 저장된 파일을(phash_backfill.dart) 읽습니다. 기본값인
+  // nearest(최근접) 방식은 픽셀을 그냥 콕콕 집어서 줄이기 때문에, 원본
+  // 해상도가 다르면 같은 사진이라도 골라내는 픽셀이 달라져 해시가 달라질
+  // 수 있습니다. average는 영역 전체를 평균 내므로 해상도가 달라도
+  // "시각적으로 같은 사진"이면 같은 결과가 나옵니다.
   final img.Image resized = img.copyResize(
     decoded,
     width: dHashWidth,
     height: dHashHeight,
+    interpolation: img.Interpolation.average,
   );
 
   final StringBuffer bits = StringBuffer();

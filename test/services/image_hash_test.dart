@@ -64,4 +64,45 @@ void main() {
     final Uint8List notAnImage = Uint8List.fromList(<int>[1, 2, 3, 4, 5]);
     expect(dHashFromBytes(notAnImage), isNull);
   });
+
+  /// 사진처럼 픽셀마다 밝기가 조금씩 다른 그러데이션 이미지를 만듭니다.
+  /// (단색 블록은 nearest/average 방식 차이가 안 드러나서 이 테스트에는
+  /// 안 맞습니다 — 아래 테스트 설명 참고)
+  img.Image makeGradientPhoto({int width = 400, int height = 300}) {
+    final img.Image image = img.Image(width: width, height: height);
+    for (int y = 0; y < height; y++) {
+      for (int x = 0; x < width; x++) {
+        final int r = (x * 255 / width).round() % 256;
+        final int g = (y * 255 / height).round() % 256;
+        final int b = ((x + y) * 255 / (width + height)).round() % 256;
+        image.setPixelRgb(x, y, r, g, b);
+      }
+    }
+    return image;
+  }
+
+  test('같은 사진을 원본과 미리 축소한 사본, 두 해상도에서 찍어도 해시가 거의 같다', () {
+    // 실제 상황을 흉내냅니다: reference_importer.dart는 원본 업로드 바이트를
+    // 해시하고, phash_backfill.dart는 이미 1600px로 줄여 저장된 파일을
+    // 나중에 다시 읽어 해시합니다 — 같은 사진인데 해상도가 다른 두 경로.
+    // average(평균) 보간이 아니라 nearest(최근접)였다면 이 두 해시가
+    // 서로 다르게 나올 수 있었습니다(Important 2 참고).
+    final img.Image original = makeGradientPhoto(width: 400, height: 300);
+    final img.Image alreadyResized = img.copyResize(
+      original,
+      width: 200,
+      height: 150,
+      interpolation: img.Interpolation.average,
+    );
+
+    final Uint8List originalBytes = Uint8List.fromList(img.encodePng(original));
+    final Uint8List resizedBytes = Uint8List.fromList(img.encodePng(alreadyResized));
+
+    final String? hashOriginal = dHashFromBytes(originalBytes);
+    final String? hashResized = dHashFromBytes(resizedBytes);
+
+    final int? distance = hammingDistance(hashOriginal, hashResized);
+    expect(distance, isNotNull);
+    expect(distance!, lessThanOrEqualTo(2));
+  });
 }
