@@ -6,6 +6,8 @@
 // 이 파일을 고친 뒤에는 반드시 아래를 실행해야 반영됩니다.
 //   dart run build_runner build
 
+import 'dart:convert';
+
 import 'package:drift/drift.dart';
 import 'package:drift_flutter/drift_flutter.dart';
 import 'package:path_provider/path_provider.dart';
@@ -55,8 +57,9 @@ class AppDatabase extends _$AppDatabase {
   ///   1 — 처음 만든 구조
   ///   2 — References에 partId 추가 (파트 기능). PR #16
   ///   3 — Boards, BoardCards 표 추가 (무드보드). PR #17
+  ///   4 — References.memo를 순수 텍스트에서 Delta(JSON)로. 5단계 1번
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 4;
 
   /// 데이터베이스를 처음 만들 때, 그리고 구조가 바뀌었을 때 무엇을 할지 정합니다.
   @override
@@ -86,6 +89,12 @@ class AppDatabase extends _$AppDatabase {
         // 위의 2단계를 먼저 거친 뒤 여기까지 이어서 실행됩니다.
         if (from < 3) {
           await _upgradeToVersion3(m);
+        }
+
+        // `if (from < 4)`도 마찬가지입니다. v1이나 v2에 머물러 있던
+        // 사용자는 위 단계를 먼저 거친 뒤 여기까지 이어서 실행됩니다.
+        if (from < 4) {
+          await _upgradeToVersion4();
         }
       },
 
@@ -132,6 +141,64 @@ class AppDatabase extends _$AppDatabase {
   Future<void> _upgradeToVersion3(Migrator m) async {
     await m.createTable(boards);
     await m.createTable(boardCards);
+  }
+
+  /// 버전 3 → 4. 메모를 순수 텍스트에서 리치텍스트(Delta JSON)로 바꿉니다.
+  ///
+  /// ── 칼럼을 추가하는 게 아니라 값을 다시 씁니다 ──
+  /// memo 칼럼 자체는 그대로 TEXT입니다. 안에 들어가는 내용의 뜻만
+  /// "순수 글자"에서 "서식이 붙은 JSON"으로 바뀝니다. 그래서 addColumn이
+  /// 아니라 update를 씁니다.
+  ///
+  /// memo가 비어있는(null) 레퍼런스는 손대지 않습니다 — 빈 메모는 그대로
+  /// 빈 메모입니다.
+  ///
+  /// ── select(references)가 아니라 raw SQL을 쓰는 이유 (중요) ──
+  /// `select(references).get()`은 drift가 **지금 이 앱 버전**을 기준으로
+  /// 생성해둔 `ReferencesTable` 코드를 거쳐서 읽습니다. 즉 "지금 이 시점까지
+  /// 나온 모든 schemaVersion의 칼럼"을 다 포함한 모양으로 읽으려 듭니다.
+  ///
+  /// 문제는 이 마이그레이션 함수가 실행되는 시점의 **진짜 sqlite 표**는
+  /// 그 모양이 아직 아닐 수 있다는 것입니다. 예를 들어 나중에 schemaVersion
+  /// 5가 addColumn으로 칼럼을 하나 더 추가한다고 하면, 버전 3에서 곧장
+  /// 5로 건너뛰는 사용자의 경우 drift는 `_upgradeToVersion4()`(`if (from < 4)`)를
+  /// **먼저** 실행하고, 그 다음에야 버전 5의 addColumn(`if (from < 5)`)을
+  /// 실행합니다. 이 순간 실제 sqlite 표에는 아직 그 새 칼럼이 없는데,
+  /// `select(references).get()`이 생성한 매핑 코드는 그 칼럼을 읽으려고
+  /// 시도해서 앱이 아예 안 켜지게 됩니다 — 딱 그렇게 여러 버전을 건너뛰어
+  /// 올라오는 사용자한테서만 터지므로 개발 중에는 절대 못 잡는 종류의 버그입니다
+  /// (CLAUDE.md의 "옛 버전에서 여러 단계를 건너뛰어도 되는지" 항목이 경고하는
+  /// 바로 그 상황).
+  ///
+  /// 그래서 이 시점(버전 3 → 4)에 반드시 있다고 보장되는 칼럼(id, memo —
+  /// 둘 다 schemaVersion 1부터 있었습니다)만 raw SQL로 콕 집어 읽고 씁니다.
+  /// `$ReferencesTable`이나 `ReferenceRow` 같은 생성 코드를 아예 거치지
+  /// 않으므로, 나중에 칼럼이 몇 개가 추가되든 이 마이그레이션은 영향을
+  /// 받지 않습니다.
+  Future<void> _upgradeToVersion4() async {
+    final List<QueryRow> rows = await customSelect(
+      'SELECT id, memo FROM "references"',
+    ).get();
+
+    for (final QueryRow row in rows) {
+      final String id = row.read<String>('id');
+      final String? memo = row.read<String?>('memo');
+
+      if (memo == null || memo.isEmpty) {
+        continue;
+      }
+
+      // 최소 Delta로 감쌉니다: "이 글자를 그대로 넣어라"는 명령 하나뿐인
+      // 문서입니다. 새 편집기로 열면 서식 없는 원래 글자가 그대로 보입니다.
+      final String delta = jsonEncode(<Map<String, String>>[
+        <String, String>{'insert': '$memo\n'},
+      ]);
+
+      await customStatement(
+        'UPDATE "references" SET memo = ? WHERE id = ?',
+        <Object?>[delta, id],
+      );
+    }
   }
 
   /// 기본 파트를 만듭니다. 이미 있으면 아무 일도 하지 않습니다.

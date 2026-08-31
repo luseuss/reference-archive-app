@@ -15,6 +15,7 @@ import '../theme/app_metrics.dart';
 import '../theme/app_palette.dart';
 import '../theme/app_text.dart';
 import '../utils/date_format.dart';
+import '../utils/rich_text_memo.dart';
 
 /// 레퍼런스 한 건을 보여주는 카드입니다.
 class ReferenceCard extends StatelessWidget {
@@ -176,6 +177,12 @@ class ReferenceCard extends StatelessWidget {
   /// **없는 항목은 아예 자리를 차지하지 않습니다.** 폴더도 태그도 메모도 없는
   /// 레퍼런스가 흔한데, 빈 줄이 남으면 카드마다 높이가 들쭉날쭉해집니다.
   Widget _buildBody(AppPalette palette) {
+    // 메모는 서식이 붙은 Delta(JSON)일 수 있습니다. 카드 미리보기는
+    // 글자만 보여주면 되므로 서식을 뺀 plainTextFromMemo를 거칩니다
+    // (utils/rich_text_memo.dart). 아래에서 "보여줄지 말지"와 "무엇을
+    // 보여줄지" 둘 다에 쓰이므로 한 번만 계산해 변수에 담아둡니다.
+    final String memoPreview = plainTextFromMemo(item.memo);
+
     return Padding(
       // 기존 웹앱의 `.card-body { padding: 13px 14px 14px; }` 와 같습니다.
       padding: const EdgeInsets.fromLTRB(14, 13, 14, 14),
@@ -209,10 +216,10 @@ class ReferenceCard extends StatelessWidget {
 
           if (_tagNames().isNotEmpty) _bodyGap(_buildTags(palette)),
 
-          if (item.memo != null && item.memo!.trim().isNotEmpty)
+          if (memoPreview.isNotEmpty)
             _bodyGap(
               Text(
-                item.memo!.trim(),
+                memoPreview,
                 // 메모가 길어도 카드가 한없이 길어지지 않게 세 줄로 자릅니다.
                 // 전체는 편집 화면에서 봅니다.
                 maxLines: 3,

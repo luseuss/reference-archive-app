@@ -3251,3 +3251,137 @@ PR #17부터 시작한 4단계가 PR #30으로 끝났습니다. 자유 배치, �
 다음은 CLAUDE.md의 "개발 단계" 표에 적힌 **5단계 — 메모(스티키노트)**
 입니다. 새 세션에서는 CLAUDE.md의 "개발 단계"와 "무드보드 추가 제안"
 항목부터 읽고 이어가세요.
+
+---
+
+## PR #31 — 레퍼런스 메모 리치텍스트 (5단계)
+
+**무엇을 했나**
+
+레퍼런스 상세 화면의 메모 칸을 순수 텍스트 `TextField`에서
+**리치텍스트 편집기**로 바꿨습니다. 굵게·기울임·밑줄, 글자색·형광펜
+(배경색), 순서 있는/없는 목록, 링크, 정렬(왼쪽/가운데/오른쪽)을
+지원합니다. `flutter_quill` 패키지를 썼고, 저장 형식은 Delta(JSON)
+문자열입니다. 이걸로 **5단계(메모)가 요구한 항목이 전부 끝났습니다**
+(스펙: `docs/superpowers/specs/2026-08-31-rich-text-memo-design.md`).
+
+> **바로잡음 (전체 브랜치 최종 검토, 같은 PR 안에서 수정):** 이 PR이
+> 처음 병합될 뻔했을 때는 사실 정렬 버튼이 **안 보였습니다**.
+> `QuillSimpleToolbar`를 설정 없이 그대로 쓰면 `showAlignmentButtons`
+> 기본값이 `false`라, 위 문단의 "정렬을 지원합니다"는 그 시점엔
+> 틀린 설명이었습니다. `lib/widgets/rich_memo_editor.dart`에
+> `QuillSimpleToolbarConfig(showAlignmentButtons: true)`를 추가해
+> 실제로 버튼이 나타나도록 고쳤습니다. 자세한 내용은 CLAUDE.md의
+> 5단계 항목 참고.
+
+계획은 여섯 조각으로 쪼갰습니다.
+
+1. `flutter_quill` 패키지 추가
+2. Delta ↔ 순수 텍스트 변환 유틸리티(`rich_text_memo.dart`)
+3. 저장 구조 v4 마이그레이션(순수 텍스트 → 최소 Delta)
+4. 편집기 위젯(`RichMemoEditor`)
+5. 레퍼런스 상세 화면에 편집기 연결
+6. 목록 카드 미리보기에서 서식을 빼고 글자만 보이게
+
+### Delta로 저장하고, 옛 메모는 v4 마이그레이션으로 감쌌습니다
+
+`memo` 칼럼은 타입(TEXT)이 그대로입니다 — 안에 들어가는 내용의 뜻만
+"순수 글자"에서 "서식이 붙은 JSON(Delta)"으로 바뀌었습니다. 그래서
+표 구조 자체는 안 바뀌고(`addColumn` 없음), **있는 값을 다시 써주는**
+`_upgradeToVersion4`(`lib/data/app_database.dart`)만 추가했습니다.
+`memo`가 null이 아닌 레퍼런스에 대해 `[{"insert": "<기존 글자>\n"}]`
+형태의 최소 Delta로 감쌉니다. `from < 4`로 감싸(부등호 규칙) 옛 버전
+사용자가 여러 단계를 건너뛰어도 되게 했습니다.
+
+`test/data/migration_v3_to_v4_test.dart`(5건)로 아래 다섯 가지를
+전부 확인했습니다 — 프로젝트 관례대로 옛 구조의 진짜 sqlite 파일을
+만들어놓고 지금 앱으로 열어보는 방식입니다.
+- 앱이 켜지는지
+- 순수 텍스트였던 기존 메모가 안 사라지는지
+- 마이그레이션 뒤 그 메모가 유효한 Delta JSON으로 바뀌어 있고, 새
+  편집기로 열면 원래 글자가 그대로 보이는지
+- 두 번 열어도 중복/깨짐이 없는지(멱등성)
+- **v1·v2에서 곧장 v4로 건너뛰어도** 되는지
+
+### `RichMemoEditor`(Task 4)와 계획에 없던 로컬라이제이션 보정
+
+`lib/widgets/rich_memo_editor.dart`가 `flutter_quill`의 편집창 +
+툴바(`QuillController`/`QuillEditor`/`QuillSimpleToolbar`)를 감싼
+위젯입니다. 입력은 지금 메모의 Delta JSON(`String?`, null이면 빈
+문서), 출력은 바뀐 Delta JSON을 콜백으로 알립니다.
+
+**여기서 계획에 없던 문제가 나왔습니다.** `QuillSimpleToolbar`를
+그냥 붙였더니 앱이 죽었습니다 — `flutter_quill`의 툴바가 내부적으로
+`FlutterQuillLocalizations`를 찾는데, 이 앱의 `MaterialApp`
+(`lib/main.dart`)에는 애초에 로컬라이제이션 델리게이트 자체가 없었기
+때문입니다(지금까지 필요했던 적이 없어서 안 넣어뒀습니다). 고친
+방법:
+- `flutter_localizations`(Flutter SDK에 내장된 패키지)를
+  `dev_dependencies`가 아니라 **`dependencies`**로 추가했습니다.
+  런타임에 실제로 쓰이기 때문입니다.
+- `MaterialApp`에 `localizationsDelegates`
+  (`FlutterQuillLocalizations.delegate` + `GlobalMaterialLocalizations`/
+  `GlobalWidgetsLocalizations`/`GlobalCupertinoLocalizations`)와
+  `supportedLocales`(`ko`, `en`)를 추가했습니다.
+
+이 보정은 별도 커밋(`Task 4 보정: flutter_quill 로컬라이제이션을
+앱 전체에 설정`)으로 남겼습니다 — "계획에서 놓쳤던 것을 바로 다음
+단계에서 고쳤다"는 흐름이 커밋 로그에 그대로 보이는 편이 나중에
+따라가기 좋다고 판단했습니다.
+
+### 목록 카드 미리보기는 서식 없이 글자만
+
+`lib/widgets/reference_card.dart`가 예전엔 `item.memo`를 그대로
+잘라 보여줬는데, Delta JSON을 그대로 보여주면 `{"insert":...}` 같은
+글자가 그대로 노출됩니다. `rich_text_memo.dart`의
+`plainTextFromMemo`를 거친 결과를 대신 자르도록 바꿨습니다. 못 읽는
+값(깨진 JSON, 마이그레이션을 못 탄 옛날 순수 텍스트)이면 원래 글자를
+그대로 돌려주게 만들어서, 미리보기가 아예 안 뜨는 것보다는 낫게
+했습니다.
+
+### 어떻게 확인했나
+
+`flutter analyze` **문제 없음** · `flutter test` **522건 통과**
+(504 → 522, +18 — `rich_text_memo_test.dart` 11건,
+`migration_v3_to_v4_test.dart` 5건, `rich_memo_editor_test.dart` 3건,
+기존 화면 테스트를 `RichMemoEditor`에 맞춰 손본 것 포함, 회귀 없음)
+· `flutter build windows` **성공**
+(`build\windows\x64\runner\Release\reference_archive_app.exe`)
+
+**의뢰인의 실제 앱 확인은 아직입니다.** 이 세션은 빌드까지만
+확인했고, 앱을 켜서 굵게·색·형광펜·목록·링크·정렬 버튼을 실제로
+눌러보고 저장 후 다시 열어도 서식이 남는지 확인하는 것은 **의뢰인이
+직접 해야 합니다.** 위젯 테스트로는 "값을 넣으면 보이는지",
+"타이핑하면 콜백이 불리는지"까지만 잡을 수 있고, 서식 버튼
+하나하나가 실제로 먹는지는 그림으로 확인해야 하는 상호작용이라
+자동화 테스트로 못 잡습니다(스펙 문서에 처음부터 그렇게 적어뒀습니다).
+**병합 전에 의뢰인의 눈 확인이 필요합니다.**
+
+### 알고 있는 한계
+
+- **검색은 손대지 않았습니다.** Delta JSON 안에도 실제 글자가
+  `"insert":"찾는 낱말"` 형태로 그대로 부분 문자열로 남아있어서
+  지금의 SQL 부분 일치 검색이 대체로 계속 동작하지만, 완벽한 보장은
+  아닙니다. 문제가 실제로 나타나면 그때 고칩니다(미리 최적화하지
+  않는다는 프로젝트 원칙).
+- **무드보드용 가벼운 주석은 이번에 포함하지 않았습니다.** 레퍼런스
+  메모와 저장 구조가 다른 별도 기능이라, CLAUDE.md의 "무드보드 추가
+  제안" 표에 그대로 남아있습니다.
+- **서식 버튼 하나하나(굵게, 색 고르기, 링크 등)를 실제로 눌러보는
+  확인을 아무도 아직 하지 않았습니다.** 위 "어떻게 확인했나"에 적은
+  대로, 이건 자동화 테스트가 못 잡는 부류라 의뢰인의 몫으로
+  남겨뒀습니다.
+
+### 새로 나온 개념
+
+- **Delta** — `flutter_quill`(원래 Quill.js)이 서식 있는 글을
+  표현하는 JSON 형식입니다. "이 글자를 넣어라", "이만큼 굵게
+  해라" 같은 명령들의 목록으로 문서를 나타냅니다. 순수 텍스트보다
+  복잡하지만 색·목록·링크 같은 것을 다 담을 수 있습니다.
+- **저장 구조 마이그레이션에서 "칼럼 추가"와 "값 다시 쓰기"의 차이** —
+  이번 v4는 새 칸을 추가하는 게 아니라 있는 칸의 값을 새 형식으로
+  다시 씁니다. 그래서 `addColumn` 대신 `update`를 씁니다.
+- **로컬라이제이션 델리게이트** — Flutter 위젯 중 일부(이번엔
+  `flutter_quill`의 툴바)는 "지금 어느 언어로 화면 문구를 보여줄지"를
+  `MaterialApp`에 등록된 델리게이트 목록에서 찾습니다. 없으면 그
+  위젯이 죽습니다. 이번에 처음 필요해져서 앱 전체에 등록했습니다.

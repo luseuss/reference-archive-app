@@ -19,6 +19,8 @@ import '../models/taxonomy_item.dart';
 import '../repositories/reference_repository.dart';
 import '../repositories/taxonomy_repository.dart';
 import '../services/image_storage.dart';
+import '../utils/rich_text_memo.dart';
+import '../widgets/rich_memo_editor.dart';
 import '../widgets/taxonomy_multi_field.dart';
 import '../widgets/taxonomy_single_field.dart';
 import 'youtube_player_screen.dart';
@@ -48,8 +50,9 @@ class _ReferenceDetailScreenState extends State<ReferenceDetailScreen> {
   /// 제목 입력창을 다루는 도구입니다.
   late final TextEditingController _titleController;
 
-  /// 메모 입력창을 다루는 도구입니다.
-  late final TextEditingController _memoController;
+  /// 지금 편집기에 있는 메모입니다(Delta JSON 문자열). RichMemoEditor의
+  /// onChanged가 부를 때마다 갱신됩니다. 저장을 누를 때만 실제로 씁니다.
+  String? _memoJson;
 
   /// 화면에서 고치는 중인 값들입니다.
   /// 저장을 누르기 전까지는 데이터베이스에 반영되지 않습니다.
@@ -81,7 +84,7 @@ class _ReferenceDetailScreenState extends State<ReferenceDetailScreen> {
 
     // 넘겨받은 레퍼런스의 값으로 화면을 채웁니다.
     _titleController = TextEditingController(text: widget.item.title);
-    _memoController = TextEditingController(text: widget.item.memo ?? '');
+    _memoJson = widget.item.memo;
     _folderId = widget.item.folderId;
     _categoryId = widget.item.categoryId;
     _partId = widget.item.partId;
@@ -98,7 +101,6 @@ class _ReferenceDetailScreenState extends State<ReferenceDetailScreen> {
   @override
   void dispose() {
     _titleController.dispose();
-    _memoController.dispose();
     super.dispose();
   }
 
@@ -153,8 +155,12 @@ class _ReferenceDetailScreenState extends State<ReferenceDetailScreen> {
     });
 
     // 메모는 비어 있으면 null로 저장합니다.
-    // 빈 글자와 "적지 않음"을 굳이 구분할 이유가 없습니다.
-    final String memoText = _memoController.text.trim();
+    // 빈 글자와 "적지 않음"을 굳이 구분할 이유가 없습니다. RichMemoEditor는
+    // 빈 문서여도 항상 뭔가(최소한의 Delta)를 돌려주므로, 순수 글자만
+    // 뽑아봐서 비어 있는지 판단합니다.
+    final String? memoJson = _memoJson;
+    final bool memoIsEmpty =
+        memoJson == null || plainTextFromMemo(memoJson).isEmpty;
 
     // ── 여기서 copyWith를 쓰지 않는 이유 (중요) ──
     // copyWith는 넘긴 값이 null이면 "안 바꿈"으로 취급합니다. 그래서
@@ -182,7 +188,7 @@ class _ReferenceDetailScreenState extends State<ReferenceDetailScreen> {
 
       // 아래부터가 이 화면에서 고친 값들입니다.
       title: _titleController.text.trim(),
-      memo: memoText.isEmpty ? null : memoText,
+      memo: memoIsEmpty ? null : memoJson,
       folderId: _folderId,
       categoryId: _categoryId,
       partId: _partId,
@@ -248,15 +254,26 @@ class _ReferenceDetailScreenState extends State<ReferenceDetailScreen> {
         ),
         const SizedBox(height: 16),
 
-        TextField(
-          controller: _memoController,
-          // 메모는 여러 줄을 적을 수 있어야 합니다.
-          maxLines: 4,
-          decoration: const InputDecoration(
-            labelText: '메모',
-            alignLabelWithHint: true,
-            border: OutlineInputBorder(),
-          ),
+        Text('메모', style: Theme.of(context).textTheme.labelLarge),
+        const SizedBox(height: 8),
+        RichMemoEditor(
+          // widget.item.memo가 아니라 _memoJson을 넘깁니다. 이 편집기는 ListView
+          // 안에 있어서, 포커스를 잃은 채로 화면 밖으로 스크롤되면 통째로 사라졌다
+          // 다시 만들어집니다. 그때 원본(widget.item.memo)을 다시 넘기면 지금까지
+          // 고친 내용이 사라진 것처럼 보입니다.
+          //
+          // RichMemoEditor는 다시 만들어질 때마다 그 순간의 initialMemo로
+          // 새로 채워집니다(test/widgets/rich_memo_editor_test.dart의 "다시
+          // 만들어지면 그 시점의 initialMemo로 새로 채워진다" 참고) — 그래서
+          // 여기서 어떤 값을 넘기느냐가 전부입니다. onChanged로 _memoJson을
+          // 최신으로 유지해두는 것만으로는 부족하고, 이 위젯을 담고 있는
+          // ReferenceDetailScreen 자체가 다시 빌드돼야(예: 폴더를 고르거나
+          // 즐겨찾기를 누르는 등 다른 setState) 그 최신 _memoJson이 이
+          // RichMemoEditor 위젯에 실제로 실립니다 — 타이핑만으로는 이 화면이
+          // 다시 빌드되지 않기 때문입니다(_save를 누르기 전까지는 setState를
+          // 부르지 않는 설계, 위 "저장 시점" 설명 참고).
+          initialMemo: _memoJson,
+          onChanged: (String updated) => _memoJson = updated,
         ),
         const SizedBox(height: 24),
 
