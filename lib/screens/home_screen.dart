@@ -34,6 +34,7 @@ import '../services/dropped_item_reader.dart';
 import '../services/image_source.dart';
 import '../services/image_storage.dart';
 import '../services/local_player_server.dart';
+import '../services/phash_backfill.dart';
 import '../services/youtube_info_source.dart';
 import '../services/youtube_url.dart';
 import '../theme/app_metrics.dart';
@@ -240,6 +241,17 @@ class _HomeScreenState extends State<HomeScreen> {
 
     _loadTaxonomyOptions();
     _loadItems();
+
+    // 예전에 만들어져서 아직 pHash가 없는 레퍼런스를 화면 뒤에서 조용히
+    // 채웁니다. 새로 추가하는 레퍼런스는 들여오는 순간 이미 계산되므로
+    // (services/reference_importer.dart) 여기서는 그 전에 만들어진
+    // 것들만 대상이 됩니다. 결과를 기다리지 않고(await 없이) 그냥
+    // 던져둡니다 — 화면이 뜨는 걸 늦출 이유가 없고, 다 채워지고 나면
+    // 다음에 "유사한 것끼리"로 정렬하거나 화면을 다시 열 때 반영됩니다.
+    backfillMissingPHashes(
+      repository: widget.repository,
+      imageStorage: widget.imageStorage,
+    );
   }
 
   /// 화면이 사라질 때 만들어둔 것들을 정리합니다.
