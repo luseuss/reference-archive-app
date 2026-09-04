@@ -856,7 +856,11 @@ void main() {
     return tester.widget<BoardCardView>(finder).isSelected;
   }
 
-  testWidgets('Alt+빈 곳 끌기로 걸리는 카드만 선택된다', (WidgetTester tester) async {
+  testWidgets('빈 곳을 끌면 걸리는 카드만 선택된다 (마퀴)', (WidgetTester tester) async {
+    // 처음에는 "빈 곳 끌기 = 판 이동, Alt+빈 곳 끌기 = 마퀴"였는데, 의뢰인이
+    // 마퀴를 훨씬 자주 쓴다고 해서 **그냥 끌기가 마퀴**가 되고, 판 이동은
+    // 마우스 휠 버튼으로 옮겨졌습니다. 그래서 여기서는 Alt를 누르지 않습니다
+    // — 아무 버튼 수식 없이 끄는 것 자체가 마퀴입니다.
     final String refA = await saveReference('가');
     final String refB = await saveReference('나');
 
@@ -878,19 +882,58 @@ void main() {
       find.byKey(ValueKey<String>(a.id)),
     );
 
-    await withAltPressed(tester, () async {
-      final TestGesture drag = await tester.startGesture(start);
-      await tester.pump();
-      await drag.moveTo(aCenter + const Offset(40, 20));
-      await tester.pump();
-      await drag.up();
-      await tester.pumpAndSettle();
-    });
+    final TestGesture drag = await tester.startGesture(start);
+    await tester.pump();
+    await drag.moveTo(aCenter + const Offset(40, 20));
+    await tester.pump();
+    await drag.up();
+    await tester.pumpAndSettle();
 
     expect(isCardSelected(tester, a.id), isTrue, reason: 'a는 마퀴에 걸려야 합니다');
     expect(isCardSelected(tester, b.id), isFalse, reason: 'b는 멀리 있어 안 걸려야 합니다');
     expect(find.byType(BoardSelectionBar), findsOneWidget);
     expect(find.text('1개 선택됨'), findsOneWidget);
+  });
+
+  testWidgets('마우스 휠 버튼으로 빈 곳을 끌면 판이 움직일 뿐 선택되지 않는다', (
+    WidgetTester tester,
+  ) async {
+    // ── 판 이동과 마퀴가 서로 안 섞이는지 확인합니다 ──
+    // 휠 버튼으로 끌면 카드를 감싸더라도 **마퀴가 아니라 판 이동**이어야
+    // 합니다. 걸려도 아무것도 선택되면 안 됩니다.
+    final String refA = await saveReference('가');
+    final BoardCard a = await putCardOnBoard(referenceId: refA, x: 100, y: 100);
+
+    await openBoard(tester);
+
+    final Offset viewportTopLeft = tester.getTopLeft(find.byType(BoardViewport));
+    final Offset start = viewportTopLeft + const Offset(10, 10);
+    final Offset aCenterBefore = tester.getCenter(
+      find.byKey(ValueKey<String>(a.id)),
+    );
+
+    final TestGesture middleDrag = await tester.createGesture(
+      kind: PointerDeviceKind.mouse,
+      buttons: kMiddleMouseButton,
+    );
+    await middleDrag.addPointer(location: start);
+    await tester.pump();
+    await middleDrag.down(start);
+    await tester.pump();
+    await middleDrag.moveTo(aCenterBefore + const Offset(40, 20));
+    await tester.pump();
+    await middleDrag.up();
+    await tester.pumpAndSettle();
+    await middleDrag.removePointer();
+
+    expect(isCardSelected(tester, a.id), isFalse, reason: '휠 버튼 끌기는 선택이 아닙니다');
+    expect(find.byType(BoardSelectionBar), findsNothing);
+
+    // 판이 움직였으니 카드의 화면 자리도 옮겨져 있어야 합니다.
+    final Offset aCenterAfter = tester.getCenter(
+      find.byKey(ValueKey<String>(a.id)),
+    );
+    expect(aCenterAfter, isNot(aCenterBefore), reason: '판이 움직이지 않았습니다');
   });
 
   testWidgets('Shift+클릭으로 선택을 더하고 뺀다', (WidgetTester tester) async {
@@ -1012,7 +1055,8 @@ void main() {
 
   testWidgets('빈 곳을 클릭해도 판 이동에는 영향이 없다', (WidgetTester tester) async {
     // 회귀 확인: 클릭 판정을 Listener로 따로 보느라 판 이동(Pan)이
-    // 망가지면 안 됩니다.
+    // 망가지면 안 됩니다. 판 이동은 이제 마우스 휠 버튼으로 하므로,
+    // 그 버튼으로 끌어봅니다.
     final String refA = await saveReference('가');
     await putCardOnBoard(referenceId: refA, x: 100, y: 100);
 
@@ -1023,11 +1067,23 @@ void main() {
     // AppBar 아래, 화면에 실제로 보이는 자리에서 끕니다. (30, 30)처럼
     // 화면 맨 위쪽 좌표를 그대로 쓰면 AppBar 위를 눌러버립니다.
     final Offset viewportTopLeft = tester.getTopLeft(find.byType(BoardViewport));
-    await tester.dragFrom(
-      viewportTopLeft + const Offset(30, 30),
-      const Offset(90, 60),
+    final Offset start = viewportTopLeft + const Offset(30, 30);
+
+    final TestGesture middleDrag = await tester.createGesture(
+      kind: PointerDeviceKind.mouse,
+      buttons: kMiddleMouseButton,
     );
+    await middleDrag.addPointer(location: start);
+    await tester.pump();
+    await middleDrag.down(start);
+    await tester.pump();
+    await middleDrag.moveBy(const Offset(45, 30));
+    await tester.pump();
+    await middleDrag.moveBy(const Offset(45, 30));
+    await tester.pump();
+    await middleDrag.up();
     await tester.pumpAndSettle();
+    await middleDrag.removePointer();
 
     final Offset after = tester.getTopLeft(find.byType(BoardCanvas));
 

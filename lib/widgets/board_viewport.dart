@@ -17,18 +17,26 @@
 // 경계가 없으니 그릴 테두리도 없습니다.
 //
 // ── 조작 방법 ──
-//   빈 곳을 끌기          → 판 이동
-//   Alt + 빈 곳을 끌기    → 마퀴(선택 네모) 그리기
-//   빈 곳을 그냥 클릭     → 선택 지우기
-//   마우스 휠             → 커서 자리를 기준으로 확대·축소
-//   오른쪽 아래 버튼      → 확대 / 축소 / 카드 전부 보기
+//   빈 곳을 끌기              → 마퀴(선택 네모) 그리기
+//   마우스 휠 버튼으로 끌기    → 판 이동
+//   빈 곳을 그냥 클릭         → 선택 지우기
+//   마우스 휠을 굴리기        → 커서 자리를 기준으로 확대·축소
+//   오른쪽 아래 버튼          → 확대 / 축소 / 카드 전부 보기
+//
+// ── 왜 이렇게 나눴나 (마우스 휠 "버튼"과 "굴리기"는 다른 동작입니다) ──
+// 처음에는 "빈 곳 끌기 = 판 이동, Alt+빈 곳 끌기 = 마퀴"였습니다. 의뢰인이
+// 써보니 **마퀴를 훨씬 자주 쓰는데 그게 곁다리(Alt) 취급**이라 불편했습니다.
+// 그림 편집 프로그램들이 흔히 쓰는 배치(빈 드래그 = 선택, 휠 버튼 드래그 =
+// 화면 이동)로 바꿨습니다. Alt는 여전히 스냅에 씁니다(카드를 끌 때만 —
+// board_interaction_controller.dart의 `snapEnabled`) — 이 파일의 마퀴/판
+// 이동과는 아무 관계가 없습니다.
 //
 // ── 마퀴는 왜 여기 있나 (5단계 마퀴 다중선택) ──
 // 이 파일이 카드가 뭔지 모른다는 원칙은 그대로입니다. 마퀴 네모를
 // **화면 좌표로 그리고, 판 좌표로 바꿔서 위로 보고할 뿐** — "어느 카드가
 // 걸렸는지"는 이 파일이 아니라 board_interaction_controller.dart가
 // 정합니다. 판을 옮기는 손잡이와 같은 층에 있어서, 판 이동과 마퀴가
-// 같은 "빈 곳 끌기" 하나를 Alt 여부로 나눠 쓰게 만들기 쉬웠습니다.
+// 같은 "빈 곳 끌기" 하나를 **누른 버튼**으로 나눠 쓰게 만들기 쉬웠습니다.
 //
 // ── 왜 스크롤 위젯을 안 쓰나 (중요) ──
 // 1단계에서 스크롤로 만들었다가 **끌기가 스크롤에 져서 카드가 아예 안 잡혔습니다.**
@@ -232,10 +240,21 @@ class _BoardViewportState extends State<BoardViewport> {
   /// 눌린 뒤로 조금이라도 움직였는지 여부입니다. 클릭 여부를 가릴 때 씁니다.
   bool _emptyPointerMoved = false;
 
-  /// 빈 곳을 눌렀을 때 실행됩니다. 클릭 판정을 위해 시작점을 기억해둡니다.
+  /// 지금 눌려 있는 마우스 버튼입니다. 판 이동인지 마퀴인지 가리는 데 씁니다.
+  ///
+  /// `PointerDownEvent.buttons`는 [kPrimaryButton](왼쪽) / [kMiddleMouseButton]
+  /// (휠 버튼) / [kSecondaryButton](오른쪽)을 비트로 담고 있습니다. 터치는
+  /// 늘 kPrimaryButton으로 옵니다 — 손가락에는 "가운데 버튼"이 없습니다.
+  int _emptyPointerButtons = kPrimaryButton;
+
+  /// 빈 곳을 눌렀을 때 실행됩니다. 클릭 판정을 위해 시작점을, 어느 버튼인지도
+  /// 함께 기억해둡니다. **끌기가 시작되기(_onEmptyDragStart) 전에 먼저
+  /// 도착합니다** — Listener는 GestureDetector의 손이 아니라, 손가락이
+  /// 닿는 순간 곧바로 불립니다.
   void _onEmptyPointerDown(PointerDownEvent event) {
     _emptyPointerDownAt = event.position;
     _emptyPointerMoved = false;
+    _emptyPointerButtons = event.buttons;
   }
 
   /// 눌린 채로 움직이는 동안 실행됩니다. 조금이라도 움직였으면 표시해둡니다.
@@ -277,12 +296,15 @@ class _BoardViewportState extends State<BoardViewport> {
 
   /// 빈 곳에서 끌기가 시작될 때 실행됩니다.
   ///
-  /// Alt가 눌려 있으면 마퀴를, 아니면 판 이동을 시작합니다. **여기서
-  /// 한 번만** 확인합니다 — 끄는 도중에 Alt를 떼거나 눌러도 이미 정해진
-  /// 쪽으로 계속 갑니다. 도중에 바뀌면 마퀴가 판이 됐다 다시 마퀴가 됐다
-  /// 하며 뒤죽박죽이 됩니다.
+  /// **마우스 휠 버튼(가운데 버튼)으로 눌렀으면 판 이동**, 그 외(왼쪽 버튼,
+  /// 터치)는 전부 마퀴입니다. **여기서 한 번만** 확인합니다 — 끄는 도중에
+  /// 버튼을 더 누르거나 떼도 이미 정해진 쪽으로 계속 갑니다. 도중에
+  /// 바뀌면 마퀴가 판이 됐다 다시 마퀴가 됐다 하며 뒤죽박죽이 됩니다.
   void _onEmptyDragStart(DragStartDetails details) {
-    if (!HardwareKeyboard.instance.isAltPressed) {
+    final bool isPanning = _emptyPointerButtons & kMiddleMouseButton != 0;
+    if (isPanning) {
+      // 아무것도 안 하면 _onEmptyDragUpdate가 (marqueeActive가 거짓인 채로)
+      // 기본값인 판 이동으로 처리합니다.
       return;
     }
 
@@ -427,8 +449,10 @@ class _BoardViewportState extends State<BoardViewport> {
               // 판에 끝이 없어진 뒤로 이 바닥이 곧 판의 바탕이기도 합니다.
               Positioned.fill(
                 child: MouseRegion(
-                  // 끌어서 옮길 수 있다는 것을 커서 모양으로 알려줍니다.
-                  cursor: SystemMouseCursors.grab,
+                  // 기본 커서로 둡니다. 빈 곳에서의 기본 동작은 이제 **마퀴
+                  // 선택**이라, 손 모양(잡기) 커서를 두면 판이 움직일 것처럼
+                  // 보여 오해를 줍니다. 휠 버튼으로 눌러야 판이 움직입니다.
+                  cursor: SystemMouseCursors.basic,
 
                   // ── 클릭 여부는 Listener로 따로 봅니다 ──
                   // 처음에는 GestureDetector.onTap을 같이 뒀는데, 그러면
@@ -441,16 +465,46 @@ class _BoardViewportState extends State<BoardViewport> {
                     onPointerDown: _onEmptyPointerDown,
                     onPointerMove: _onEmptyPointerMove,
                     onPointerUp: _onEmptyPointerUp,
-                    child: GestureDetector(
+
+                    // ── GestureDetector가 아니라 RawGestureDetector를 쓰는 이유 ──
+                    // 보통의 GestureDetector.onPanStart는 **왼쪽 버튼만** 받습니다
+                    // (Flutter의 PanGestureRecognizer 기본 동작). 그래서 휠 버튼
+                    // 끌기를 판 이동에 쓰려면, 버튼을 직접 고를 수 있는
+                    // RawGestureDetector로 PanGestureRecognizer를 만들어야 합니다.
+                    child: RawGestureDetector(
                       // opaque = 색이 없는 곳도 눌린 것으로 칩니다.
                       // 안 그러면 투명한 부분에서는 끌기가 시작되지 않습니다.
                       behavior: HitTestBehavior.opaque,
 
-                      // Alt 여부로 마퀴/판 이동을 가릅니다. (_onEmptyDragStart 설명 참고)
-                      onPanStart: _onEmptyDragStart,
-                      onPanUpdate: (DragUpdateDetails details) =>
-                          _onEmptyDragUpdate(details, viewport),
-                      onPanEnd: _onEmptyDragEnd,
+                      gestures: <Type, GestureRecognizerFactory>{
+                        PanGestureRecognizer:
+                            GestureRecognizerFactoryWithHandlers<
+                              PanGestureRecognizer
+                            >(
+                              () => PanGestureRecognizer(
+                                // 왼쪽 버튼(마퀴)과 휠 버튼(판 이동) 둘 다
+                                // 받습니다. 어느 쪽이었는지는
+                                // _onEmptyDragStart가 _emptyPointerButtons로
+                                // 가릅니다.
+                                allowedButtonsFilter: (int buttons) =>
+                                    buttons == kPrimaryButton ||
+                                    buttons == kMiddleMouseButton,
+                              ),
+                              (PanGestureRecognizer instance) {
+                                // ── 화살표 함수(=>)가 아니라 블록({ })을 씁니다 ──
+                                // 화살표 함수는 다음 `..`까지를 자기 몸통으로
+                                // 삼켜버려서, `..onEnd = ...`가 이 함수의 반환값
+                                // (void)에 캐스케이드로 붙으려다 컴파일 오류가
+                                // 납니다. 블록으로 몸통을 확실히 닫아야 합니다.
+                                instance
+                                  ..onStart = _onEmptyDragStart
+                                  ..onUpdate = (DragUpdateDetails details) {
+                                    _onEmptyDragUpdate(details, viewport);
+                                  }
+                                  ..onEnd = _onEmptyDragEnd;
+                              },
+                            ),
+                      },
 
                       child: ColoredBox(color: palette.background),
                     ),

@@ -509,12 +509,26 @@ lib/
   - 격자를 켠 것은 **기억하지 않습니다.** 판을 나갔다 오면 꺼집니다.
     기존 웹앱과 같습니다.
 
-  **마퀴 다중선택은 이렇게 되어 있습니다 (PR #25):**
-  - **Alt+빈 곳 끌기가 마퀴입니다.** 평소 빈 곳 끌기(판 이동)와 같은
-    손잡이를 공유하고, `_onEmptyDragStart`에서 그 순간 Alt가 눌려
-    있었는지로 한 번만 가릅니다. 끄는 도중에 Alt를 떼거나 눌러도
-    이미 정해진 쪽으로 계속 갑니다 — 안 그러면 마퀴가 판이 됐다 다시
-    마퀴가 됐다 하며 뒤죽박죽이 됩니다. (`board_viewport.dart`)
+  **마퀴 다중선택은 이렇게 되어 있습니다 (PR #25, 조작법은 PR #34에서 바뀜):**
+  - **빈 곳 끌기가 마퀴입니다.** 판 이동(마우스 휠 버튼으로 끌기)과 같은
+    손잡이를 공유하고, `_onEmptyDragStart`에서 그 순간 **눌린 버튼이
+    무엇이었는지**로 한 번만 가릅니다(`_emptyPointerButtons`). 끄는
+    도중에 다른 버튼을 누르거나 떼도 이미 정해진 쪽으로 계속 갑니다 —
+    안 그러면 마퀴가 판이 됐다 다시 마퀴가 됐다 하며 뒤죽박죽이 됩니다.
+    (`board_viewport.dart`)
+  - **처음엔 반대였습니다** — "빈 곳 끌기 = 판 이동, Alt+빈 곳 끌기 =
+    마퀴". 의뢰인이 써보니 마퀴를 훨씬 자주 쓰는데 그게 곁다리(Alt)
+    취급이라 불편했습니다. 그림 편집 프로그램들이 흔히 쓰는 배치로
+    바꿨습니다(PR #34): **빈 드래그 = 선택, 마우스 휠 버튼 드래그 = 화면
+    이동.** Alt는 여전히 스냅에만 씁니다 — 마퀴/판 이동과는 이제
+    아무 관계가 없습니다.
+  - **버튼을 가리려면 `RawGestureDetector`가 필요합니다.** 보통의
+    `GestureDetector.onPanStart`는 **왼쪽 버튼만** 받습니다(Flutter의
+    `PanGestureRecognizer` 기본 동작 — `_defaultButtonAcceptBehavior`가
+    `buttons == kPrimaryButton`만 통과시킵니다). 휠 버튼 끌기까지
+    받으려면 `PanGestureRecognizer(allowedButtonsFilter: ...)`를 직접
+    만들어야 하고, `GestureDetector`는 그 값을 밖으로 안 열어주므로
+    `RawGestureDetector`를 씁니다.
   - **선택·클릭 판정은 GestureDetector가 아니라 `Listener`로 봅니다.**
     처음에는 `onTapDown`/`onTap`을 카드·빈 곳의 기존 `GestureDetector`에
     같이 뒀는데, 그러면 **끌기 인식기가 탭 인식기와 경쟁하게 됩니다.**
