@@ -62,9 +62,24 @@ class LocalTaxonomyRepository implements TaxonomyRepository {
         );
   }
 
-  /// 항목을 지웁니다(소프트 삭제). 이 항목을 쓰던 레퍼런스에서도 연결을 끊습니다.
+  /// 항목을 지웁니다(소프트 삭제). 이 항목을 쓰던 레퍼런스도 함께 정리합니다.
+  ///
+  /// **기본 파트는 지우지 않습니다.** 아래 설명을 보세요.
   @override
   Future<void> delete(String id) async {
+    // ── 기본 파트만은 지울 수 없습니다 ──
+    // 파트를 지우면 그 안의 레퍼런스를 기본 파트로 옮기는데, 기본 파트 자신을
+    // 지우면 옮길 곳이 없습니다. 게다가 새 레퍼런스는 아무 파트도 안 고른 상태에서
+    // 기본 파트로 들어가므로(home_screen.dart의 `_partIdForNewItems`),
+    // 기본 파트가 없어지면 **새로 넣는 레퍼런스가 전부 사라진 파트에 들어가** 버립니다.
+    //
+    // 화면에서도 지우기 버튼을 잠가두지만(taxonomy_manage_screen.dart),
+    // 여기서 한 번 더 막습니다. 나중에 다른 화면에서 delete()를 부르게 되어도
+    // 이 규칙이 저절로 지켜집니다.
+    if (id == defaultPartId) {
+      return;
+    }
+
     final DateTime now = DateTime.now().toUtc();
 
     // 항목 본체와 그 항목을 쓰던 곳들을 함께 정리합니다.
@@ -94,6 +109,22 @@ class LocalTaxonomyRepository implements TaxonomyRepository {
       await (_db.update(_db.references)..where(($ReferencesTable t) => t.categoryId.equals(id)))
           .write(ReferencesCompanion(
         categoryId: const Value<String?>(null),
+        updatedAt: Value<DateTime>(now),
+      ));
+
+      // ── 파트만 다르게 다룹니다: 비우지 않고 기본 파트로 옮깁니다 ──
+      // 폴더·카테고리는 비워도(null) 목록에서 그대로 보입니다. "폴더 없음"이
+      // 정상적인 상태이기 때문입니다.
+      //
+      // 파트는 다릅니다. 사이드바가 **파트별로만** 레퍼런스를 보여주기 때문에,
+      // 어느 파트에도 안 속한 레퍼런스는 어느 파트를 눌러도 안 보입니다
+      // ("전체 레퍼런스"에는 남지만, 사용자 눈에는 사라진 것과 같습니다).
+      //
+      // 그래서 갈 곳을 만들어줍니다. 기본 파트는 지울 수 없으므로(위 참고)
+      // 여기가 언제나 존재하는 안전한 자리입니다.
+      await (_db.update(_db.references)..where(($ReferencesTable t) => t.partId.equals(id)))
+          .write(ReferencesCompanion(
+        partId: const Value<String?>(defaultPartId),
         updatedAt: Value<DateTime>(now),
       ));
     });
@@ -135,12 +166,18 @@ class LocalTaxonomyRepository implements TaxonomyRepository {
   /// 어차피 한쪽에서만 걸립니다.
   @override
   Future<int> countReferencesUsing(String id) async {
-    // 폴더나 카테고리로 쓰이는 레퍼런스
+    // 폴더·카테고리·파트로 쓰이는 레퍼런스
+    //
+    // **파트를 빠뜨리면 안 됩니다.** 파트에 레퍼런스가 50장 들어있어도
+    // "쓰는 레퍼런스는 없습니다"라고 안내하게 되어, 사용자는 아무 일도
+    // 안 일어날 줄 알고 지웁니다. (파트를 만들 때 여기를 빠뜨렸던 실수입니다)
     final int directCount = await _db
         .references
         .count(
           where: ($ReferencesTable t) =>
-              (t.folderId.equals(id) | t.categoryId.equals(id)) &
+              (t.folderId.equals(id) |
+                  t.categoryId.equals(id) |
+                  t.partId.equals(id)) &
               t.deletedAt.isNull(),
         )
         .getSingle();
