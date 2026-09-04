@@ -65,6 +65,7 @@ class BoardCard {
     this.width = defaultBoardCardWidth,
     this.height,
     this.zOrder = 0,
+    this.groupId,
   });
 
   /// 이 배치의 고유 번호(UUID v4)
@@ -97,6 +98,14 @@ class BoardCard {
   /// 겹쳤을 때 누가 위로 오는지. 클수록 위입니다.
   final int zOrder;
 
+  /// 이 카드가 속한 그룹의 번호입니다. 그룹에 안 속해 있으면 null입니다.
+  ///
+  /// 같은 groupId를 가진 카드들은 하나처럼 다뤄집니다 — 아무거나 골라도
+  /// 전부 같이 골라지고, 하나를 끌면 다 같이 끌립니다. 카드의 고유 번호
+  /// ([id])와는 다른 값입니다. 자세한 설명은 lib/data/tables.dart의
+  /// BoardCards.groupId를 보세요.
+  final String? groupId;
+
   /// 판에 올린 시각 (UTC)
   final DateTime createdAt;
 
@@ -105,16 +114,16 @@ class BoardCard {
 
   /// 몇 가지만 바꾼 사본을 만들어 돌려줍니다.
   ///
-  /// height는 여기서 null로 되돌릴 수 없습니다. 인자를 안 넘긴 것과
-  /// null을 넘긴 것을 구분할 수 없기 때문입니다(reference_item.dart와 같은 사정).
-  /// 지금은 되돌릴 일이 없어서 따로 만들지 않았습니다. 2단계에서 "원래 비율로"
-  /// 버튼을 붙이게 되면 clearHeight()를 그때 만드세요.
+  /// height·groupId는 여기서 null로 되돌릴 수 없습니다. 인자를 안 넘긴
+  /// 것과 null을 넘긴 것을 구분할 수 없기 때문입니다(reference_item.dart와
+  /// 같은 사정). groupId를 비우려면(그룹 해제) [ungroup]을 쓰세요.
   BoardCard copyWith({
     double? x,
     double? y,
     double? width,
     double? height,
     int? zOrder,
+    String? groupId,
     DateTime? updatedAt,
   }) {
     return BoardCard(
@@ -126,8 +135,30 @@ class BoardCard {
       width: width ?? this.width,
       height: height ?? this.height,
       zOrder: zOrder ?? this.zOrder,
+      groupId: groupId ?? this.groupId,
       createdAt: createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
+    );
+  }
+
+  /// 그룹에서 뺀 사본을 돌려줍니다. (그룹 해제)
+  ///
+  /// copyWith로는 안 됩니다 — groupId에 null을 넘겨도 "안 바꿈"으로
+  /// 취급되기 때문입니다(위 copyWith 설명 참고). reference_item.dart의
+  /// clearFolder()와 같은 이유로, 값을 하나하나 다시 적는 생성자를 씁니다.
+  BoardCard ungroup() {
+    return BoardCard(
+      id: id,
+      boardId: boardId,
+      referenceId: referenceId,
+      x: x,
+      y: y,
+      width: width,
+      height: height,
+      zOrder: zOrder,
+      groupId: null,
+      createdAt: createdAt,
+      updatedAt: updatedAt,
     );
   }
 }

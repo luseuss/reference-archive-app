@@ -229,12 +229,14 @@ class BoardInteractionController extends ChangeNotifier {
   /// 선택합니다.
   void onCardPressed(BoardCard card, {required bool shiftHeld}) {
     if (shiftHeld) {
-      _toggleSelection(card.id);
+      _toggleGroupSelection(card);
       return;
     }
 
     if (!(_selectedCardIds.contains(card.id) && _selectedCardIds.length > 1)) {
-      _selectedCardIds = <String>{card.id};
+      // 그룹에 안 속한 카드면 [_groupMembersOf]가 자기 자신 하나만
+      // 돌려주므로, 예전과 똑같이 이 카드 하나만 골라집니다.
+      _selectedCardIds = _groupMembersOf(card);
       notifyListeners();
     }
   }
@@ -417,12 +419,39 @@ class BoardInteractionController extends ChangeNotifier {
 
   // ── 여기서부터는 선택·마퀴(5단계 마퀴 다중선택)입니다 ──
 
-  /// [cardId]가 선택돼 있으면 빼고, 아니면 더합니다. (Shift+클릭)
-  void _toggleSelection(String cardId) {
-    final Set<String> next = Set<String>.of(_selectedCardIds);
-    if (!next.remove(cardId)) {
-      next.add(cardId);
+  /// [card]가 속한 그룹의 카드 번호 전부를 돌려줍니다.
+  ///
+  /// 그룹에 안 속해 있으면([card.groupId]가 null이면) 자기 자신 하나만
+  /// 든 목록을 돌려줍니다 — "그룹이 없다"는 것은 "그룹의 크기가 1이다"와
+  /// 같은 뜻으로 다루면, 선택·마퀴 코드가 그룹이 있는지 없는지를 따로
+  /// 갈라 처리하지 않아도 됩니다.
+  Set<String> _groupMembersOf(BoardCard card) {
+    final String? groupId = card.groupId;
+    if (groupId == null) {
+      return <String>{card.id};
     }
+
+    return <String>{
+      for (final BoardCard each in _cards)
+        if (each.groupId == groupId) each.id,
+    };
+  }
+
+  /// [card]가 속한 그룹 전체가 선택돼 있으면 빼고, 아니면 더합니다. (Shift+클릭)
+  ///
+  /// 그룹은 하나처럼 다뤄지므로, 그룹의 카드 한 장만 선택에서 빠지는 어중간한
+  /// 상태는 만들지 않습니다. 그룹에 안 속한 카드라면 그 카드 하나만
+  /// 더하고 빼는 예전과 같은 동작이 됩니다([_groupMembersOf] 설명 참고).
+  void _toggleGroupSelection(BoardCard card) {
+    final Set<String> members = _groupMembersOf(card);
+    final Set<String> next = Set<String>.of(_selectedCardIds);
+
+    if (next.containsAll(members)) {
+      next.removeAll(members);
+    } else {
+      next.addAll(members);
+    }
+
     _selectedCardIds = next;
     notifyListeners();
   }
@@ -462,19 +491,26 @@ class BoardInteractionController extends ChangeNotifier {
   /// 걸치면** 선택됩니다. 기존 웹앱과 같은 규칙입니다. 카드가 큰 판에서는
   /// "다 담아야 골라진다"가 오히려 손이 많이 갑니다.
   ///
+  /// **그룹은 한 장만 걸려도 전체가 선택됩니다.** 그룹의 절반만 마퀴에
+  /// 걸려서 나머지 절반은 안 골라지는 어중간한 상태를 만들지 않으려는
+  /// 것입니다([_toggleGroupSelection]과 같은 원칙입니다).
+  ///
   /// 매 순간 그때까지의 결과를 바로 selectedCardIds에 반영합니다. 그래야
   /// 마퀴를 끄는 동안 카드가 실시간으로 파랗게 물듭니다.
   void updateMarquee(Rect canvasRect) {
     _marqueeMoved = true;
 
-    final Set<String> hits = <String>{
-      for (final BoardCard card in _cards)
-        if (boardCardRect(
-          card,
-          measuredHeights: _measuredHeights,
-        ).overlaps(canvasRect))
-          card.id,
-    };
+    final Set<String> hits = <String>{};
+    for (final BoardCard card in _cards) {
+      final bool overlaps = boardCardRect(
+        card,
+        measuredHeights: _measuredHeights,
+      ).overlaps(canvasRect);
+
+      if (overlaps) {
+        hits.addAll(_groupMembersOf(card));
+      }
+    }
 
     _selectedCardIds = _marqueeAdditive
         ? <String>{..._marqueeBase, ...hits}
@@ -513,6 +549,101 @@ class BoardInteractionController extends ChangeNotifier {
         .toList();
     _selectedCardIds = <String>{};
     notifyListeners();
+  }
+
+  // ── 여기서부터는 그룹화(카드 여러 장을 계속 묶어두기)입니다 ──
+  //
+  // 마퀴 다중선택은 판을 나가면 잊혀집니다("무엇을 골랐는지"는 지금 보는
+  // 화면에서만 뜻이 있는 값이라고 위에서 설명한 대로). 그룹은 반대로
+  // **저장됩니다** — 판을 나갔다 다시 열어도, 묶어둔 카드들은 계속
+  // 하나처럼 움직입니다. BoardCard.groupId(lib/models/board.dart)가
+  // 그 값입니다.
+
+  /// 번호로 카드를 찾습니다. 없으면 null입니다.
+  BoardCard? _cardById(String cardId) {
+    final int index = indexOfCard(_cards, cardId);
+    return index == -1 ? null : _cards[index];
+  }
+
+  /// 지금 선택을 그룹으로 묶을 수 있는지 여부입니다.
+  ///
+  /// 2장 이상이어야 합니다 — 묶는다는 것 자체가 "여럿을 하나로"라는
+  /// 뜻이라, 한 장으로는 뜻이 없습니다. 선택 툴바가 버튼을 흐리게 할지
+  /// 정하는 데 씁니다.
+  bool get canGroupSelected => _selectedCardIds.length >= 2;
+
+  /// 지금 선택 중에 이미 그룹에 속한 카드가 있는지 여부입니다.
+  ///
+  /// 하나라도 있으면 "그룹 해제"가 뜻이 있습니다. 선택 툴바가 버튼을
+  /// 흐리게 할지 정하는 데 씁니다.
+  bool get canUngroupSelected =>
+      _selectedCardIds.any((String id) => _cardById(id)?.groupId != null);
+
+  /// 선택된 카드들을 하나의 그룹으로 묶어 저장합니다.
+  ///
+  /// 그 뒤로는 그중 아무 카드나 눌러도 **전체가 함께** 골라지고, 함께
+  /// 끌립니다. 2장 미만이면 아무 일도 하지 않습니다.
+  ///
+  /// 선택된 카드가 **이미 전부 같은 그룹**이면 새로 묶을 것이 없어
+  /// 조용히 넘어갑니다 — 새 번호로 다시 묶어봐야 결과가 똑같은데
+  /// 데이터베이스만 한 번 더 씁니다.
+  Future<void> groupSelected() async {
+    if (!canGroupSelected) {
+      return;
+    }
+
+    final Set<String?> existingGroupIds = _selectedCardIds
+        .map((String id) => _cardById(id)?.groupId)
+        .toSet();
+    if (existingGroupIds.length == 1 && existingGroupIds.single != null) {
+      return;
+    }
+
+    final String groupId = newId();
+    final List<BoardCard> changed = <BoardCard>[];
+
+    _cards = _cards.map((BoardCard card) {
+      if (!_selectedCardIds.contains(card.id)) {
+        return card;
+      }
+      final BoardCard grouped = card.copyWith(groupId: groupId);
+      changed.add(grouped);
+      return grouped;
+    }).toList();
+    notifyListeners();
+
+    await boardRepository.saveCards(changed);
+  }
+
+  /// 선택된 카드가 속한 그룹을 전부 풀고 저장합니다.
+  ///
+  /// **선택된 카드만 빼는 것이 아니라, 그 카드가 속한 그룹 전체를
+  /// 풉니다.** 그룹의 절반만 풀리고 나머지 절반은 계속 묶여 있는
+  /// 어중간한 상태를 만들지 않으려는 것입니다(마퀴·Shift+클릭에서
+  /// 그룹을 하나처럼 다루는 것과 같은 원칙 — [_toggleGroupSelection] 참고).
+  Future<void> ungroupSelected() async {
+    final Set<String> groupIds = _selectedCardIds
+        .map((String id) => _cardById(id)?.groupId)
+        .whereType<String>()
+        .toSet();
+
+    if (groupIds.isEmpty) {
+      return;
+    }
+
+    final List<BoardCard> changed = <BoardCard>[];
+
+    _cards = _cards.map((BoardCard card) {
+      if (card.groupId == null || !groupIds.contains(card.groupId)) {
+        return card;
+      }
+      final BoardCard ungrouped = card.ungroup();
+      changed.add(ungrouped);
+      return ungrouped;
+    }).toList();
+    notifyListeners();
+
+    await boardRepository.saveCards(changed);
   }
 
   // ── 여기서부터는 정렬·분배(6단계)입니다 ──

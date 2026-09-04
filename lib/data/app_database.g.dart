@@ -2117,6 +2117,17 @@ class $BoardCardsTable extends BoardCards
     requiredDuringInsert: false,
     defaultValue: const Constant(0),
   );
+  static const VerificationMeta _groupIdMeta = const VerificationMeta(
+    'groupId',
+  );
+  @override
+  late final GeneratedColumn<String> groupId = GeneratedColumn<String>(
+    'group_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _createdAtMeta = const VerificationMeta(
     'createdAt',
   );
@@ -2160,6 +2171,7 @@ class $BoardCardsTable extends BoardCards
     width,
     height,
     zOrder,
+    groupId,
     createdAt,
     updatedAt,
     deletedAt,
@@ -2228,6 +2240,12 @@ class $BoardCardsTable extends BoardCards
         zOrder.isAcceptableOrUnknown(data['z_order']!, _zOrderMeta),
       );
     }
+    if (data.containsKey('group_id')) {
+      context.handle(
+        _groupIdMeta,
+        groupId.isAcceptableOrUnknown(data['group_id']!, _groupIdMeta),
+      );
+    }
     if (data.containsKey('created_at')) {
       context.handle(
         _createdAtMeta,
@@ -2291,6 +2309,10 @@ class $BoardCardsTable extends BoardCards
         DriftSqlType.int,
         data['${effectivePrefix}z_order'],
       )!,
+      groupId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}group_id'],
+      ),
       createdAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}created_at'],
@@ -2348,6 +2370,17 @@ class BoardCardRow extends DataClass implements Insertable<BoardCardRow> {
   /// 아래 깔린 카드를 영영 집을 수 없게 됩니다.
   final int zOrder;
 
+  /// 이 카드가 속한 그룹의 번호입니다. 그룹에 안 속해 있으면 비어 있습니다.
+  ///
+  /// 같은 groupId를 가진 카드들은 **하나처럼** 다뤄집니다 — 그중 아무거나
+  /// 골라도 전부 같이 골라지고, 하나를 끌면 다 같이 끌립니다(4단계 5번의
+  /// 마퀴 다중선택과 비슷하지만, 마퀴는 판을 나가면 잊혀지고 이 값은
+  /// 저장됩니다).
+  ///
+  /// 카드의 고유 번호([id])와는 다른 값입니다. 이건 "묶음 자체"를 가리키는
+  /// 번호이고, 같은 묶음의 카드 여러 장이 같은 groupId를 나눠 가집니다.
+  final String? groupId;
+
   /// 판에 올린 시각 (UTC)
   final DateTime createdAt;
 
@@ -2365,6 +2398,7 @@ class BoardCardRow extends DataClass implements Insertable<BoardCardRow> {
     required this.width,
     this.height,
     required this.zOrder,
+    this.groupId,
     required this.createdAt,
     required this.updatedAt,
     this.deletedAt,
@@ -2382,6 +2416,9 @@ class BoardCardRow extends DataClass implements Insertable<BoardCardRow> {
       map['height'] = Variable<double>(height);
     }
     map['z_order'] = Variable<int>(zOrder);
+    if (!nullToAbsent || groupId != null) {
+      map['group_id'] = Variable<String>(groupId);
+    }
     map['created_at'] = Variable<DateTime>(createdAt);
     map['updated_at'] = Variable<DateTime>(updatedAt);
     if (!nullToAbsent || deletedAt != null) {
@@ -2402,6 +2439,9 @@ class BoardCardRow extends DataClass implements Insertable<BoardCardRow> {
           ? const Value.absent()
           : Value(height),
       zOrder: Value(zOrder),
+      groupId: groupId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(groupId),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
       deletedAt: deletedAt == null && nullToAbsent
@@ -2424,6 +2464,7 @@ class BoardCardRow extends DataClass implements Insertable<BoardCardRow> {
       width: serializer.fromJson<double>(json['width']),
       height: serializer.fromJson<double?>(json['height']),
       zOrder: serializer.fromJson<int>(json['zOrder']),
+      groupId: serializer.fromJson<String?>(json['groupId']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
       deletedAt: serializer.fromJson<DateTime?>(json['deletedAt']),
@@ -2441,6 +2482,7 @@ class BoardCardRow extends DataClass implements Insertable<BoardCardRow> {
       'width': serializer.toJson<double>(width),
       'height': serializer.toJson<double?>(height),
       'zOrder': serializer.toJson<int>(zOrder),
+      'groupId': serializer.toJson<String?>(groupId),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
       'deletedAt': serializer.toJson<DateTime?>(deletedAt),
@@ -2456,6 +2498,7 @@ class BoardCardRow extends DataClass implements Insertable<BoardCardRow> {
     double? width,
     Value<double?> height = const Value.absent(),
     int? zOrder,
+    Value<String?> groupId = const Value.absent(),
     DateTime? createdAt,
     DateTime? updatedAt,
     Value<DateTime?> deletedAt = const Value.absent(),
@@ -2468,6 +2511,7 @@ class BoardCardRow extends DataClass implements Insertable<BoardCardRow> {
     width: width ?? this.width,
     height: height.present ? height.value : this.height,
     zOrder: zOrder ?? this.zOrder,
+    groupId: groupId.present ? groupId.value : this.groupId,
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
     deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
@@ -2484,6 +2528,7 @@ class BoardCardRow extends DataClass implements Insertable<BoardCardRow> {
       width: data.width.present ? data.width.value : this.width,
       height: data.height.present ? data.height.value : this.height,
       zOrder: data.zOrder.present ? data.zOrder.value : this.zOrder,
+      groupId: data.groupId.present ? data.groupId.value : this.groupId,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
       deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
@@ -2501,6 +2546,7 @@ class BoardCardRow extends DataClass implements Insertable<BoardCardRow> {
           ..write('width: $width, ')
           ..write('height: $height, ')
           ..write('zOrder: $zOrder, ')
+          ..write('groupId: $groupId, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('deletedAt: $deletedAt')
@@ -2518,6 +2564,7 @@ class BoardCardRow extends DataClass implements Insertable<BoardCardRow> {
     width,
     height,
     zOrder,
+    groupId,
     createdAt,
     updatedAt,
     deletedAt,
@@ -2534,6 +2581,7 @@ class BoardCardRow extends DataClass implements Insertable<BoardCardRow> {
           other.width == this.width &&
           other.height == this.height &&
           other.zOrder == this.zOrder &&
+          other.groupId == this.groupId &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt &&
           other.deletedAt == this.deletedAt);
@@ -2548,6 +2596,7 @@ class BoardCardsCompanion extends UpdateCompanion<BoardCardRow> {
   final Value<double> width;
   final Value<double?> height;
   final Value<int> zOrder;
+  final Value<String?> groupId;
   final Value<DateTime> createdAt;
   final Value<DateTime> updatedAt;
   final Value<DateTime?> deletedAt;
@@ -2561,6 +2610,7 @@ class BoardCardsCompanion extends UpdateCompanion<BoardCardRow> {
     this.width = const Value.absent(),
     this.height = const Value.absent(),
     this.zOrder = const Value.absent(),
+    this.groupId = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.deletedAt = const Value.absent(),
@@ -2575,6 +2625,7 @@ class BoardCardsCompanion extends UpdateCompanion<BoardCardRow> {
     this.width = const Value.absent(),
     this.height = const Value.absent(),
     this.zOrder = const Value.absent(),
+    this.groupId = const Value.absent(),
     required DateTime createdAt,
     required DateTime updatedAt,
     this.deletedAt = const Value.absent(),
@@ -2595,6 +2646,7 @@ class BoardCardsCompanion extends UpdateCompanion<BoardCardRow> {
     Expression<double>? width,
     Expression<double>? height,
     Expression<int>? zOrder,
+    Expression<String>? groupId,
     Expression<DateTime>? createdAt,
     Expression<DateTime>? updatedAt,
     Expression<DateTime>? deletedAt,
@@ -2609,6 +2661,7 @@ class BoardCardsCompanion extends UpdateCompanion<BoardCardRow> {
       if (width != null) 'width': width,
       if (height != null) 'height': height,
       if (zOrder != null) 'z_order': zOrder,
+      if (groupId != null) 'group_id': groupId,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (deletedAt != null) 'deleted_at': deletedAt,
@@ -2625,6 +2678,7 @@ class BoardCardsCompanion extends UpdateCompanion<BoardCardRow> {
     Value<double>? width,
     Value<double?>? height,
     Value<int>? zOrder,
+    Value<String?>? groupId,
     Value<DateTime>? createdAt,
     Value<DateTime>? updatedAt,
     Value<DateTime?>? deletedAt,
@@ -2639,6 +2693,7 @@ class BoardCardsCompanion extends UpdateCompanion<BoardCardRow> {
       width: width ?? this.width,
       height: height ?? this.height,
       zOrder: zOrder ?? this.zOrder,
+      groupId: groupId ?? this.groupId,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       deletedAt: deletedAt ?? this.deletedAt,
@@ -2673,6 +2728,9 @@ class BoardCardsCompanion extends UpdateCompanion<BoardCardRow> {
     if (zOrder.present) {
       map['z_order'] = Variable<int>(zOrder.value);
     }
+    if (groupId.present) {
+      map['group_id'] = Variable<String>(groupId.value);
+    }
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
@@ -2699,6 +2757,7 @@ class BoardCardsCompanion extends UpdateCompanion<BoardCardRow> {
           ..write('width: $width, ')
           ..write('height: $height, ')
           ..write('zOrder: $zOrder, ')
+          ..write('groupId: $groupId, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('deletedAt: $deletedAt, ')
@@ -3751,6 +3810,7 @@ typedef $$BoardCardsTableCreateCompanionBuilder = BoardCardsCompanion Function({
   Value<double> width,
   Value<double?> height,
   Value<int> zOrder,
+  Value<String?> groupId,
   required DateTime createdAt,
   required DateTime updatedAt,
   Value<DateTime?> deletedAt,
@@ -3765,6 +3825,7 @@ typedef $$BoardCardsTableUpdateCompanionBuilder = BoardCardsCompanion Function({
   Value<double> width,
   Value<double?> height,
   Value<int> zOrder,
+  Value<String?> groupId,
   Value<DateTime> createdAt,
   Value<DateTime> updatedAt,
   Value<DateTime?> deletedAt,
@@ -3817,6 +3878,11 @@ class $$BoardCardsTableFilterComposer
 
   ColumnFilters<int> get zOrder => $composableBuilder(
     column: $table.zOrder,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get groupId => $composableBuilder(
+    column: $table.groupId,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -3885,6 +3951,11 @@ class $$BoardCardsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get groupId => $composableBuilder(
+    column: $table.groupId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get createdAt => $composableBuilder(
     column: $table.createdAt,
     builder: (column) => ColumnOrderings(column),
@@ -3936,6 +4007,9 @@ class $$BoardCardsTableAnnotationComposer
   GeneratedColumn<int> get zOrder =>
       $composableBuilder(column: $table.zOrder, builder: (column) => column);
 
+  GeneratedColumn<String> get groupId =>
+      $composableBuilder(column: $table.groupId, builder: (column) => column);
+
   GeneratedColumn<DateTime> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
 
@@ -3985,6 +4059,7 @@ class $$BoardCardsTableTableManager
                 Value<double> width = const Value.absent(),
                 Value<double?> height = const Value.absent(),
                 Value<int> zOrder = const Value.absent(),
+                Value<String?> groupId = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
                 Value<DateTime?> deletedAt = const Value.absent(),
@@ -3998,6 +4073,7 @@ class $$BoardCardsTableTableManager
                 width: width,
                 height: height,
                 zOrder: zOrder,
+                groupId: groupId,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
                 deletedAt: deletedAt,
@@ -4013,6 +4089,7 @@ class $$BoardCardsTableTableManager
                 Value<double> width = const Value.absent(),
                 Value<double?> height = const Value.absent(),
                 Value<int> zOrder = const Value.absent(),
+                Value<String?> groupId = const Value.absent(),
                 required DateTime createdAt,
                 required DateTime updatedAt,
                 Value<DateTime?> deletedAt = const Value.absent(),
@@ -4026,6 +4103,7 @@ class $$BoardCardsTableTableManager
                 width: width,
                 height: height,
                 zOrder: zOrder,
+                groupId: groupId,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
                 deletedAt: deletedAt,

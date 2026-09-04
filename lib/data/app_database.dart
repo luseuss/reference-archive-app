@@ -58,8 +58,9 @@ class AppDatabase extends _$AppDatabase {
   ///   2 — References에 partId 추가 (파트 기능). PR #16
   ///   3 — Boards, BoardCards 표 추가 (무드보드). PR #17
   ///   4 — References.memo를 순수 텍스트에서 Delta(JSON)로. 5단계 1번
+  ///   5 — BoardCards에 groupId 추가 (무드보드 카드 묶음/그룹화)
   @override
-  int get schemaVersion => 4;
+  int get schemaVersion => 5;
 
   /// 데이터베이스를 처음 만들 때, 그리고 구조가 바뀌었을 때 무엇을 할지 정합니다.
   @override
@@ -95,6 +96,23 @@ class AppDatabase extends _$AppDatabase {
         // 사용자는 위 단계를 먼저 거친 뒤 여기까지 이어서 실행됩니다.
         if (from < 4) {
           await _upgradeToVersion4();
+        }
+
+        // ── 여기만 부등호가 다릅니다: `from >= 3 && from < 5` ──
+        // BoardCards 표 자체가 v3에서 처음 생겼습니다. v3보다 낮은 버전
+        // (v1, v2)에서 올라오는 사용자는 바로 위 `_upgradeToVersion3`의
+        // `m.createTable(boardCards)`로 이 표를 **지금 막** 만드는데,
+        // `createTable`은 Dart의 표 정의(tables.dart)를 그대로 읽어서
+        // 만듭니다 — 그 정의는 "v3 당시 모습"이 아니라 **지금 코드에
+        // 있는 최신 모습**이라, groupId 칸이 이미 들어간 채로 만들어집니다.
+        //
+        // 그 상태에서 addColumn(groupId)를 또 하면 "칸이 이미 있다"는
+        // 오류가 납니다(실제로 테스트가 이렇게 잡았습니다). 그래서
+        // **표가 진짜 v3 모습 그대로 남아있던 사용자**(from이 3 또는
+        // 4)에게만 addColumn을 합니다. from이 3보다 작으면 위에서
+        // 이미 최신 모습으로 만들어졌으니 할 일이 없습니다.
+        if (from >= 3 && from < 5) {
+          await _upgradeToVersion5(m);
         }
       },
 
@@ -199,6 +217,19 @@ class AppDatabase extends _$AppDatabase {
         <Object?>[delta, id],
       );
     }
+  }
+
+  /// 버전 4 → 5. 무드보드 카드 묶음(그룹화)을 위한 준비입니다.
+  ///
+  /// BoardCards에 groupId 칸을 하나 추가할 뿐입니다. 기존 카드는 전부
+  /// 그룹에 안 속한 상태(null)가 맞으므로, addColumn 말고는 할 일이 없습니다.
+  ///
+  /// **v3보다 낮은 버전에서 올라오는 사용자에게는 이 함수를 부르면 안
+  /// 됩니다.** 위 `onUpgrade`의 `from >= 3 && from < 5` 조건을 보세요 —
+  /// BoardCards 표를 지금 막 만드는 경우(`createTable`)에는 이 칸이
+  /// 이미 들어있어서, 여기서 또 추가하면 오류가 납니다.
+  Future<void> _upgradeToVersion5(Migrator m) async {
+    await m.addColumn(boardCards, boardCards.groupId);
   }
 
   /// 기본 파트를 만듭니다. 이미 있으면 아무 일도 하지 않습니다.

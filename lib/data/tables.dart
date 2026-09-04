@@ -227,6 +227,17 @@ class BoardCards extends Table {
   /// 아래 깔린 카드를 영영 집을 수 없게 됩니다.
   IntColumn get zOrder => integer().withDefault(const Constant(0))();
 
+  /// 이 카드가 속한 그룹의 번호입니다. 그룹에 안 속해 있으면 비어 있습니다.
+  ///
+  /// 같은 groupId를 가진 카드들은 **하나처럼** 다뤄집니다 — 그중 아무거나
+  /// 골라도 전부 같이 골라지고, 하나를 끌면 다 같이 끌립니다(4단계 5번의
+  /// 마퀴 다중선택과 비슷하지만, 마퀴는 판을 나가면 잊혀지고 이 값은
+  /// 저장됩니다).
+  ///
+  /// 카드의 고유 번호([id])와는 다른 값입니다. 이건 "묶음 자체"를 가리키는
+  /// 번호이고, 같은 묶음의 카드 여러 장이 같은 groupId를 나눠 가집니다.
+  TextColumn get groupId => text().nullable()();
+
   /// 판에 올린 시각 (UTC)
   DateTimeColumn get createdAt => dateTime()();
 
