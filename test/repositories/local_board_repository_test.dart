@@ -39,6 +39,7 @@ void main() {
     double x = 0,
     double y = 0,
     int zOrder = 0,
+    String? groupId,
   }) {
     final DateTime now = DateTime.now().toUtc();
     return BoardCard(
@@ -48,6 +49,7 @@ void main() {
       x: x,
       y: y,
       zOrder: zOrder,
+      groupId: groupId,
       createdAt: now,
       updatedAt: now,
     );
@@ -303,6 +305,75 @@ void main() {
 
       final Map<String, int> counts = await repository.countCardsByBoard();
       expect(counts[board.id], 1);
+    });
+  });
+
+  group('그룹화', () {
+    test('groupId 없이 저장하면 비어 있다', () async {
+      // 대부분의 카드는 그룹에 안 속합니다. 아무것도 안 정하면 그 상태가
+      // 기본값이어야 합니다.
+      final Board board = makeBoard('겨울 무드');
+      await repository.saveBoard(board);
+      await repository.addCards(<BoardCard>[makeCard(boardId: board.id)]);
+
+      final List<BoardCard> cards = await repository.getCards(board.id);
+      expect(cards.first.groupId, isNull);
+    });
+
+    test('groupId를 넣어 저장하면 다시 읽어도 남아있다', () async {
+      final Board board = makeBoard('겨울 무드');
+      await repository.saveBoard(board);
+      await repository.addCards(<BoardCard>[
+        makeCard(boardId: board.id, groupId: 'group-1'),
+      ]);
+
+      final List<BoardCard> cards = await repository.getCards(board.id);
+      expect(cards.first.groupId, 'group-1');
+    });
+
+    test('saveCard로 그룹에 넣을 수 있다', () async {
+      final Board board = makeBoard('겨울 무드');
+      await repository.saveBoard(board);
+      final BoardCard card = makeCard(boardId: board.id);
+      await repository.addCards(<BoardCard>[card]);
+
+      await repository.saveCard(card.copyWith(groupId: 'group-1'));
+
+      final List<BoardCard> cards = await repository.getCards(board.id);
+      expect(cards.first.groupId, 'group-1');
+    });
+
+    test('ungroup()으로 그룹에서 뺄 수 있다', () async {
+      // copyWith로는 groupId를 null로 되돌릴 수 없습니다(BoardCard.ungroup의
+      // 설명 참고). 그룹 해제는 반드시 이 함수를 거쳐야 합니다.
+      final Board board = makeBoard('겨울 무드');
+      await repository.saveBoard(board);
+      final BoardCard card = makeCard(boardId: board.id, groupId: 'group-1');
+      await repository.addCards(<BoardCard>[card]);
+
+      await repository.saveCard(card.ungroup());
+
+      final List<BoardCard> cards = await repository.getCards(board.id);
+      expect(cards.first.groupId, isNull);
+    });
+
+    test('여러 장을 한 그룹으로 묶어 saveCards로 한꺼번에 저장할 수 있다', () async {
+      final Board board = makeBoard('겨울 무드');
+      await repository.saveBoard(board);
+      final BoardCard a = makeCard(boardId: board.id, referenceId: 'ref-a');
+      final BoardCard b = makeCard(boardId: board.id, referenceId: 'ref-b');
+      await repository.addCards(<BoardCard>[a, b]);
+
+      await repository.saveCards(<BoardCard>[
+        a.copyWith(groupId: 'group-1'),
+        b.copyWith(groupId: 'group-1'),
+      ]);
+
+      final List<BoardCard> cards = await repository.getCards(board.id);
+      expect(
+        cards.every((BoardCard c) => c.groupId == 'group-1'),
+        isTrue,
+      );
     });
   });
 }

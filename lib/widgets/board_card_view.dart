@@ -40,6 +40,7 @@ class BoardCardView extends StatefulWidget {
     required this.onResizeEnd,
     this.isActive = false,
     this.isSelected = false,
+    this.isGrouped = false,
   });
 
   /// 이 카드가 보여주는 레퍼런스입니다.
@@ -96,6 +97,14 @@ class BoardCardView extends StatefulWidget {
   /// **마우스를 올리지 않아도** 계속 보여야 합니다. 안 그러면 뭘 골랐는지
   /// 잊어버립니다.
   final bool isSelected;
+
+  /// 지금 이 카드가 **그룹에 속해 있는지** 여부입니다. (그룹화)
+  ///
+  /// isSelected와는 다릅니다. isSelected는 "지금 당장 골라뒀다"는 임시
+  /// 상태이고, isGrouped는 "묶어두기로 저장했다"는 계속 남는 상태입니다.
+  /// 아무것도 안 골랐어도, 어느 카드가 그룹에 속해 있는지는 늘 보여야
+  /// 합니다 — 안 그러면 눌러보기 전까지 그룹인 줄 모릅니다.
+  final bool isGrouped;
 
   @override
   State<BoardCardView> createState() => _BoardCardViewState();
@@ -297,6 +306,17 @@ class _BoardCardViewState extends State<BoardCardView> {
 
         child: Row(
           children: <Widget>[
+            // 그룹에 속한 카드에만 붙는 작은 사슬 표시입니다. 마우스를
+            // 올렸을 때만 보이지만(제목 띠 자체가 그때만 뜨므로), 지금은
+            // "그룹인 걸 알아채는 방법" 중 가장 방해가 적은 자리입니다 —
+            // 늘 떠 있는 배지를 새로 만들면 네 모서리 손잡이와 자리
+            // 다툼이 생깁니다.
+            if (widget.isGrouped)
+              const Padding(
+                padding: EdgeInsets.only(right: 4),
+                child: Icon(Icons.link, size: 12, color: Colors.white70),
+              ),
+
             Expanded(
               child: Text(
                 widget.item.title.isEmpty ? '(제목 없음)' : widget.item.title,

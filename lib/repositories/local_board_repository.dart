@@ -211,6 +211,7 @@ class LocalBoardRepository implements BoardRepository {
       width: row.width,
       height: row.height,
       zOrder: row.zOrder,
+      groupId: row.groupId,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
     );
@@ -231,6 +232,7 @@ class LocalBoardRepository implements BoardRepository {
       width: Value<double>(card.width),
       height: Value<double?>(card.height),
       zOrder: Value<int>(card.zOrder),
+      groupId: Value<String?>(card.groupId),
       createdAt: card.createdAt,
 
       // updatedAt은 부르는 쪽 값을 쓰지 않고 지금 시각으로 덮습니다.

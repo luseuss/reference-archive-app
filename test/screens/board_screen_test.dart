@@ -106,6 +106,7 @@ void main() {
     int zOrder = 0,
     double width = defaultBoardCardWidth,
     double? height,
+    String? groupId,
   }) async {
     final DateTime now = DateTime.now().toUtc();
     final BoardCard card = BoardCard(
@@ -116,6 +117,7 @@ void main() {
       y: y,
       width: width,
       height: height,
+      groupId: groupId,
       zOrder: zOrder,
       createdAt: now,
       updatedAt: now,
@@ -1003,6 +1005,250 @@ void main() {
 
     expect(savedA.x, closeTo(150, 1), reason: '잡은 카드가 안 움직였습니다');
     expect(savedB.x, closeTo(750, 1), reason: '같이 선택된 카드가 안 따라왔습니다');
+  });
+
+  // ── 여기서부터는 그룹화(카드 여러 장을 계속 묶어두기)입니다 ──
+
+  testWidgets('두 장을 골라 그룹으로 묶으면 groupId가 저장된다', (WidgetTester tester) async {
+    final String refA = await saveReference('가');
+    final String refB = await saveReference('나');
+
+    final BoardCard a = await putCardOnBoard(referenceId: refA, x: 100, y: 100);
+    final BoardCard b = await putCardOnBoard(referenceId: refB, x: 700, y: 300);
+
+    await openBoard(tester);
+
+    await tester.tap(find.byKey(ValueKey<String>(a.id)));
+    await tester.pumpAndSettle();
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+    await tester.tap(find.byKey(ValueKey<String>(b.id)));
+    await tester.pumpAndSettle();
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+
+    await tester.tap(find.byTooltip('그룹으로 묶기'));
+    await tester.pumpAndSettle();
+
+    final BoardCard savedA = await reloadCard(a.id);
+    final BoardCard savedB = await reloadCard(b.id);
+
+    expect(savedA.groupId, isNotNull);
+    expect(savedA.groupId, savedB.groupId, reason: '같은 그룹 번호를 나눠 가져야 합니다');
+  });
+
+  testWidgets('한 장만 골랐을 때는 "그룹으로 묶기"가 안 눌린다', (WidgetTester tester) async {
+    final String refA = await saveReference('가');
+    final BoardCard a = await putCardOnBoard(referenceId: refA, x: 100, y: 100);
+
+    await openBoard(tester);
+
+    await tester.tap(find.byKey(ValueKey<String>(a.id)));
+    await tester.pumpAndSettle();
+
+    final IconButton groupButton = tester.widget<IconButton>(
+      find.widgetWithIcon(IconButton, Icons.link),
+    );
+    expect(groupButton.onPressed, isNull);
+  });
+
+  testWidgets('그룹 지은 카드 하나를 누르면 전체가 함께 골라진다', (WidgetTester tester) async {
+    final String refA = await saveReference('가');
+    final String refB = await saveReference('나');
+
+    final BoardCard a = await putCardOnBoard(referenceId: refA, x: 100, y: 100);
+    final BoardCard b = await putCardOnBoard(referenceId: refB, x: 700, y: 300);
+
+    await openBoard(tester);
+
+    // 먼저 묶어둡니다.
+    await tester.tap(find.byKey(ValueKey<String>(a.id)));
+    await tester.pumpAndSettle();
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+    await tester.tap(find.byKey(ValueKey<String>(b.id)));
+    await tester.pumpAndSettle();
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+    await tester.tap(find.byTooltip('그룹으로 묶기'));
+    await tester.pumpAndSettle();
+
+    // 선택을 지운 뒤, 그룹의 카드 하나만 다시 눌러봅니다.
+    await tester.tap(find.byTooltip('선택 지우기'));
+    await tester.pumpAndSettle();
+    expect(find.byType(BoardSelectionBar), findsNothing);
+
+    await tester.tap(find.byKey(ValueKey<String>(a.id)));
+    await tester.pumpAndSettle();
+
+    // ── 이게 이 파일에서 그룹화의 핵심입니다 ──
+    // a만 눌렀는데 b까지 함께 골라져야 합니다.
+    expect(find.text('2개 선택됨'), findsOneWidget);
+  });
+
+  testWidgets('그룹 지은 카드 하나를 끌면 전체가 함께 움직인다', (WidgetTester tester) async {
+    final String refA = await saveReference('가');
+    final String refB = await saveReference('나');
+
+    final BoardCard a = await putCardOnBoard(referenceId: refA, x: 100, y: 100);
+    final BoardCard b = await putCardOnBoard(referenceId: refB, x: 700, y: 300);
+
+    await openBoard(tester);
+
+    await tester.tap(find.byKey(ValueKey<String>(a.id)));
+    await tester.pumpAndSettle();
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+    await tester.tap(find.byKey(ValueKey<String>(b.id)));
+    await tester.pumpAndSettle();
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+    await tester.tap(find.byTooltip('그룹으로 묶기'));
+    await tester.pumpAndSettle();
+
+    // 선택을 지우고, 판을 나갔다 온 것처럼 다시 읽어와도 그룹은 저장돼
+    // 있으므로 남아 있어야 합니다. 여기서는 화면을 새로 열지는 않고,
+    // 그냥 선택만 지운 채로 a 하나만 끌어봅니다.
+    await tester.tap(find.byTooltip('선택 지우기'));
+    await tester.pumpAndSettle();
+
+    final double scale = shownScale(tester);
+
+    await tester.drag(
+      find.byKey(ValueKey<String>(a.id)),
+      Offset(50 * scale, 0),
+    );
+    await tester.pumpAndSettle();
+
+    final BoardCard savedA = await reloadCard(a.id);
+    final BoardCard savedB = await reloadCard(b.id);
+
+    expect(savedA.x, closeTo(150, 1));
+    expect(savedB.x, closeTo(750, 1), reason: '그룹으로 묶인 카드가 안 따라왔습니다');
+  });
+
+  testWidgets('그룹 해제를 누르면 groupId가 지워진다', (WidgetTester tester) async {
+    final String refA = await saveReference('가');
+    final String refB = await saveReference('나');
+
+    final BoardCard a = await putCardOnBoard(referenceId: refA, x: 100, y: 100);
+    final BoardCard b = await putCardOnBoard(referenceId: refB, x: 700, y: 300);
+
+    await openBoard(tester);
+
+    await tester.tap(find.byKey(ValueKey<String>(a.id)));
+    await tester.pumpAndSettle();
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+    await tester.tap(find.byKey(ValueKey<String>(b.id)));
+    await tester.pumpAndSettle();
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+    await tester.tap(find.byTooltip('그룹으로 묶기'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('그룹 해제'));
+    await tester.pumpAndSettle();
+
+    final BoardCard savedA = await reloadCard(a.id);
+    final BoardCard savedB = await reloadCard(b.id);
+
+    expect(savedA.groupId, isNull);
+    expect(savedB.groupId, isNull);
+
+    // 지금은 여전히 a, b가 함께 선택돼 있습니다(이미 여러 장을 골라둔
+    // 상태에서 그중 하나를 다시 누르면 선택을 그대로 두는 것이 이 화면의
+    // 규칙입니다 — 다 같이 끌 수 있게 하려는 것으로, 그룹 여부와는
+    // 무관합니다). 먼저 선택을 지운 뒤에 다시 확인합니다.
+    await tester.tap(find.byTooltip('선택 지우기'));
+    await tester.pumpAndSettle();
+
+    // 그룹이 풀렸으니 이제 a만 눌러도 a만 골라져야 합니다.
+    await tester.tap(find.byKey(ValueKey<String>(a.id)));
+    await tester.pumpAndSettle();
+    expect(find.text('1개 선택됨'), findsOneWidget);
+  });
+
+  testWidgets('그룹에 안 속한 카드를 골랐을 때는 "그룹 해제"가 안 눌린다', (
+    WidgetTester tester,
+  ) async {
+    final String refA = await saveReference('가');
+    final String refB = await saveReference('나');
+
+    final BoardCard a = await putCardOnBoard(referenceId: refA, x: 100, y: 100);
+    await putCardOnBoard(referenceId: refB, x: 700, y: 300);
+
+    await openBoard(tester);
+
+    await tester.tap(find.byKey(ValueKey<String>(a.id)));
+    await tester.pumpAndSettle();
+
+    final IconButton ungroupButton = tester.widget<IconButton>(
+      find.widgetWithIcon(IconButton, Icons.link_off),
+    );
+    expect(ungroupButton.onPressed, isNull);
+  });
+
+  testWidgets('마퀴가 그룹의 한 귀퉁이만 스쳐도 전체가 선택된다', (WidgetTester tester) async {
+    final String refA = await saveReference('가');
+    final String refB = await saveReference('나');
+
+    final BoardCard a = await putCardOnBoard(referenceId: refA, x: 100, y: 100);
+    final BoardCard b = await putCardOnBoard(referenceId: refB, x: 700, y: 100);
+
+    await openBoard(tester);
+
+    // 먼저 묶어둡니다.
+    await tester.tap(find.byKey(ValueKey<String>(a.id)));
+    await tester.pumpAndSettle();
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+    await tester.tap(find.byKey(ValueKey<String>(b.id)));
+    await tester.pumpAndSettle();
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+    await tester.tap(find.byTooltip('그룹으로 묶기'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('선택 지우기'));
+    await tester.pumpAndSettle();
+
+    // a만 살짝 걸치는 작은 마퀴를 긋습니다. b는 멀리 있어 안 걸립니다.
+    final Offset viewportTopLeft = tester.getTopLeft(find.byType(BoardViewport));
+    final Offset start = viewportTopLeft + const Offset(10, 10);
+    final Offset aCenter = tester.getCenter(
+      find.byKey(ValueKey<String>(a.id)),
+    );
+
+    final TestGesture drag = await tester.startGesture(start);
+    await tester.pump();
+    await drag.moveTo(aCenter + const Offset(40, 20));
+    await tester.pump();
+    await drag.up();
+    await tester.pumpAndSettle();
+
+    // a만 스쳤는데 그룹 전체(a, b)가 선택돼야 합니다.
+    expect(find.text('2개 선택됨'), findsOneWidget);
+  });
+
+  testWidgets('그룹 지은 카드에는 사슬 표시가 붙고, 안 지은 카드에는 없다', (
+    WidgetTester tester,
+  ) async {
+    final String refA = await saveReference('가');
+    final String refB = await saveReference('나');
+
+    final BoardCard a = await putCardOnBoard(
+      referenceId: refA,
+      x: 100,
+      y: 100,
+      groupId: 'group-1',
+    );
+    final BoardCard b = await putCardOnBoard(referenceId: refB, x: 700, y: 300);
+
+    await openBoard(tester);
+
+    /// 이 카드의 BoardCardView 위젯을 찾아 돌려줍니다.
+    BoardCardView cardViewOf(BoardCard card) {
+      return tester.widget<BoardCardView>(
+        find.descendant(
+          of: find.byKey(ValueKey<String>(card.id)),
+          matching: find.byType(BoardCardView),
+        ),
+      );
+    }
+
+    expect(cardViewOf(a).isGrouped, isTrue, reason: '그룹에 든 카드입니다');
+    expect(cardViewOf(b).isGrouped, isFalse, reason: '그룹에 안 든 카드입니다');
   });
 
   testWidgets('선택 삭제를 누르면 골라둔 카드가 전부 판에서 내려간다', (
