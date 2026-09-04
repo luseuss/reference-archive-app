@@ -294,4 +294,120 @@ void main() {
         await taxonomyRepository.getAll(TaxonomyKind.folder);
     expect(folders.first.name, '건축');
   });
+
+  group('파트 탭', () {
+    /// 파트 탭을 엽니다. 파트는 목록의 다섯 번째(마지막) 탭입니다.
+    Future<void> openPartTab(WidgetTester tester) async {
+      await tester.tap(find.text('파트'));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('기본 파트가 항상 목록에 보인다', (WidgetTester tester) async {
+      useTallScreen(tester);
+
+      await tester.pumpWidget(makeScreen());
+      await tester.pumpAndSettle();
+      await openPartTab(tester);
+
+      expect(find.text(defaultPartName), findsOneWidget);
+    });
+
+    testWidgets('기본 파트의 삭제 버튼은 눌리지 않는다', (WidgetTester tester) async {
+      // ── 이게 이 그룹의 핵심입니다 ──
+      useTallScreen(tester);
+
+      await tester.pumpWidget(makeScreen());
+      await tester.pumpAndSettle();
+      await openPartTab(tester);
+
+      final IconButton deleteButton = tester.widget<IconButton>(
+        find.widgetWithIcon(IconButton, Icons.delete_outline),
+      );
+      expect(deleteButton.onPressed, isNull, reason: '기본 파트는 지울 수 없어야 합니다');
+
+      // 눌러봐도 목록에 여전히 남아 있어야 합니다.
+      await tester.tap(find.byIcon(Icons.delete_outline));
+      await tester.pumpAndSettle();
+
+      expect(find.text(defaultPartName), findsOneWidget);
+    });
+
+    testWidgets('사용자가 만든 파트는 지울 수 있다', (WidgetTester tester) async {
+      useTallScreen(tester);
+      await saveTaxonomy(TaxonomyKind.part, '파티클');
+
+      await tester.pumpWidget(makeScreen());
+      await tester.pumpAndSettle();
+      await openPartTab(tester);
+
+      // 목록 순서는 이름 가나다순입니다. "기본"과 "파티클" 중 두 번째 삭제
+      // 버튼이 사용자가 만든 파트의 것입니다.
+      await tester.tap(find.byIcon(Icons.delete_outline).last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, '삭제'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('파티클'), findsNothing);
+    });
+
+    testWidgets('파트를 지우면 안내에 "기본 파트로 옮겨진다"고 적힌다', (WidgetTester tester) async {
+      // 다른 분류의 "연결이 끊긴다" 문구를 그대로 쓰면, 사진이 어디론가
+      // 사라지는 줄 알고 못 지웁니다. 어디로 가는지 알려줘야 합니다.
+      useTallScreen(tester);
+      final TaxonomyItem part = await saveTaxonomy(TaxonomyKind.part, '파티클');
+      await saveReference(folderId: null);
+      // saveReference는 folderId만 받으므로, 레퍼런스에 파트를 직접 붙입니다.
+      await repository.save(
+        ReferenceItem(
+          id: newId(),
+          type: ReferenceType.image,
+          title: '불꽃',
+          partId: part.id,
+          fileName: '${newId()}.jpg',
+          createdAt: DateTime.now().toUtc(),
+          updatedAt: DateTime.now().toUtc(),
+        ),
+      );
+
+      await tester.pumpWidget(makeScreen());
+      await tester.pumpAndSettle();
+      await openPartTab(tester);
+
+      await tester.tap(find.byIcon(Icons.delete_outline).last);
+      await tester.pumpAndSettle();
+
+      expect(
+        find.textContaining('"$defaultPartName" 파트로 옮겨집니다'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('파트를 지우면 레퍼런스가 기본 파트로 옮겨진다', (WidgetTester tester) async {
+      useTallScreen(tester);
+      final TaxonomyItem part = await saveTaxonomy(TaxonomyKind.part, '파티클');
+      final DateTime now = DateTime.now().toUtc();
+      final ReferenceItem photo = ReferenceItem(
+        id: newId(),
+        type: ReferenceType.image,
+        title: '불꽃',
+        partId: part.id,
+        fileName: '${newId()}.jpg',
+        createdAt: now,
+        updatedAt: now,
+      );
+      await repository.save(photo);
+
+      await tester.pumpWidget(makeScreen());
+      await tester.pumpAndSettle();
+      await openPartTab(tester);
+
+      await tester.tap(find.byIcon(Icons.delete_outline).last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, '삭제'));
+      await tester.pumpAndSettle();
+
+      final ReferenceItem? saved = await repository.getById(photo.id);
+      expect(saved!.partId, defaultPartId);
+    });
+  });
 }

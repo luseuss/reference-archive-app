@@ -11,6 +11,12 @@
 // 레퍼런스 자체는 살아있지만, "인물" 폴더에 있던 사진 50장이 폴더 없음이 되고
 // **되돌릴 방법이 없습니다.** 그래서 지우기 전에 몇 개가 영향을 받는지
 // 반드시 보여주고 확인을 받습니다.
+//
+// ── 파트만 두 가지가 다릅니다 ──
+//   1. 파트를 지우면 그 안의 레퍼런스는 **기본 파트로 옮겨집니다.** 연결이
+//      끊기는 것이 아니라 자리를 옮기는 것이라, 안내 문구도 다릅니다.
+//   2. **기본 파트는 지울 수 없습니다.** 지우기 버튼이 잠겨 있습니다.
+//      (왜인지는 repositories/taxonomy_repository.dart의 delete 설명 참고)
 
 import 'package:flutter/material.dart';
 
@@ -145,6 +151,14 @@ class _TaxonomyManageScreenState extends State<TaxonomyManageScreen>
     if (usageCount == 0) {
       message = '"${item.name}" ${withObjectParticle(kindName)} 지웁니다.\n'
           '이 ${withObjectParticle(kindName)} 쓰는 레퍼런스는 없습니다.';
+    } else if (item.kind == TaxonomyKind.part) {
+      // 파트는 연결이 끊기는 것이 아니라 **자리를 옮기는** 것입니다.
+      // 다른 분류와 같은 문구를 쓰면 사진이 어디론가 사라지는 줄 알고
+      // 못 지웁니다. 어디로 가는지 정확히 적어줍니다.
+      message = '"${item.name}" 파트를 지웁니다.\n\n'
+          '이 파트에 있는 레퍼런스 $usageCount개는 '
+          '"$defaultPartName" 파트로 옮겨집니다.\n'
+          '사진이 지워지지는 않습니다.';
     } else {
       message = '"${item.name}" ${withObjectParticle(kindName)} 지웁니다.\n\n'
           '이 ${withObjectParticle(kindName)} 쓰는 레퍼런스가 $usageCount개 있습니다.\n'
@@ -238,6 +252,10 @@ class _TaxonomyManageScreenState extends State<TaxonomyManageScreen>
         final TaxonomyItem item = items[index];
         final int usageCount = _usageCounts[item.id] ?? 0;
 
+        // 기본 파트는 지울 수 없습니다. 다른 파트를 지울 때 레퍼런스가
+        // 옮겨갈 자리이고, 새로 넣는 레퍼런스도 여기로 들어갑니다.
+        final bool isDefaultPart = item.id == defaultPartId;
+
         return ListTile(
           title: Text(item.name),
           subtitle: Text(
@@ -248,15 +266,25 @@ class _TaxonomyManageScreenState extends State<TaxonomyManageScreen>
             // 버튼 두 개 크기만큼만 차지합니다.
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
+              // 이름은 기본 파트도 바꿀 수 있습니다. 번호가 그대로라
+              // 레퍼런스 연결이 끊기지 않습니다.
               IconButton(
                 onPressed: () => _renameItem(item),
                 icon: const Icon(Icons.edit_outlined),
                 tooltip: '이름 바꾸기',
               ),
+
+              // onPressed에 null을 넣으면 버튼이 흐려지고 눌리지 않습니다.
+              // 버튼을 아예 없애지 않는 이유: 줄마다 버튼 개수가 달라지면
+              // 목록이 들쭉날쭉해 보이고, "왜 이것만 없지?" 하게 됩니다.
+              // 흐린 버튼에 이유를 적어두는 편이 친절합니다.
               IconButton(
-                onPressed: () => _deleteItem(item),
+                onPressed: isDefaultPart ? null : () => _deleteItem(item),
                 icon: const Icon(Icons.delete_outline),
-                tooltip: '삭제',
+                tooltip: isDefaultPart
+                    ? '$defaultPartName 파트는 지울 수 없습니다 '
+                          '(다른 파트를 지울 때 레퍼런스가 옮겨오는 자리입니다)'
+                    : '삭제',
               ),
             ],
           ),
