@@ -19,8 +19,11 @@ import '../models/taxonomy_item.dart';
 import '../repositories/reference_repository.dart';
 import '../repositories/taxonomy_repository.dart';
 import '../services/image_storage.dart';
+import '../services/reference_lookup.dart';
 import '../utils/rich_text_memo.dart';
+import '../utils/similarity.dart';
 import '../widgets/rich_memo_editor.dart';
+import '../widgets/similar_references_section.dart';
 import '../widgets/taxonomy_multi_field.dart';
 import '../widgets/taxonomy_single_field.dart';
 import 'youtube_player_screen.dart';
@@ -71,6 +74,17 @@ class _ReferenceDetailScreenState extends State<ReferenceDetailScreen> {
   /// 이미지 파일의 전체 경로입니다.
   String? _imagePath;
 
+  /// 이 레퍼런스와 비슷한 것들입니다. (lib/utils/similarity.dart의 similarItems)
+  ///
+  /// 화면을 열 때 딱 한 번 계산합니다. 편집하는 동안 계속 다시 계산하지
+  /// 않습니다 — 태그를 하나 고를 때마다 목록이 바뀌면 산만하고, 애초에
+  /// "저장을 누르기 전까지는 반영 안 함"이라는 이 화면의 원칙과도
+  /// 어긋납니다(맨 위 "저장 시점" 설명 참고).
+  List<ReferenceItem> _similarItems = <ReferenceItem>[];
+
+  /// 비슷한 레퍼런스들의 그림 경로입니다. (id → 경로)
+  Map<String, String?> _similarImagePaths = <String, String?>{};
+
   /// 분류 항목 목록을 불러오는 중인지 여부입니다.
   bool _isLoading = true;
 
@@ -104,7 +118,7 @@ class _ReferenceDetailScreenState extends State<ReferenceDetailScreen> {
     super.dispose();
   }
 
-  /// 고를 수 있는 분류 항목들과 이미지 경로를 불러옵니다.
+  /// 고를 수 있는 분류 항목들, 이미지 경로, 비슷한 레퍼런스를 불러옵니다.
   Future<void> _loadOptions() async {
     final Map<TaxonomyKind, List<TaxonomyItem>> loaded =
         <TaxonomyKind, List<TaxonomyItem>>{};
@@ -119,6 +133,22 @@ class _ReferenceDetailScreenState extends State<ReferenceDetailScreen> {
       path = await widget.imageStorage.getFullPath(fileName);
     }
 
+    // ── 비슷한 레퍼런스를 찾으려면 전부 읽어야 합니다 ──
+    // "이 레퍼런스와 저 레퍼런스가 얼마나 비슷한가"는 데이터베이스가 대신
+    // 계산해줄 수 없어서(SQL로 표현이 안 됨), 후보 전부를 손에 들고 있어야
+    // 합니다. ReferenceLookup이 그 전부와 그림 경로를 한 번에 구해줍니다
+    // (services/reference_lookup.dart) — 판·레퍼런스 고르는 창과 같은 도구입니다.
+    final ReferenceLookup lookup = await ReferenceLookup.load(
+      repository: widget.referenceRepository,
+      imageStorage: widget.imageStorage,
+    );
+    final List<ReferenceItem> similar = similarItems(
+      widget.item,
+      lookup.items,
+      limit: similarReferencesLimit,
+      minScore: similarReferencesThreshold,
+    );
+
     if (!mounted) {
       return;
     }
@@ -128,6 +158,8 @@ class _ReferenceDetailScreenState extends State<ReferenceDetailScreen> {
         ..clear()
         ..addAll(loaded);
       _imagePath = path;
+      _similarItems = similar;
+      _similarImagePaths = lookup.imagePaths;
       _isLoading = false;
     });
   }
@@ -368,7 +400,35 @@ class _ReferenceDetailScreenState extends State<ReferenceDetailScreen> {
           subtitle: const Text('정렬 방식과 상관없이 목록 맨 앞에 옵니다'),
           secondary: const Icon(Icons.push_pin_outlined),
         ),
+        const SizedBox(height: 24),
+
+        // 맨 아래에 둡니다. 편집 항목들이 "이 레퍼런스 자체"에 대한 것이라면
+        // 이건 "이 레퍼런스 주변"에 대한 것이라, 성격이 다른 참고 자료로
+        // 취급해 가장 뒤에 배치했습니다.
+        SimilarReferencesSection(
+          items: _similarItems,
+          imagePaths: _similarImagePaths,
+          onTap: _openSimilar,
+        ),
       ],
+    );
+  }
+
+  /// 비슷한 레퍼런스를 눌렀을 때, 그 레퍼런스의 상세 화면을 새로 엽니다.
+  ///
+  /// 지금 화면을 대신하지 않고 **위에 쌓습니다**(push). 유튜브 재생 버튼과
+  /// 같은 방식입니다 — "돌아가기"를 누르면 원래 보던 레퍼런스로 그대로
+  /// 돌아와야 하고, 지금 화면에서 고치던 내용도 사라지면 안 됩니다.
+  Future<void> _openSimilar(ReferenceItem similar) async {
+    await Navigator.of(context).push<bool>(
+      MaterialPageRoute<bool>(
+        builder: (BuildContext context) => ReferenceDetailScreen(
+          item: similar,
+          referenceRepository: widget.referenceRepository,
+          taxonomyRepository: widget.taxonomyRepository,
+          imageStorage: widget.imageStorage,
+        ),
+      ),
     );
   }
 

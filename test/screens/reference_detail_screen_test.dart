@@ -338,4 +338,103 @@ void main() {
       expect(find.text('이름을 입력해주세요.'), findsOneWidget);
     });
   });
+
+  group('비슷한 레퍼런스', () {
+    /// 테스트용 레퍼런스를 태그를 붙여 저장하고 돌려줍니다.
+    ///
+    /// 태그가 겹치는 정도로 유사도를 만들어냅니다. 사진 자체(pHash)는
+    /// 파일이 가짜라 계산할 수 없어서, 태그·분류만으로 점수를 냅니다.
+    Future<ReferenceItem> saveReferenceWithTags(
+      String title,
+      List<String> tagIds,
+    ) async {
+      final DateTime now = DateTime.now().toUtc();
+      final ReferenceItem item = ReferenceItem(
+        id: newId(),
+        type: ReferenceType.image,
+        title: title,
+        tagIds: tagIds,
+        fileName: 'not-a-real-file.jpg',
+        createdAt: now,
+        updatedAt: now,
+      );
+      await repository.save(item);
+      return item;
+    }
+
+    testWidgets('태그가 겹치는 레퍼런스가 보인다', (WidgetTester tester) async {
+      final TaxonomyItem tag = await saveTaxonomy(TaxonomyKind.tag, '노을');
+
+      final ReferenceItem item = await saveReferenceWithTags('바다', <String>[
+        tag.id,
+      ]);
+      await saveReferenceWithTags('하늘', <String>[tag.id]);
+
+      useTallScreen(tester);
+      await tester.pumpWidget(makeScreen(item));
+      await tester.pumpAndSettle();
+
+      expect(find.text('비슷한 레퍼런스'), findsOneWidget);
+      expect(find.text('하늘'), findsOneWidget);
+    });
+
+    testWidgets('자기 자신은 비슷한 레퍼런스 목록에 안 나온다', (WidgetTester tester) async {
+      final TaxonomyItem tag = await saveTaxonomy(TaxonomyKind.tag, '노을');
+      final ReferenceItem item = await saveReferenceWithTags('바다', <String>[
+        tag.id,
+      ]);
+
+      useTallScreen(tester);
+      await tester.pumpWidget(makeScreen(item));
+      await tester.pumpAndSettle();
+
+      // "바다"는 제목 입력창 안에도 있어서 findsOneWidget이어야 정상입니다
+      // (자기 자신 카드로 또 나오면 findsWidgets가 됩니다).
+      expect(find.text('바다'), findsOneWidget);
+    });
+
+    testWidgets('공통점이 없으면 "비슷한 레퍼런스가 없어요"가 보인다', (
+      WidgetTester tester,
+    ) async {
+      // ── 이게 이 파일에서 가장 중요한 확인입니다 ──
+      // 빈 화면만 있으면 "고장났나?"와 "정말 없는 건가?"를 구분할 수 없습니다.
+      final ReferenceItem item = await saveReference(title: '외로운 사진');
+
+      useTallScreen(tester);
+      await tester.pumpWidget(makeScreen(item));
+      await tester.pumpAndSettle();
+
+      expect(find.text('비슷한 레퍼런스가 없어요'), findsOneWidget);
+    });
+
+    testWidgets('비슷한 레퍼런스를 누르면 그 레퍼런스의 상세 화면이 열린다', (
+      WidgetTester tester,
+    ) async {
+      final TaxonomyItem tag = await saveTaxonomy(TaxonomyKind.tag, '노을');
+      final ReferenceItem item = await saveReferenceWithTags('바다', <String>[
+        tag.id,
+      ]);
+      await saveReferenceWithTags('하늘', <String>[tag.id]);
+
+      useTallScreen(tester);
+      await tester.pumpWidget(makeScreen(item));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('하늘'));
+      await tester.pumpAndSettle();
+
+      // 새 화면이 열리고, 그 화면의 제목 입력창에 "하늘"이 채워져 있어야 합니다.
+      expect(
+        find.widgetWithText(TextField, '하늘'),
+        findsOneWidget,
+        reason: '비슷한 레퍼런스의 상세 화면이 열려야 합니다',
+      );
+
+      // 원래 보던 화면(바다)은 사라진 게 아니라 아래에 쌓여 있어야 합니다.
+      // 뒤로 가면 다시 보입니다.
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+      expect(find.widgetWithText(TextField, '바다'), findsOneWidget);
+    });
+  });
 }
