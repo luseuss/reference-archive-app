@@ -8,6 +8,7 @@
 // 판 안에 무엇이 그려지는지는 여기서 안 봅니다. 그건 board_screen_test.dart가 봅니다.
 // 이 창은 카드가 뭔지 모르게 만들어져 있어서, 빈 상자를 넣고도 확인할 수 있습니다.
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:reference_archive_app/theme/app_metrics.dart';
@@ -88,6 +89,42 @@ void main() {
     return shownRect(tester).width / testCanvas.width;
   }
 
+  /// **마우스 휠 버튼(가운데 버튼)**을 누른 채 [from]에서 [delta]만큼 끕니다.
+  ///
+  /// 판 이동은 이제 이 버튼으로만 됩니다. 왼쪽 버튼(기본 `tester.dragFrom`)이나
+  /// 손가락(터치)으로 끌면 마퀴가 됩니다 — 그건 이 파일이 아니라
+  /// board_screen_test.dart가 봅니다(카드가 있어야 뜻이 있는 조작이라서).
+  Future<void> dragWithMiddleButton(
+    WidgetTester tester,
+    Offset from,
+    Offset delta,
+  ) async {
+    final TestGesture gesture = await tester.createGesture(
+      kind: PointerDeviceKind.mouse,
+      buttons: kMiddleMouseButton,
+    );
+    await gesture.addPointer(location: from);
+    await tester.pump();
+
+    await gesture.down(from);
+    await tester.pump();
+
+    // 두 번에 나눠 움직입니다. 한 번에 끝내면 "그냥 누른 것"과 구분되는
+    // 최소 거리(kTouchSlop)를 못 넘길 수 있습니다.
+    await gesture.moveBy(delta / 2);
+    await tester.pump();
+    await gesture.moveBy(delta / 2);
+    await tester.pump();
+
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    // 마우스 포인터를 바로 치웁니다. addTearDown으로 테스트 끝까지 미루면,
+    // 이 함수를 반복 호출할 때(예: 카드를 화면 밖으로 밀어보는 테스트)
+    // 죽은 마우스 포인터가 여러 개 쌓여서 MouseTracker가 헷갈려 합니다.
+    await gesture.removePointer();
+  }
+
   testWidgets('처음에는 카드 전부가 화면에 들어온다', (WidgetTester tester) async {
     await openViewport(tester);
 
@@ -141,10 +178,32 @@ void main() {
     expect(shownScale(tester), closeTo(fitScale, 0.01));
   });
 
-  testWidgets('빈 곳을 끌면 판이 움직인다', (WidgetTester tester) async {
+  testWidgets('마우스 휠 버튼으로 빈 곳을 끌면 판이 움직인다', (WidgetTester tester) async {
     // ── 전에는 이게 안 됐습니다 ──
     // 판이 화면보다 작으면 **강제로 가운데**에 두느라 끌기가 무시됐습니다.
     // 이제는 가운데로 잡아끌지 않으므로 그냥 움직입니다.
+    //
+    // ── 왜 휠 버튼인가 ──
+    // 처음엔 아무 버튼으로나 끌면 판이 움직였는데, 의뢰인이 마퀴(선택 네모)를
+    // 훨씬 자주 쓴다고 해서 기본 끌기는 마퀴로 넘기고, 판 이동은 휠 버튼(가운데
+    // 버튼)으로 옮겼습니다.
+    await openViewport(tester);
+
+    final Offset before = shownRect(tester).topLeft;
+
+    await dragWithMiddleButton(tester, const Offset(30, 30), const Offset(90, 60));
+
+    final Offset after = shownRect(tester).topLeft;
+
+    expect(after.dx - before.dx, closeTo(90, 1));
+    expect(after.dy - before.dy, closeTo(60, 1));
+  });
+
+  testWidgets('왼쪽 버튼으로 빈 곳을 끌어도 판은 움직이지 않는다', (WidgetTester tester) async {
+    // ── 이게 이번에 바뀐 부분의 핵심입니다 ──
+    // 왼쪽 버튼(또는 터치) 끌기는 이제 판 이동이 아니라 마퀴입니다.
+    // 이 파일은 카드를 모르니 마퀴가 걸리는지는 확인 못 하지만,
+    // 최소한 **판이 움직이지는 않아야** 합니다.
     await openViewport(tester);
 
     final Offset before = shownRect(tester).topLeft;
@@ -154,8 +213,7 @@ void main() {
 
     final Offset after = shownRect(tester).topLeft;
 
-    expect(after.dx - before.dx, closeTo(90, 1));
-    expect(after.dy - before.dy, closeTo(60, 1));
+    expect(after, before, reason: '왼쪽 버튼 끌기는 마퀴이지 판 이동이 아닙니다');
   });
 
   testWidgets('카드 범위를 화면 밖으로 완전히 밀어낼 수 없다', (WidgetTester tester) async {
@@ -163,8 +221,11 @@ void main() {
     await openViewport(tester);
 
     for (int i = 0; i < 10; i++) {
-      await tester.dragFrom(const Offset(500, 300), const Offset(-400, -300));
-      await tester.pumpAndSettle();
+      await dragWithMiddleButton(
+        tester,
+        const Offset(500, 300),
+        const Offset(-400, -300),
+      );
     }
 
     final Rect shown = shownRect(tester);
