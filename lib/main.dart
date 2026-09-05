@@ -17,9 +17,11 @@
 // 매번 손으로 넘기기 번거로워집니다. 그때 상태 관리 도구(Provider 등)를
 // 붙이게 됩니다. 필요해지기 전에 미리 붙이면 코드만 복잡해집니다.
 
+import 'package:desktop_multi_window/desktop_multi_window.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_quill/flutter_quill.dart' show FlutterQuillLocalizations;
+import 'package:window_manager/window_manager.dart';
 
 import 'data/app_database.dart';
 import 'repositories/board_repository.dart';
@@ -28,7 +30,10 @@ import 'repositories/local_reference_repository.dart';
 import 'repositories/local_taxonomy_repository.dart';
 import 'repositories/reference_repository.dart';
 import 'repositories/taxonomy_repository.dart';
+import 'screens/board_popup_app.dart';
+import 'screens/board_popup_controller.dart';
 import 'screens/home_screen.dart';
+import 'services/board_window_sync.dart';
 import 'services/image_source.dart';
 import 'services/image_storage.dart';
 import 'services/local_image_storage.dart';
@@ -38,17 +43,51 @@ import 'services/youtube_info_source.dart';
 import 'theme/app_theme.dart';
 
 /// 앱을 실행합니다. Dart 프로그램은 언제나 main() 함수부터 시작합니다.
+///
+/// ── 왜 갈림길이 생겼나 (무드보드 팝업 창) ──
+/// desktop_multi_window로 만든 팝업 창은 "같은 실행 파일을 다시
+/// 시작"하는 방식으로 뜹니다. 그래서 main()이 "나는 메인 창인가,
+/// 팝업 창인가"부터 가려야 합니다. WindowController.fromCurrentEngine()의
+/// arguments가 비어 있으면 메인 창(맨 처음 뜬 창), 아니면 팝업 창(그
+/// 값이 보여줄 판 번호)입니다.
 void main() async {
   // Flutter가 완전히 준비되기 전에 데이터베이스 같은 플러그인을 건드리면 오류가 납니다.
   // 이 한 줄이 "준비될 때까지 기다려라"는 뜻입니다.
   WidgetsFlutterBinding.ensureInitialized();
 
+  if (!supportsBoardPopupWindow) {
+    // 폰·태블릿에는 여러 창이라는 개념이 없어서 갈림길 자체가 필요
+    // 없습니다. WindowController.fromCurrentEngine()을 부르면 오히려
+    // 이 플랫폼에서 없는 기능을 억지로 부르는 셈이라 건너뜁니다.
+    await _runMainWindow();
+    return;
+  }
+
+  final WindowController windowController =
+      await WindowController.fromCurrentEngine();
+
+  if (windowController.arguments.isEmpty) {
+    await _runMainWindow();
+  } else {
+    // 팝업 창입니다. arguments가 곧 보여줄 판 번호입니다.
+    BoardWindowSync.ensureInitialized();
+    runApp(BoardPopupApp(initialBoardId: windowController.arguments));
+  }
+}
+
+/// 메인 창(앱의 진짜 첫 화면)을 준비하고 띄웁니다.
+Future<void> _runMainWindow() async {
   final AppDatabase database = AppDatabase();
 
   // 저장해둔 설정(밝기 모드, 사용자 이름)을 먼저 읽습니다.
   // 화면을 띄운 뒤에 읽으면 밝은 화면이 잠깐 번쩍였다가 어두워집니다.
   final AppSettings settings = AppSettings();
   await settings.load();
+
+  if (supportsBoardPopupWindow) {
+    BoardWindowSync.ensureInitialized();
+    await _installMainWindowCloseGuard();
+  }
 
   runApp(
     ReferenceArchiveApp(
@@ -61,6 +100,31 @@ void main() async {
       youtubeInfoSource: NetworkYoutubeInfoSource(),
     ),
   );
+}
+
+/// 메인 창을 닫으면 떠 있는 무드보드 팝업 창도 같이 닫히게 합니다.
+///
+/// ── 왜 필요한가 ──
+/// desktop_multi_window의 창들은 같은 프로세스 안에서 돌지만, 메인
+/// 창을 그냥 닫으면 팝업 창은 자기가 알아서 안 닫힙니다(서로 다른
+/// 엔진이라 "메인이 사라졌다"는 것을 저절로 알 수 없습니다). 그래서
+/// 메인 창의 닫기 버튼을 가로채서, 팝업부터 닫고 나서 진짜로 닫습니다.
+Future<void> _installMainWindowCloseGuard() async {
+  await windowManager.ensureInitialized();
+  await windowManager.setPreventClose(true);
+  windowManager.addListener(_MainWindowCloseGuard());
+}
+
+class _MainWindowCloseGuard extends WindowListener {
+  @override
+  void onWindowClose() async {
+    await BoardPopupController.instance.closeIfOpen();
+
+    // setPreventClose로 걸어둔 것을 풀어야 진짜로 닫힙니다. 다시
+    // 걸 필요는 없습니다 — 앱이 곧 종료됩니다.
+    await windowManager.setPreventClose(false);
+    await windowManager.close();
+  }
 }
 
 /// 앱 전체를 감싸는 최상위 위젯입니다. 테마와 첫 화면을 지정합니다.
