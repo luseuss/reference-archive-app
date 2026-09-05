@@ -937,9 +937,25 @@ lib/
   `board_card_actions.dart` 299줄, `board_align.dart` 153줄,
   `board_canvas.dart` 232줄, `board_snap.dart` 181줄,
   `board_view.dart` 164줄, `board_layout.dart` 152줄.
-- **`lib/widgets/reference_card.dart`가 632줄** (300줄 기준 초과, PR #31
-  이전부터 이미 넘어 있었습니다 — 이번에 새로 생긴 초과가 아닙니다).
-  아직 손대지 않았습니다.
+- **`lib/widgets/reference_card.dart`가 635 → 378줄로 줄었지만 여전히
+  300줄 기준 초과** (별도 PR — "reference-card-cleanup"). 그림 부분과
+  호버 효과를 뺐습니다.
+  - **`lib/widgets/reference_card_thumbnail.dart`**(새 파일) — 카드의
+    그림 부분(자리표시자, 유튜브 재생 버튼, 호버 미리보기, 고르기
+    체크박스)을 통째로 담습니다. 상태 없이 값만 받아 그리는
+    `StatelessWidget`이라 별도 컨트롤러 없이 그대로 뺄 수 있었습니다.
+  - **`lib/widgets/hover_lift.dart`**(새 파일) — "마우스를 올리면 살짝
+    떠오른다" 효과만 하는 범용 도우미 위젯(`_HoverLift`)을 공개
+    클래스(`HoverLift`)로 바꿔 옮겼습니다. 레퍼런스 카드에만 매인 게
+    아니라 다른 카드 종류가 생겨도 그대로 쓸 수 있습니다.
+  - 카드 본체 조립과 아래쪽 글자 부분(제목·폴더·카테고리·태그·메모·
+    날짜, `_buildBody`)은 `reference_card.dart`에 그대로 남았습니다.
+  - 순수 리팩터라 기존 위젯 테스트가 그대로 통과하는 것으로
+    검증했습니다(회귀 없음).
+
+  **다음에 뺄 후보는 `_buildBody`(글자 부분)입니다** — 아직 200줄
+  가까이 남아 있어서, 필요하면 `ReferenceCardBody`로 한 번 더 뺄 수
+  있습니다.
 - **`lib/screens/reference_detail_screen.dart`가 524 → 495줄로 줄었지만
   여전히 300줄 기준 초과** (별도 PR — "reference-detail-cleanup"). 분류
   항목(파트·폴더·카테고리·태그·프로젝트) 편집 부분을
