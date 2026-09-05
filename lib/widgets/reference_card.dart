@@ -9,10 +9,13 @@
 // 이 파일에는 이제 카드 본체(테두리·그림자·클릭) 조립만 남아 있습니다.
 
 import 'package:flutter/material.dart';
+import 'package:super_drag_and_drop/super_drag_and_drop.dart';
 
 import '../models/reference_item.dart';
+import '../services/board_window_sync.dart';
 import '../theme/app_metrics.dart';
 import '../theme/app_palette.dart';
+import '../utils/reference_drag_payload.dart';
 import 'hover_lift.dart';
 import 'reference_card_body.dart';
 import 'reference_card_thumbnail.dart';
@@ -119,7 +122,7 @@ class ReferenceCard extends StatelessWidget {
     final ColorScheme colors = Theme.of(context).colorScheme;
     final AppPalette palette = AppPalette.of(context);
 
-    return AnimatedContainer(
+    final Widget card = AnimatedContainer(
       duration: const Duration(milliseconds: 150),
       curve: Curves.easeOut,
 
@@ -182,6 +185,28 @@ class ReferenceCard extends StatelessWidget {
           ],
         ),
       ),
+    );
+
+    // 무드보드로 끌어다 놓는 것은 데스크톱에서만 됩니다 — 팝업 창이
+    // 있어야 놓을 대상이 생기고, 폰·태블릿은 그 개념 자체가 없습니다
+    // (services/board_window_sync.dart의 supportsBoardPopupWindow).
+    //
+    // 고르기 모드 중에는 감싸지 않습니다. 고르기 모드에서 카드를 누르면
+    // "고르기"가 되어야 하는데, 드래그 인식기까지 끼면 살짝 끄는 것만으로
+    // 고르기가 씹힐 위험이 생깁니다 — 고르기 모드는 여러 장을 빠르게
+    // 토글하는 동작이라 그 위험을 감수할 이유가 없습니다.
+    if (!supportsBoardPopupWindow || isSelectionMode) {
+      return card;
+    }
+
+    return DragItemWidget(
+      dragItemProvider: (DragItemRequest request) async {
+        final DragItem dragItem = DragItem();
+        dragItem.add(Formats.plainText(encodeReferenceDragPayload(item.id)));
+        return dragItem;
+      },
+      allowedOperations: () => <DropOperation>[DropOperation.copy],
+      child: DraggableWidget(child: card),
     );
   }
 }
