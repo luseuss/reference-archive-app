@@ -874,8 +874,23 @@ lib/
   - 순수 리팩터라 기존 위젯 테스트가 코드 수정 없이 그대로 통과하는
     것으로 검증했습니다(회귀 없음).
 
-  `home_screen.dart`에 남은 것(필터바·사이드바 조립)은 여전히 뺄 여지가
-  있지만 우선순위는 낮습니다.
+  **`home_screen.dart`가 938 → 861줄로 한 번 더 줄었습니다** (별도 PR —
+  "home-screen-appbar-empty-cleanup"). 고르기 모드 위쪽 막대와 "레퍼런스
+  없음" 안내를 뺐습니다.
+  - **`lib/widgets/home_selection_app_bar.dart`**(새 파일) — 고르는
+    중일 때 나오는 위쪽 막대(`_buildSelectionAppBar`)를 옮겼습니다.
+    상태 없이 값(`selectedCount`/`totalCount`)과 콜백만 받습니다.
+  - **`lib/widgets/reference_empty_state.dart`**(새 파일) — 레퍼런스가
+    하나도 안 보일 때의 안내(`_buildEmptyState`)를 옮겼습니다. 상태
+    없이 `isFiltered` 하나와 콜백 하나만 받습니다.
+  - 순수 리팩터라 기존 위젯 테스트가 코드 수정 없이 그대로 통과하는
+    것으로 검증했습니다(회귀 없음).
+
+  **`home_screen.dart`에 남은 것(필터바·사이드바 조립, 검색·가져오기·
+  탐색 로직)은 여기서 멈춥니다.** `board_screen.dart`가 321줄에서
+  멈춘 것과 같은 이유입니다 — 남은 코드는 "화면을 읽어오고 조립하는"
+  일 자체라, 더 잘게 쪼개면 오히려 따라가기 어려워집니다. 우선순위도
+  낮습니다.
 - ~~`lib/screens/board_screen.dart`가 436줄이라 300줄 기준 초과~~ ✅ **완료**
   (5번을 시작하기 전에 처리). "조작" 부분(끌기·크기 조절·스냅 상태와
   동작 전부)을 `lib/screens/board_interaction_controller.dart`
