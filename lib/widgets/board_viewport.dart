@@ -54,6 +54,7 @@ import 'package:flutter/services.dart';
 import '../theme/app_metrics.dart';
 import '../theme/app_palette.dart';
 import '../utils/board_view.dart';
+import 'board_viewport_gestures.dart';
 import 'board_zoom_controls.dart';
 
 /// 판을 확대·이동해서 보여주는 창입니다.
@@ -145,19 +146,9 @@ class _BoardViewportState extends State<BoardViewport> {
   /// 지금 이동값입니다(화면 좌표). null이면 아직 손대지 않은 상태입니다.
   Offset? _offset;
 
-  /// 지금 마퀴를 그리는 중인지 여부입니다.
-  ///
-  /// Alt를 누른 채로 빈 곳 끌기를 시작하면 참이 됩니다. 참인 동안에는
-  /// 빈 곳 끌기가 판 이동이 아니라 마퀴로 갑니다.
-  bool _marqueeActive = false;
-
-  /// 마퀴의 시작점과 지금 위치입니다. **화면 좌표**입니다.
-  ///
-  /// 그리는 사각형(_buildMarqueeRect)은 이 화면 좌표를 그대로 씁니다.
-  /// 판 좌표로 바꾸는 것은 [widget.onMarqueeUpdate]를 부를 때뿐입니다 —
-  /// 화면에 그릴 때까지 매번 바꿀 이유가 없습니다.
-  Offset? _marqueeStart;
-  Offset? _marqueeCurrent;
+  /// 마퀴(다중선택 네모)가 화면 어디에 있는지 담고 있습니다.
+  /// (board_viewport_gestures.dart 참고)
+  final MarqueeState _marquee = MarqueeState();
 
   /// 부모가 [BoardViewport.viewResetCount]를 올리면 보던 화면을 되돌립니다.
   ///
@@ -234,42 +225,20 @@ class _BoardViewportState extends State<BoardViewport> {
     });
   }
 
-  /// 빈 곳을 눌렀을 때의 화면 좌표입니다. 클릭인지 끌기인지 가리는 데 씁니다.
-  Offset? _emptyPointerDownAt;
+  /// "클릭인지 끌기인지"와 "어느 버튼이었는지"를 가리는 데 씁니다.
+  /// (board_viewport_gestures.dart 참고)
+  final EmptyPointerGesture _emptyPointer = EmptyPointerGesture();
 
-  /// 눌린 뒤로 조금이라도 움직였는지 여부입니다. 클릭 여부를 가릴 때 씁니다.
-  bool _emptyPointerMoved = false;
-
-  /// 지금 눌려 있는 마우스 버튼입니다. 판 이동인지 마퀴인지 가리는 데 씁니다.
-  ///
-  /// `PointerDownEvent.buttons`는 [kPrimaryButton](왼쪽) / [kMiddleMouseButton]
-  /// (휠 버튼) / [kSecondaryButton](오른쪽)을 비트로 담고 있습니다. 터치는
-  /// 늘 kPrimaryButton으로 옵니다 — 손가락에는 "가운데 버튼"이 없습니다.
-  int _emptyPointerButtons = kPrimaryButton;
-
-  /// 빈 곳을 눌렀을 때 실행됩니다. 클릭 판정을 위해 시작점을, 어느 버튼인지도
-  /// 함께 기억해둡니다. **끌기가 시작되기(_onEmptyDragStart) 전에 먼저
-  /// 도착합니다** — Listener는 GestureDetector의 손이 아니라, 손가락이
+  /// 빈 곳을 눌렀을 때 실행됩니다. **끌기가 시작되기(_onEmptyDragStart) 전에
+  /// 먼저 도착합니다** — Listener는 GestureDetector의 손이 아니라, 손가락이
   /// 닿는 순간 곧바로 불립니다.
   void _onEmptyPointerDown(PointerDownEvent event) {
-    _emptyPointerDownAt = event.position;
-    _emptyPointerMoved = false;
-    _emptyPointerButtons = event.buttons;
+    _emptyPointer.onDown(event);
   }
 
-  /// 눌린 채로 움직이는 동안 실행됩니다. 조금이라도 움직였으면 표시해둡니다.
-  ///
-  /// `kTouchSlop`은 Flutter가 "진짜 움직인 것"으로 쳐주는 최소 거리입니다.
-  /// 그보다 짧으면 손이 살짝 떨린 것으로 보고 클릭 판정을 유지합니다.
+  /// 눌린 채로 움직이는 동안 실행됩니다.
   void _onEmptyPointerMove(PointerMoveEvent event) {
-    final Offset? downAt = _emptyPointerDownAt;
-    if (downAt == null) {
-      return;
-    }
-
-    if ((event.position - downAt).distance > kTouchSlop) {
-      _emptyPointerMoved = true;
-    }
+    _emptyPointer.onMove(event);
   }
 
   /// 빈 곳에서 손을 뗐을 때 실행됩니다.
@@ -279,10 +248,10 @@ class _BoardViewportState extends State<BoardViewport> {
   /// 때는) 부르지 않습니다 — 판을 옮기다 손을 뗀 것뿐인데 선택이
   /// 지워지면 당황스럽습니다.
   void _onEmptyPointerUp(PointerUpEvent event) {
-    if (!_emptyPointerMoved) {
+    if (!_emptyPointer.moved) {
       widget.onEmptyTap(shiftHeld: HardwareKeyboard.instance.isShiftPressed);
     }
-    _emptyPointerDownAt = null;
+    _emptyPointer.downAt = null;
   }
 
   /// 화면 좌표를 판 좌표로 바꿉니다. 확대·이동의 반대 방향 계산입니다.
@@ -301,51 +270,37 @@ class _BoardViewportState extends State<BoardViewport> {
   /// 버튼을 더 누르거나 떼도 이미 정해진 쪽으로 계속 갑니다. 도중에
   /// 바뀌면 마퀴가 판이 됐다 다시 마퀴가 됐다 하며 뒤죽박죽이 됩니다.
   void _onEmptyDragStart(DragStartDetails details) {
-    final bool isPanning = _emptyPointerButtons & kMiddleMouseButton != 0;
-    if (isPanning) {
-      // 아무것도 안 하면 _onEmptyDragUpdate가 (marqueeActive가 거짓인 채로)
+    if (_emptyPointer.isPanning) {
+      // 아무것도 안 하면 _onEmptyDragUpdate가 (marquee.active가 거짓인 채로)
       // 기본값인 판 이동으로 처리합니다.
       return;
     }
 
-    setState(() {
-      _marqueeActive = true;
-      _marqueeStart = details.localPosition;
-      _marqueeCurrent = details.localPosition;
-    });
-
+    setState(() => _marquee.begin(details.localPosition));
     widget.onMarqueeBegin(additive: HardwareKeyboard.instance.isShiftPressed);
   }
 
   /// 빈 곳을 끄는 동안 실행됩니다. 마퀴 중이면 마퀴를, 아니면 판을 옮깁니다.
   void _onEmptyDragUpdate(DragUpdateDetails details, Size viewport) {
-    if (!_marqueeActive) {
+    if (!_marquee.active) {
       _pan(details.delta, viewport);
       return;
     }
 
-    setState(() {
-      _marqueeCurrent = (_marqueeCurrent ?? details.localPosition) +
-          details.delta;
-    });
+    setState(() => _marquee.moveBy(details.delta));
 
-    final Offset a = _toCanvasPoint(_marqueeStart!, viewport);
-    final Offset b = _toCanvasPoint(_marqueeCurrent!, viewport);
+    final Offset a = _toCanvasPoint(_marquee.start!, viewport);
+    final Offset b = _toCanvasPoint(_marquee.current!, viewport);
     widget.onMarqueeUpdate(Rect.fromPoints(a, b));
   }
 
   /// 빈 곳에서 손을 뗐을 때 실행됩니다. 마퀴 중이었으면 마무리합니다.
   void _onEmptyDragEnd(DragEndDetails details) {
-    if (!_marqueeActive) {
+    if (!_marquee.active) {
       return;
     }
 
-    setState(() {
-      _marqueeActive = false;
-      _marqueeStart = null;
-      _marqueeCurrent = null;
-    });
-
+    setState(_marquee.finish);
     widget.onMarqueeEnd();
   }
 
@@ -484,7 +439,7 @@ class _BoardViewportState extends State<BoardViewport> {
                               () => PanGestureRecognizer(
                                 // 왼쪽 버튼(마퀴)과 휠 버튼(판 이동) 둘 다
                                 // 받습니다. 어느 쪽이었는지는
-                                // _onEmptyDragStart가 _emptyPointerButtons로
+                                // _onEmptyDragStart가 _emptyPointer.isPanning으로
                                 // 가릅니다.
                                 allowedButtonsFilter: (int buttons) =>
                                     buttons == kPrimaryButton ||
@@ -544,9 +499,9 @@ class _BoardViewportState extends State<BoardViewport> {
               // 화면 좌표를 그대로 씁니다(판 좌표로 안 바꿉니다). 카드 위에
               // 그려서 뭐가 걸리는지 보이게 하고, IgnorePointer로 감싸
               // 클릭을 가로채지 않게 합니다. (board_guides.dart와 같은 이유)
-              if (_marqueeStart != null && _marqueeCurrent != null)
+              if (_marquee.rect != null)
                 Positioned.fromRect(
-                  rect: Rect.fromPoints(_marqueeStart!, _marqueeCurrent!),
+                  rect: _marquee.rect!,
                   child: IgnorePointer(
                     child: DecoratedBox(
                       decoration: BoxDecoration(
