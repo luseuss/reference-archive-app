@@ -46,7 +46,16 @@ Future<void> registerPopupWindowCloseHandler() async {
 
 /// 무드보드 팝업 창을 열고 닫는 일을 맡습니다.
 class BoardPopupController {
-  BoardPopupController._();
+  BoardPopupController._() {
+    // 팝업 창을 OS 창 닫기(X 버튼)로 닫으면 이 신호가 옵니다
+    // (board_popup_app.dart의 _PopupCloseGuard가 보냅니다). 참조를
+    // 지워둬야 다음 showBoard()가 죽은 창을 다시 쓰려 하지 않고 새
+    // 창을 만듭니다 — 2026-09-05에 "열고 닫기를 반복하면 무드보드가
+    // 아예 안 켜진다"는 형태로 실제로 겪은 버그입니다.
+    BoardWindowSync.setPopupClosedListener(() {
+      _popup = null;
+    });
+  }
 
   /// 앱 전체에서 하나만 씁니다.
   static final BoardPopupController instance = BoardPopupController._();
@@ -63,9 +72,16 @@ class BoardPopupController {
   Future<void> showBoard(String boardId) async {
     final WindowController? existing = _popup;
     if (existing != null) {
-      await BoardWindowSync.notifyShowBoard(boardId);
-      await existing.show();
-      return;
+      try {
+        await BoardWindowSync.notifyShowBoard(boardId);
+        await existing.show();
+        return;
+      } catch (_) {
+        // 위 생성자 설명의 버그에 대한 두 번째 안전장치입니다. "닫혔다"는
+        // 신호를 놓쳤더라도(타이밍 문제 등), 죽은 창을 실제로 불러보다가
+        // 실패하면 그때라도 참조를 지우고 아래에서 새로 만듭니다.
+        _popup = null;
+      }
     }
 
     // arguments는 그냥 판 번호(boardId) 문자열입니다. 이 앱은 팝업 창이

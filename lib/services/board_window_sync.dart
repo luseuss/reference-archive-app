@@ -46,6 +46,7 @@ class BoardWindowSync {
   static bool _initialized = false;
   static void Function(String boardId)? _onCardsChanged;
   static void Function(String boardId)? _onShowBoard;
+  static void Function()? _onPopupClosed;
 
   /// 이 창(엔진)에서 신호를 받을 준비를 합니다. 여러 번 불러도
   /// 안전합니다(두 번째부터는 조용히 넘어갑니다).
@@ -56,12 +57,13 @@ class BoardWindowSync {
     _initialized = true;
 
     _channel.setMethodCallHandler((MethodCall call) async {
-      final String boardId = call.arguments as String;
       switch (call.method) {
         case 'cardsChanged':
-          _onCardsChanged?.call(boardId);
+          _onCardsChanged?.call(call.arguments as String);
         case 'showBoard':
-          _onShowBoard?.call(boardId);
+          _onShowBoard?.call(call.arguments as String);
+        case 'popupClosed':
+          _onPopupClosed?.call();
       }
       return null;
     });
@@ -81,6 +83,21 @@ class BoardWindowSync {
     _onShowBoard = listener;
   }
 
+  /// "팝업 창이 스스로 닫혔다"는 신호를 받을 콜백을 꽂습니다. 메인
+  /// 창의 `BoardPopupController`만 씁니다.
+  ///
+  /// ── 왜 필요한가 (2026-09-05 발견한 버그) ──
+  /// 팝업 창을 OS 창 닫기(X 버튼)로 닫으면, 메인 창이 들고 있는
+  /// `BoardPopupController._popup` 참조는 그 사실을 모른 채 그대로
+  /// 남습니다. 그 상태로 무드보드를 다시 열면 "이미 떠 있다"고 착각해
+  /// 죽은 창에 신호만 보내고 실제로는 아무 창도 안 뜨는 버그가
+  /// 됩니다 — 특히 열고 닫기를 반복하면 겪기 쉽습니다. 팝업 창
+  /// (board_popup_app.dart)이 닫히는 순간 이 신호를 보내, 메인 창이
+  /// 참조를 지우고 다음번엔 새 창을 만들게 합니다.
+  static void setPopupClosedListener(void Function()? listener) {
+    _onPopupClosed = listener;
+  }
+
   /// 상대 창에게 "이 판이 바뀌었으니 다시 읽어라"고 알립니다.
   ///
   /// 상대 창이 없으면(팝업을 안 띄웠으면) 조용히 실패합니다 — 알릴
@@ -91,6 +108,9 @@ class BoardWindowSync {
   /// 팝업에게 "이 판을 보여줘"라고 알립니다. (메인 → 팝업 전용)
   static Future<void> notifyShowBoard(String boardId) =>
       _invoke('showBoard', boardId);
+
+  /// 메인 창에게 "이 팝업 창이 방금 닫혔다"고 알립니다. (팝업 → 메인 전용)
+  static Future<void> notifyPopupClosed() => _invoke('popupClosed', '');
 
   static Future<void> _invoke(String method, String boardId) async {
     ensureInitialized();
