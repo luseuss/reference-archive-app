@@ -3730,3 +3730,59 @@ SQL로 표현할 수 없어서 후보 전부를 손에 들고 있어야 하는�
   **"비슷한 레퍼런스가 없어요"가 보이는지**, **눌렀을 때 그 레퍼런스의
   상세 화면이 위에 쌓이고 뒤로 가면 원래 화면으로 돌아오는지**
 - **의뢰인이 실제 앱에서 확인 완료**
+
+---
+## PR #37 — home_screen.dart 정리: 여러 장 고르기 + 호버 미리보기 분리
+
+`home_screen.dart`(1280줄, 300줄 기준 초과)에서 CLAUDE.md가 "밀린
+정리거리"로 이미 짚어둔 두 덩어리를 뺐습니다. 기능은 하나도 안 바뀐 순수
+리팩터입니다.
+
+무드보드 때(`board_interaction_controller.dart`, `board_export_controller.dart`)
+썼던 것과 같은 패턴 — 상태 + 그 상태를 다루는 동작을 `ChangeNotifier`
+클래스 하나로 묶고, 화면은 읽어오기·조립만 남기는 방식입니다.
+
+### 새로 만든 것
+
+**`lib/screens/home_selection_controller.dart`** — "여러 장 고르기" 모드의
+상태(`isSelecting`, `selectedIds`)와 동작(토글/전체선택/폴더 이동/태그
+추가/삭제, 확인 대화상자 포함)이 여기 있습니다. 폴더 이동·태그 추가·삭제처럼
+대화상자를 띄우는 동작은 `board_export_controller.dart`의 `export()`와 같은
+모양으로 만들었습니다 — 컨트롤러는 결과(`BulkActionOutcome`: 안내 문구 +
+다시 불러올지 여부)만 돌려주고, "무엇을 보여줄지"는 화면이 고릅니다.
+
+**`lib/screens/home_hover_preview_controller.dart`** — 유튜브 카드 호버
+미리보기의 상태(`previewingItemId`, `previewUrl`)와 동작(타이머 대기, 임시
+서버 켜고 끄기)이 여기 있습니다. `hoverPreviewDelay`/`supportsHoverPreview`는
+예전부터 `home_screen.dart`에서 가져다 쓰던 곳(테스트 포함)이 그대로
+동작하도록 `export`로 다시 내보냅니다.
+
+### ChangeNotifier가 무엇인가 (새로 나온 개념)
+
+"값이 바뀌었다"고 화면에 알려주는 Flutter의 기본 장치입니다. 상태가 바뀌면
+`notifyListeners()`가 불리고, 이 컨트롤러를 `ListenableBuilder`로 듣고 있는
+화면이 저절로 다시 그려집니다. 이 프로젝트에서는 무드보드 화면부터 써온
+패턴이고, 이번에 목록 화면에도 처음 들어왔습니다.
+
+### 파일 크기
+
+`home_screen.dart`가 1280 → **1049줄**로 줄었지만 여전히 300줄 기준을
+넘습니다. 남은 후보(필터바·격자·드롭 영역 조립)는 CLAUDE.md
+"밀린 정리거리"에 남겨뒀습니다 — 우선순위가 낮아 이번엔 손대지 않았습니다.
+
+### 나중에 이 부분을 고치려면 어디를 보면 되나
+
+| 고치고 싶은 것 | 봐야 할 곳 |
+|---|---|
+| 체크박스/전체선택/폴더 이동/태그 추가/삭제 | `lib/screens/home_selection_controller.dart` |
+| 유튜브 카드 호버 미리보기 | `lib/screens/home_hover_preview_controller.dart` |
+| 화면 조립·읽어오기 | `lib/screens/home_screen.dart` |
+
+### 어떻게 테스트했나
+- `flutter analyze` 문제 없음, `flutter test` **588건 전부 통과**(코드
+  수정 없이 그대로 통과 — 특히 `test/screens/home_bulk_select_test.dart`의
+  여러 장 고르기 시나리오 12개, `test/screens/home_hover_preview_test.dart`)
+- `flutter run -d windows`로 크래시 없이 뜨는 것 확인
+
+### 알고 있는 한계
+- `home_screen.dart`가 여전히 300줄 기준을 넘습니다(1049줄).
