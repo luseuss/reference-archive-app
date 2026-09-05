@@ -4063,3 +4063,57 @@ PR #39부터 #46까지, 총 8개 PR에 걸쳐 CLAUDE.md "밀린 정리거리"에
 `reference_detail_preview.dart`, `reference_detail_taxonomy_fields.dart`,
 `reference_grid.dart`, `home_drop_area.dart`, `home_selection_app_bar.dart`,
 `reference_empty_state.dart`.
+
+---
+## PR #47 — 레퍼런스 편집을 화면 전체 대신 작은 대화상자로 연다 (데스크톱)
+
+의뢰인이 옛 웹앱 스크린샷("레퍼런스 추가" 대화상자)을 보여주며, 지금
+레퍼런스를 편집할 때 화면 전체를 덮는 것이 아니라 저 스크린샷처럼
+**가운데에 뜨는 작은 대화상자**로 나오게 해달라고 요청해 만든 기능입니다.
+
+### 어떻게 했나
+
+**화면 너비로 갈립니다.** 넓을 때(데스크톱, 사이드바가 늘 펼쳐지는
+기준인 `sidebarBreakpoint`=900 이상)는 대화상자로, 좁을 때(폰)는
+지금까지처럼 화면 전체로 엽니다. 고정폭 대화상자를 좁은 화면에 그대로
+띄우면 여백만 남고 오히려 쓰기 불편해지기 때문입니다.
+
+**`showReferenceDetailDialog()`**(새 함수, `reference_detail_screen.dart`)가
+화면 너비를 재서 `showDialog`(대화상자)로 열지 `Navigator.push`(새
+화면)로 열지 정합니다. `home_screen.dart`의 `_openDetail`이 이제
+`Navigator.push`를 직접 부르지 않고 이 함수를 부릅니다.
+
+**`ReferenceDetailScreen`에 `isDialog`(기본값 거짓) 값이 하나
+늘었습니다.** 참이면 `Scaffold`+`AppBar` 대신 `AlertDialog`(고정폭
+560, 높이는 화면의 80%)로 그립니다. 안의 내용(제목·메모·분류·비슷한
+레퍼런스)은 그대로라 두 모습 다 같은 `_buildForm()`을 씁니다.
+
+**"비슷한 레퍼런스"를 눌러 들어가는 화면은 일부러 그대로 뒀습니다**
+(`_openSimilar`는 여전히 `Navigator.push`만 씁니다) — 대화상자 위에
+또 고정폭 대화상자를 겹치는 것보다, 더 깊이 들어가는 것은 화면
+전체로 보여주는 편이 자연스럽다고 판단했습니다.
+
+직접 `ReferenceDetailScreen`을 만드는 곳(테스트 등)은 `isDialog`를
+안 넘기면 예전과 똑같이 화면 전체 모습 그대로입니다.
+
+### 새로 만든 것
+
+**`test/screens/home_reference_detail_dialog_test.dart`** — 넓은
+화면(1400×900)에서는 `AlertDialog`로 뜨고 취소를 누르면 저장 없이
+닫히는지, 좁은 화면(700×900)에서는 `AppBar`가 있는 화면 전체로 뜨는지를
+각각 확인합니다.
+
+### 나중에 이 부분을 고치려면 어디를 보면 되나
+
+| 고치고 싶은 것 | 봐야 할 곳 |
+|---|---|
+| 화면 너비에 따라 여는 방식을 정하는 곳 | `reference_detail_screen.dart`의 `showReferenceDetailDialog()` |
+| 대화상자 자체의 생김새(폭·높이) | 같은 파일의 `_buildDialog()` |
+
+### 어떻게 테스트했나
+- `flutter analyze` 문제 없음, `flutter test` **590건 전부 통과**(기존
+  588건 + 새 2건). 기존 테스트는 코드 수정 없이 그대로 통과했습니다.
+- `flutter run -d windows`로 넓은 창/좁은 창 둘 다 직접 확인 완료
+
+### 알고 있는 한계
+- "비슷한 레퍼런스"로 들어간 화면은 여전히 화면 전체로 뜹니다(의도적).
