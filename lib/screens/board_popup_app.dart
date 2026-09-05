@@ -13,10 +13,18 @@
 // 그래서 AppDatabase()를 하나 더 엽니다 — 파일 경로가 같으므로
 // (data/app_database.dart의 _openConnection 참고) 메인 창과 같은
 // 데이터를 봅니다. 2026-08-31 스파이크에서 이미 확인된 방식입니다.
+//
+// ── 창을 닫을 때 메인 창에 알립니다 (2026-09-05 버그 수정) ──
+// 이 창을 OS 창 닫기(X 버튼)로 닫으면, 메인 창의 BoardPopupController가
+// 들고 있는 참조가 죽은 채로 남아 "열고 닫기를 반복하면 무드보드가 아예
+// 안 켜지는" 버그가 됩니다. 그래서 메인 창의 닫기 가드
+// (lib/main.dart의 _MainWindowCloseGuard)와 같은 방식으로, 닫기를
+// 가로채서 메인 창에 먼저 알리고 나서 진짜로 닫습니다.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_quill/flutter_quill.dart' show FlutterQuillLocalizations;
+import 'package:window_manager/window_manager.dart';
 
 import '../data/app_database.dart';
 import '../models/board.dart';
@@ -69,6 +77,12 @@ class _BoardPopupAppState extends State<BoardPopupApp> {
     // 설명 참고).
     registerPopupWindowCloseHandler();
 
+    // 이 창을 사용자가 직접(OS 닫기 버튼으로) 닫을 때도 메인 창에
+    // 알리도록 준비합니다. 위 registerPopupWindowCloseHandler는 "메인
+    // 창이 먼저 요청한" 경우만 다룹니다 — 이건 그 반대(팝업이 스스로
+    // 닫히는) 경우입니다.
+    _installPopupCloseGuard();
+
     // 메인 창이 "이 판을 보여줘"라고 신호를 보내면 판 번호를 바꿉니다.
     // 이 리스너는 팝업 창이 떠 있는 동안 계속 살아 있습니다(끄지
     // 않습니다) — board_screen.dart의 cardsChanged 리스너와 달리,
@@ -83,6 +97,15 @@ class _BoardPopupAppState extends State<BoardPopupApp> {
     });
 
     _loadBoard();
+  }
+
+  /// 이 창을 OS 창 닫기(X 버튼)로 닫으면 메인 창에 먼저 알리도록
+  /// 준비합니다. lib/main.dart의 _installMainWindowCloseGuard와 같은
+  /// 방식(setPreventClose로 가로채고, 알린 뒤에 진짜로 닫기)입니다.
+  Future<void> _installPopupCloseGuard() async {
+    await windowManager.ensureInitialized();
+    await windowManager.setPreventClose(true);
+    windowManager.addListener(_PopupCloseGuard());
   }
 
   /// 지금 판 번호(_boardId)에 해당하는 판을 읽어옵니다.
@@ -126,5 +149,30 @@ class _BoardPopupAppState extends State<BoardPopupApp> {
               canPopOut: false,
             ),
     );
+  }
+}
+
+/// 팝업 창(무드보드)이 스스로 닫힐 때, 닫히기 전에 메인 창에 알립니다.
+///
+/// lib/main.dart의 _MainWindowCloseGuard와 짝을 이룹니다 — 그쪽은
+/// "메인 창을 닫으면 팝업도 정리"를, 이쪽은 그 반대(팝업을 닫으면
+/// 메인 창이 알게)를 맡습니다.
+class _PopupCloseGuard extends WindowListener {
+  @override
+  void onWindowClose() async {
+    try {
+      await BoardWindowSync.notifyPopupClosed();
+    } catch (error) {
+      // 메인 창에 못 알려도 이 창은 닫혀야 합니다. 대신
+      // board_popup_controller.dart의 showBoard()에 있는 두 번째
+      // 안전장치(죽은 창을 실제로 불러보다 실패하면 그때 정리)가
+      // 뒤늦게라도 참조를 지워줍니다.
+      debugPrint('[무드보드 팝업 창] 메인 창에 닫힘을 알리지 못했습니다: $error');
+    }
+
+    // setPreventClose로 걸어둔 것을 풀어야 진짜로 닫힙니다. 다시
+    // 걸 필요는 없습니다 — 이 창은 곧 사라집니다.
+    await windowManager.setPreventClose(false);
+    await windowManager.close();
   }
 }
