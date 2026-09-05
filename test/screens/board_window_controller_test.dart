@@ -10,12 +10,48 @@
 // (BoardWindowController.load()/toggle()이 이 값을 먼저 본 뒤에만
 // window_manager를 부르므로, 이 값이 거짓이면 테스트 환경에서도
 // 안전합니다)
+//
+// 저장/불러오기 함수(loadBoardAlwaysOnTopDefault 등)는 window_manager를
+// 안 부르고 SharedPreferences만 건드리므로, 플랫폼과 상관없이 바로
+// 확인할 수 있습니다 — 설정 화면(settings_screen.dart)이 이 함수들을
+// 그대로 쓰기 때문에 여기서 확실히 다져둡니다.
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:reference_archive_app/screens/board_window_controller.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
+  group('항상 위 기본값 저장/불러오기', () {
+    setUp(() {
+      SharedPreferences.setMockInitialValues(<String, Object>{});
+    });
+
+    test('저장된 것이 없으면 꺼짐이다', () async {
+      expect(await loadBoardAlwaysOnTopDefault(), isFalse);
+    });
+
+    test('켜서 저장하면 다시 읽어도 켜져 있다', () async {
+      await saveBoardAlwaysOnTopDefault(true);
+      expect(await loadBoardAlwaysOnTopDefault(), isTrue);
+    });
+  });
+
+  group('무드보드 창 불투명도 기본값 저장/불러오기', () {
+    setUp(() {
+      SharedPreferences.setMockInitialValues(<String, Object>{});
+    });
+
+    test('저장된 것이 없으면 1.0(완전히 안 비침)이다', () async {
+      expect(await loadBoardOpacityDefault(), 1.0);
+    });
+
+    test('저장하면 다시 읽어도 그 값 그대로다', () async {
+      await saveBoardOpacityDefault(0.7);
+      expect(await loadBoardOpacityDefault(), 0.7);
+    });
+  });
+
   group('어느 기기에서 켜지는가', () {
     tearDown(() {
       // 바꿔둔 값을 원래대로 돌려놓습니다.
