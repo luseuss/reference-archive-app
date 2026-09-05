@@ -33,6 +33,7 @@ import 'package:flutter/material.dart';
 import '../models/board.dart';
 import '../repositories/board_repository.dart';
 import '../repositories/reference_repository.dart';
+import '../services/board_window_sync.dart';
 import '../services/image_storage.dart';
 import '../services/reference_lookup.dart';
 import '../utils/board_layout.dart';
@@ -44,6 +45,7 @@ import '../widgets/empty_state_message.dart';
 import '../widgets/pick_references_dialog.dart';
 import 'board_export_controller.dart';
 import 'board_interaction_controller.dart';
+import 'board_popup_controller.dart';
 import 'board_window_controller.dart';
 
 /// 무드보드 판 하나를 보여주는 화면입니다.
@@ -54,6 +56,7 @@ class BoardScreen extends StatefulWidget {
     required this.boardRepository,
     required this.referenceRepository,
     required this.imageStorage,
+    this.canPopOut = true,
   });
 
   /// 지금 열어본 무드보드입니다.
@@ -67,6 +70,14 @@ class BoardScreen extends StatefulWidget {
 
   /// 이미지 파일 경로를 알려주는 도구입니다.
   final ImageStorage imageStorage;
+
+  /// "팝업으로 띄우기" 버튼을 보여줄지 여부입니다.
+  ///
+  /// 팝업 창 자기 자신 안에서 또 팝업을 띄우는 것은 뜻이 없어서,
+  /// board_popup_app.dart가 이 화면을 열 때는 거짓으로 넘겨 버튼을
+  /// 숨깁니다. 메인 창에서 여는 board_list_screen.dart는 이 값을
+  /// 안 넘기므로 기본값(참)을 씁니다 — 그 호출부는 안 고쳐도 됩니다.
+  final bool canPopOut;
 
   @override
   State<BoardScreen> createState() => _BoardScreenState();
@@ -108,7 +119,24 @@ class _BoardScreenState extends State<BoardScreen> {
     _interaction = BoardInteractionController(
       boardId: widget.board.id,
       boardRepository: widget.boardRepository,
+
+      // 카드가 저장될 때마다 상대 창(메인 ↔ 팝업)에 "이 판이
+      // 바뀌었다"고 알립니다. 데스크톱이 아니면 아무 상대가 없으니
+      // 조용히 실패합니다(BoardWindowSync 안에서 처리).
+      onSaved: supportsBoardPopupWindow
+          ? () => BoardWindowSync.notifyCardsChanged(widget.board.id)
+          : null,
     );
+
+    // 상대 창이 이 판을 바꿨다는 신호를 받으면 다시 읽어옵니다.
+    // 데스크톱이 아니면 신호 자체가 안 오므로 등록할 필요가 없습니다.
+    if (supportsBoardPopupWindow) {
+      BoardWindowSync.setCardsChangedListener((String boardId) {
+        if (boardId == widget.board.id) {
+          _reloadCards();
+        }
+      });
+    }
 
     _loadBoard();
 
@@ -121,6 +149,9 @@ class _BoardScreenState extends State<BoardScreen> {
   /// 컨트롤러가 안 쓰는 자원을 붙잡고 있지 않도록 정리합니다.
   @override
   void dispose() {
+    if (supportsBoardPopupWindow) {
+      BoardWindowSync.setCardsChangedListener(null);
+    }
     _interaction.dispose();
     _export.dispose();
     _window.dispose();
@@ -149,6 +180,22 @@ class _BoardScreenState extends State<BoardScreen> {
       _lookup = lookup;
       _isLoading = false;
     });
+  }
+
+  /// 상대 창(메인 ↔ 팝업)에서 이 판이 바뀌었다는 신호를 받으면
+  /// 카드만 다시 읽어옵니다. _loadBoard와 달리 레퍼런스 목록
+  /// (_lookup)은 다시 안 읽습니다 — 카드 배치만 바뀌었을 뿐, 레퍼런스
+  /// 자체(제목·그림)는 이 신호로는 안 바뀌기 때문입니다.
+  Future<void> _reloadCards() async {
+    final List<BoardCard> cards = await widget.boardRepository.getCards(
+      widget.board.id,
+    );
+
+    if (!mounted) {
+      return;
+    }
+
+    _interaction.setCards(cards);
   }
 
   /// 레퍼런스를 골라 판에 담습니다.
@@ -226,6 +273,9 @@ class _BoardScreenState extends State<BoardScreen> {
             window: _window,
             onExport: _exportBoardImage,
             onAddCards: _addCards,
+            canPopOut: widget.canPopOut,
+            onPopOut: () =>
+                BoardPopupController.instance.showBoard(widget.board.id),
           ),
         ],
       ),

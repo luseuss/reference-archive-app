@@ -15,6 +15,11 @@
 // (lib/services/app_settings.dart에서 먼저 쓴 것과 같은 방식입니다)
 // 카드를 옮기면 notifyListeners()가 불리고, ListenableBuilder로 감싼
 // 부분이 저절로 다시 그려집니다.
+//
+// ── onSaved는 무엇인가 (무드보드 팝업 창) ──
+// 카드가 저장될 때마다 board_popup_controller.dart가 이 신호를 받아
+// 상대 창(메인 ↔ 팝업)에 "이 판이 바뀌었다"고 알립니다. 자세한 설명은
+// onSaved 필드 주석 참고.
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -32,6 +37,7 @@ class BoardInteractionController extends ChangeNotifier {
   BoardInteractionController({
     required this.boardId,
     required this.boardRepository,
+    this.onSaved,
   });
 
   /// 이 판의 번호입니다. 새 카드를 만들 때 씁니다.
@@ -39,6 +45,16 @@ class BoardInteractionController extends ChangeNotifier {
 
   /// 카드 배치를 저장하는 통로입니다.
   final BoardRepository boardRepository;
+
+  /// 카드가 실제로 저장될 때마다(추가·내리기·드래그 끝·크기조절 끝·
+  /// 정렬·크기 맞추기) 한 번씩 불립니다. 드래그·크기조절 **도중**에는
+  /// 안 불립니다 — 그때는 아직 저장 전이라 화면에서만 바뀌는 값입니다.
+  ///
+  /// 무드보드 팝업 창(board_popup_controller.dart)이 이 콜백으로
+  /// "이 판이 바뀌었다"를 상대 창에 알립니다. 이 클래스 자체는
+  /// desktop_multi_window를 몰라도 됩니다 — 저장 로직과 창간 통신은
+  /// 다른 관심사입니다.
+  final VoidCallback? onSaved;
 
   /// 판에 놓인 카드들입니다. **아래에 깔린 것부터** 순서대로 들어있습니다.
   List<BoardCard> get cards => _cards;
@@ -186,6 +202,7 @@ class BoardInteractionController extends ChangeNotifier {
     }
 
     await boardRepository.addCards(newCards);
+    onSaved?.call();
 
     _cards = <BoardCard>[..._cards, ...newCards];
     notifyListeners();
@@ -198,6 +215,7 @@ class BoardInteractionController extends ChangeNotifier {
   /// 사용자는 확인 창을 안 읽고 누르는 버릇이 들고, 정작 위험한 확인도 그냥 넘깁니다.
   Future<void> removeCard(BoardCard card) async {
     await boardRepository.removeCard(card.id);
+    onSaved?.call();
 
     // 목록을 직접 뜯어고치지 않고 새 목록으로 갈아끼웁니다.
     // 옮기기·크기 바꾸기와 같은 방식이라 읽을 때 헷갈리지 않습니다.
@@ -390,6 +408,7 @@ class BoardInteractionController extends ChangeNotifier {
     }
 
     await boardRepository.saveCard(_cards[index]);
+    onSaved?.call();
   }
 
   /// 여러 카드의 지금 상태를 한꺼번에 저장합니다.
@@ -405,6 +424,7 @@ class BoardInteractionController extends ChangeNotifier {
     }
 
     await boardRepository.saveCards(toSave);
+    onSaved?.call();
   }
 
   // ── 여기서부터는 선택·마퀴(5단계 마퀴 다중선택)입니다 ──
@@ -486,6 +506,7 @@ class BoardInteractionController extends ChangeNotifier {
     for (final String cardId in toRemove) {
       await boardRepository.removeCard(cardId);
     }
+    onSaved?.call();
 
     _cards = _cards
         .where((BoardCard card) => !toRemove.contains(card.id))

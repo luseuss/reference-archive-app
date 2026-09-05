@@ -18,6 +18,7 @@ import 'package:flutter/material.dart';
 import '../screens/board_export_controller.dart';
 import '../screens/board_interaction_controller.dart';
 import '../screens/board_window_controller.dart';
+import '../services/board_window_sync.dart';
 
 /// 무드보드 화면 위쪽 AppBar의 액션 버튼들입니다.
 class BoardToolbarActions extends StatelessWidget {
@@ -29,6 +30,8 @@ class BoardToolbarActions extends StatelessWidget {
     required this.window,
     required this.onExport,
     required this.onAddCards,
+    required this.canPopOut,
+    required this.onPopOut,
   });
 
   /// 판을 아직 읽어오는 중인지 여부입니다. 읽어오는 동안은 어떤 버튼도
@@ -53,6 +56,12 @@ class BoardToolbarActions extends StatelessWidget {
 
   /// 레퍼런스 담기 버튼을 눌렀을 때 알려줍니다.
   final VoidCallback onAddCards;
+
+  /// "팝업으로 띄우기" 버튼을 보여줄지 여부입니다. (BoardScreen.canPopOut)
+  final bool canPopOut;
+
+  /// 팝업으로 띄우기 버튼을 눌렀을 때 실행할 동작입니다.
+  final VoidCallback onPopOut;
 
   @override
   Widget build(BuildContext context) {
@@ -89,6 +98,15 @@ class BoardToolbarActions extends StatelessWidget {
                 icon: const Icon(Icons.push_pin),
                 isSelected: window.alwaysOnTop,
                 tooltip: window.alwaysOnTop ? '항상 위 끄기' : '항상 위로 띄우기',
+              ),
+
+            // 팝업으로 띄우기. 데스크톱에서만, 그리고 이 화면이
+            // 팝업 자기 자신이 아닐 때만(canPopOut) 보입니다.
+            if (supportsBoardPopupWindow && canPopOut)
+              IconButton(
+                onPressed: isLoading ? null : onPopOut,
+                icon: const Icon(Icons.picture_in_picture_alt_outlined),
+                tooltip: '팝업으로 띄우기',
               ),
 
             // 이미지로 내보내기. 카드가 없으면 눌러도 뜻이 없어서 막아둡니다.

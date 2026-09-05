@@ -5,12 +5,22 @@
 // 목적마다 판을 나눠 만들게 됩니다. 그래서 먼저 어느 판을 볼지 고르는 자리가 필요합니다.
 //
 // 판 안에서 실제로 카드를 늘어놓는 일은 board_screen.dart가 합니다.
+//
+// ── 판을 누르면 데스크톱에서는 곧바로 팝업이 뜹니다 ──
+// 처음에는 "메인 창 안에서 열기"가 기본이고, 팝업은 줄마다 따로 둔
+// 버튼으로만 띄웠습니다. 의뢰인이 써보고 "따로 버튼 빼는 것보다 그냥
+// 누르면 팝업이 뜨는 게 낫다"고 해서(2026-09-05), 데스크톱에서는 탭 한
+// 번으로 바로 팝업이 뜨도록 바꿨습니다 — _openBoard() 안에서
+// supportsBoardPopupWindow로 가릅니다. 폰·태블릿은 팝업이라는 개념
+// 자체가 없어서 예전처럼 메인 창 안에서 엽니다. 실제로 창을 만들고
+// 관리하는 일은 board_popup_controller.dart(BoardPopupController)가 합니다.
 
 import 'package:flutter/material.dart';
 
 import '../models/board.dart';
 import '../repositories/board_repository.dart';
 import '../repositories/reference_repository.dart';
+import '../services/board_window_sync.dart';
 import '../services/image_storage.dart';
 import '../theme/app_palette.dart';
 import '../theme/app_text.dart';
@@ -18,6 +28,7 @@ import '../utils/date_format.dart';
 import '../utils/id_generator.dart';
 import '../widgets/board_name_dialog.dart';
 import '../widgets/empty_state_message.dart';
+import 'board_popup_controller.dart';
 import 'board_screen.dart';
 
 /// 무드보드 목록 화면입니다.
@@ -108,11 +119,22 @@ class _BoardListScreenState extends State<BoardListScreen> {
     await _openBoard(board);
   }
 
-  /// 무드보드를 엽니다. 돌아오면 목록을 다시 읽습니다.
+  /// 무드보드를 엽니다.
   ///
-  /// 다시 읽는 이유: 판에서 카드를 올리거나 내렸으면 목록에 보이는 장수가
-  /// 달라져 있습니다. 안 읽으면 예전 숫자가 그대로 남아 틀린 정보가 됩니다.
+  /// **데스크톱에서는 메인 창 안에 열지 않고 곧바로 팝업 창으로 띄웁니다.**
+  /// 팝업은 별도 OS 창이라 이 화면이 "언제 돌아오는지" 알 수 없습니다(사용자가
+  /// 직접 닫습니다) — 그래서 목록을 다시 읽지 않습니다. 카드 장수가 살짝
+  /// 오래된 값으로 보일 수 있지만, 화면을 나갔다 들어오면 다시 맞습니다.
+  ///
+  /// 폰·태블릿(팝업 개념이 없는 플랫폼)은 예전처럼 메인 창 안에 새 화면을
+  /// 쌓습니다(Navigator.push). 이때는 돌아왔을 때 목록을 다시 읽습니다 —
+  /// 판에서 카드를 올리거나 내렸으면 장수가 달라져 있기 때문입니다.
   Future<void> _openBoard(Board board) async {
+    if (supportsBoardPopupWindow) {
+      await BoardPopupController.instance.showBoard(board.id);
+      return;
+    }
+
     await Navigator.of(context).push<void>(
       MaterialPageRoute<void>(
         builder: (BuildContext context) => BoardScreen(
@@ -269,6 +291,8 @@ class _BoardListScreenState extends State<BoardListScreen> {
 
         // 이름 바꾸기와 지우기는 자주 쓰지 않아서 메뉴 안에 넣습니다.
         // 줄마다 버튼을 두 개씩 늘어놓으면 정작 중요한 "열기"가 묻힙니다.
+        // 팝업으로 여는 것도 이제 별도 버튼이 아니라 onTap 자체이므로
+        // (위 _openBoard 설명 참고), 여기 남는 것은 이 메뉴뿐입니다.
         trailing: PopupMenuButton<String>(
           onSelected: (String value) {
             if (value == 'rename') {
