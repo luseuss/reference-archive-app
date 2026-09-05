@@ -999,8 +999,20 @@ lib/
     전부)가 그대로 통과하는 것으로 검증했습니다(회귀 없음).
 
   **다음에 분류 항목 고르는 부분을 고칠 때는 이 컨트롤러를 보세요.**
-  `reference_detail_screen.dart`에 남은 것(제목·메모·미리보기·저장 로직)은
-  분류 항목과 성격이 달라서 그대로 뒀습니다.
+
+  **`reference_detail_screen.dart`가 495 → 431줄로 한 번 더 줄었습니다**
+  (별도 PR — "reference-detail-preview-cleanup"). 화면 위쪽 미리보기를
+  뺐습니다.
+  - **`lib/widgets/reference_detail_preview.dart`**(새 파일) — 이미지·
+    유튜브 재생 버튼이 있는 미리보기(`_buildPreview()`)를 통째로
+    옮겼습니다. `reference_card_thumbnail.dart`와 같은 이유로, 상태
+    없이 값(`imagePath`/`isYoutube`)과 콜백(`onPlay`)만 받는
+    `StatelessWidget`이라 그대로 뺄 수 있었습니다.
+  - 순수 리팩터라 기존 위젯 테스트가 코드 수정 없이 그대로 통과하는
+    것으로 검증했습니다(회귀 없음).
+
+  `reference_detail_screen.dart`에 남은 것(제목·메모·저장 로직)은
+  분류 항목·미리보기와 성격이 달라서 그대로 뒀습니다.
 - ~~파트를 지울 때 그 안의 레퍼런스가 미아가 됩니다~~ ✅ **PR #33에서 완료**
   (PR #16에서 빠뜨렸던 것). 이제 파트를 지우면 그 안의 레퍼런스가 **기본
   파트로 옮겨집니다.** 그 결과로 **기본 파트 자체는 지울 수 없습니다**
