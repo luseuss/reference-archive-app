@@ -854,8 +854,28 @@ lib/
     통과하는 것으로 검증했습니다(회귀 없음).
 
   **다음에 여러 장 고르기나 호버 미리보기를 고칠 때는 이 두 컨트롤러를
-  보세요.** `home_screen.dart`에 남은 것(필터바·격자·드롭 영역·사이드바
-  조립)은 여전히 뺄 여지가 있지만 우선순위는 낮습니다.
+  보세요.**
+
+  **`home_screen.dart`가 1049 → 938줄로 한 번 더 줄었습니다** (별도 PR —
+  "home-screen-grid-cleanup"). 격자와 드롭 영역을 뺐습니다.
+  - **`lib/widgets/reference_grid.dart`**(새 파일) — 레퍼런스를 메이슨리
+    격자로 늘어놓는 `_buildGrid()`를 통째로 옮겼습니다. 상태 없이 값과
+    콜백만 받는 `StatelessWidget`입니다.
+  - **`lib/widgets/home_drop_area.dart`**(새 파일) — 화면 전체를 "끌어다
+    놓을 수 있는 영역"으로 감싸던 `_buildDropArea()`를 옮겼습니다. **이때
+    `_isDragging` 상태 자체도 함께 옮겼습니다** — 그 상태를 쓰는 곳이 이
+    위젯 하나뿐이라, `home_screen.dart`가 아예 몰라도 되게
+    `StatefulWidget`으로 통째로 뺐습니다(hover_lift.dart와 같은 방식).
+  - 두 파일 다 `lib/widgets/`에 있지만 `lib/screens/home_hover_preview_controller.dart`의
+    `supportsHoverPreview`를 그대로 가져다 씁니다 — `board_toolbar_actions.dart`가
+    `board_interaction_controller.dart`를 가져다 쓰는 것과 같은 기존
+    선례를 따랐습니다(`lib/widgets/`가 `lib/screens/`의 것을 가져다
+    쓰는 것 자체는 이 프로젝트에서 이미 있던 방식입니다).
+  - 순수 리팩터라 기존 위젯 테스트가 코드 수정 없이 그대로 통과하는
+    것으로 검증했습니다(회귀 없음).
+
+  `home_screen.dart`에 남은 것(필터바·사이드바 조립)은 여전히 뺄 여지가
+  있지만 우선순위는 낮습니다.
 - ~~`lib/screens/board_screen.dart`가 436줄이라 300줄 기준 초과~~ ✅ **완료**
   (5번을 시작하기 전에 처리). "조작" 부분(끌기·크기 조절·스냅 상태와
   동작 전부)을 `lib/screens/board_interaction_controller.dart`

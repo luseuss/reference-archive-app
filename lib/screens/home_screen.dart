@@ -17,7 +17,6 @@ import 'dart:async';
 import 'package:super_drag_and_drop/super_drag_and_drop.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 
 import '../models/enums.dart';
 import '../models/reference_item.dart';
@@ -28,7 +27,6 @@ import '../repositories/reference_repository.dart';
 import '../repositories/taxonomy_repository.dart';
 import '../services/app_settings.dart';
 import '../services/reference_importer.dart';
-import '../services/dropped_item_reader.dart';
 import '../services/image_source.dart';
 import '../services/image_storage.dart';
 import '../services/phash_backfill.dart';
@@ -39,9 +37,10 @@ import '../theme/app_text.dart';
 import '../widgets/add_youtube_dialog.dart';
 import '../widgets/app_sidebar.dart';
 import '../widgets/bulk_action_bar.dart';
+import '../widgets/home_drop_area.dart';
 import '../widgets/main_header.dart';
-import '../widgets/reference_card.dart';
 import '../widgets/reference_filter_bar.dart';
+import '../widgets/reference_grid.dart';
 import 'board_list_screen.dart';
 import 'home_hover_preview_controller.dart';
 import 'home_selection_controller.dart';
@@ -141,10 +140,6 @@ class _HomeScreenState extends State<HomeScreen> {
   /// 카드마다 이름을 찾아 데이터베이스를 뒤지면 목록이 버벅이므로,
   /// 분류 목록을 불러올 때 **한 번만** 만들어두고 모든 카드가 나눠 씁니다.
   Map<String, String> _taxonomyNames = <String, String>{};
-
-  /// 지금 무언가를 창 위로 끌고 있는 중인지 여부입니다.
-  /// 켜져 있으면 "여기 놓으세요" 안내를 덧그립니다.
-  bool _isDragging = false;
 
   /// "여러 장 고르기" 모드의 상태와 동작을 담고 있습니다.
   /// (home_selection_controller.dart 참고)
@@ -710,8 +705,11 @@ class _HomeScreenState extends State<HomeScreen> {
 
   /// 오른쪽 본문을 만듭니다. (④⑤⑥)
   Widget _buildMainArea(bool isWide) {
-    return _buildDropArea(
-      Column(
+    return HomeDropArea(
+      onDrop: (PerformDropEvent event) => _runImport(
+        () => _importer.importFromDrop(event, partId: _partIdForNewItems),
+      ),
+      child: Column(
         children: <Widget>[
           // ④ 머리줄 — 제목·개수·검색·추가 버튼
           MainHeader(
@@ -848,82 +846,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  /// 화면 전체를 "끌어다 놓을 수 있는 영역"으로 감쌉니다.
-  ///
-  /// 끄는 중일 때는 테두리와 안내를 덧그려서 "여기 놓으면 된다"를 알려줍니다.
-  /// 아무 표시가 없으면 사용자는 놓아도 되는지 알 수 없습니다.
-  Widget _buildDropArea(Widget child) {
-    final ColorScheme colors = Theme.of(context).colorScheme;
-
-    return DropRegion(
-      // 받을 수 있다고 알릴 형식들입니다. 여기 없는 형식은 아예 안 들어옵니다.
-      // (앞서 쓰던 desktop_drop은 파일 형식만 받아서 브라우저 드래그가 막혔습니다)
-      // 목록 자체는 dropped_item_reader.dart에 있습니다. 받는 쪽과 읽는 쪽이
-      // 따로 놀면 "받아는 놓고 읽지 못하는" 형식이 생기기 때문입니다.
-      formats: dropRegionFormats,
-
-      // 끌고 지나가는 동안 "복사할 수 있다"고 알려줍니다.
-      // none을 돌려주면 커서에 금지 표시가 뜨고 놓을 수 없습니다.
-      onDropOver: (DropOverEvent event) => DropOperation.copy,
-
-      onDropEnter: (DropEvent event) {
-        setState(() => _isDragging = true);
-      },
-      onDropLeave: (DropEvent event) {
-        setState(() => _isDragging = false);
-      },
-      onPerformDrop: (PerformDropEvent event) async {
-        setState(() => _isDragging = false);
-        await _runImport(
-          () => _importer.importFromDrop(event, partId: _partIdForNewItems),
-        );
-      },
-      child: Stack(
-        children: <Widget>[
-          child,
-
-          // 끄는 중에만 위에 덧그립니다.
-          if (_isDragging)
-            Positioned.fill(
-              child: IgnorePointer(
-                child: Container(
-                  // 반투명이라 아래 목록이 비쳐 보입니다.
-                  color: colors.primary.withValues(alpha: 0.12),
-                  child: Center(
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 24,
-                        vertical: 16,
-                      ),
-                      decoration: BoxDecoration(
-                        color: colors.surface,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: colors.primary, width: 2),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: <Widget>[
-                          Icon(
-                            Icons.file_download_outlined,
-                            color: colors.primary,
-                          ),
-                          const SizedBox(width: 12),
-                          Text(
-                            '여기에 놓으면 레퍼런스로 추가됩니다',
-                            style: Theme.of(context).textTheme.titleMedium,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-
   /// 화면 가운데 내용을 만듭니다. 상황에 따라 셋 중 하나를 보여줍니다.
   Widget _buildBody() {
     if (_isLoading) {
@@ -991,59 +913,26 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  /// 레퍼런스를 격자로 보여줍니다.
+  /// 레퍼런스를 격자로 보여줍니다. 격자 자체는 reference_grid.dart가 압니다.
   Widget _buildGrid() {
-    // ── 왜 메이슨리(벽돌 쌓기) 격자인가 ──
-    // 보통의 격자는 칸 크기가 정해져 있어서 사진을 그 크기에 맞춰 **잘라냅니다.**
-    // 레퍼런스를 모으는 앱에서 사진을 네모로 잘라버리면 구도가 사라집니다.
-    //
-    // 메이슨리는 칸의 **너비만** 정하고 높이는 사진이 정합니다. 그래서 세로
-    // 사진은 길쭉하게, 가로 사진은 납작하게 원본 비율 그대로 쌓입니다.
-    // 기존 웹앱이 `column-count`로 하던 것과 같은 모양입니다.
-    return MasonryGridView.extent(
-      // 아래쪽 여백을 크게 준 이유: 안 그러면 마지막 줄의 카드가
-      // 오른쪽 아래 떠 있는 추가 버튼에 가려집니다.
-      padding: const EdgeInsets.fromLTRB(12, 12, 12, 88),
-
-      // maxCrossAxisExtent = "칸 하나의 최대 너비".
-      // 개수를 고정하지 않고 너비를 정하면, 창을 넓히면 칸이 늘어나고
-      // 폰처럼 좁은 화면에서는 저절로 줄어듭니다. 화면 크기별로 따로
-      // 만들지 않아도 되어서 데스크톱과 모바일을 함께 지원하기 좋습니다.
-      //
-      // 기존 웹앱은 1240px에서 4칸이었습니다. 300px로 잡으면 얼추 같아집니다.
-      maxCrossAxisExtent: gridMaxCrossAxisExtent,
-      crossAxisSpacing: gridSpacing,
-      mainAxisSpacing: gridSpacing,
-
-      itemCount: _items.length,
-      itemBuilder: (BuildContext context, int index) {
-        final ReferenceItem item = _items[index];
-        // 호버 미리보기는 **유튜브 카드**에만, **데스크톱에서만** 붙입니다.
-        // null을 넘기면 카드가 호버를 아예 살피지 않습니다.
-        final bool canPreview =
-            supportsHoverPreview && item.type == ReferenceType.youtube;
-
-        return ReferenceCard(
-          item: item,
-          imagePath: _imagePaths[item.id],
-          onDelete: () => _deleteItem(item),
-          onTap: () => _openDetail(item),
-          isSelectionMode: _selection.isSelecting,
-          isSelected: _selection.selectedIds.contains(item.id),
-          onSelectToggle: () => _toggleSelected(item),
-          onPlay: () => _playYoutube(item),
-          onHoverChanged: canPreview
-              ? (bool isHovering) => _hoverPreview.onCardHoverChanged(
-                  item,
-                  isHovering,
-                  isSelecting: _selection.isSelecting,
-                )
-              : null,
-          isPreviewPlaying: _hoverPreview.previewingItemId == item.id,
-          previewUrl: _hoverPreview.previewUrl,
-          taxonomyNames: _taxonomyNames,
-        );
-      },
+    return ReferenceGrid(
+      items: _items,
+      imagePaths: _imagePaths,
+      taxonomyNames: _taxonomyNames,
+      isSelectionMode: _selection.isSelecting,
+      selectedIds: _selection.selectedIds,
+      previewingItemId: _hoverPreview.previewingItemId,
+      previewUrl: _hoverPreview.previewUrl,
+      onDelete: _deleteItem,
+      onTap: _openDetail,
+      onSelectToggle: _toggleSelected,
+      onPlay: _playYoutube,
+      onHoverChanged: (ReferenceItem item, bool isHovering) =>
+          _hoverPreview.onCardHoverChanged(
+            item,
+            isHovering,
+            isSelecting: _selection.isSelecting,
+          ),
     );
   }
 }
