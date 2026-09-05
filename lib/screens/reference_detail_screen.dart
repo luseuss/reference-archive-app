@@ -26,6 +26,7 @@ import '../widgets/rich_memo_editor.dart';
 import '../widgets/similar_references_section.dart';
 import '../widgets/taxonomy_multi_field.dart';
 import '../widgets/taxonomy_single_field.dart';
+import 'reference_taxonomy_edit_controller.dart';
 import 'youtube_player_screen.dart';
 
 /// 레퍼런스 상세/편집 화면입니다.
@@ -57,19 +58,15 @@ class _ReferenceDetailScreenState extends State<ReferenceDetailScreen> {
   /// onChanged가 부를 때마다 갱신됩니다. 저장을 누를 때만 실제로 씁니다.
   String? _memoJson;
 
-  /// 화면에서 고치는 중인 값들입니다.
+  /// 파트·폴더·카테고리·태그·프로젝트를 고르는 부분의 상태와 동작을
+  /// 담고 있습니다. (reference_taxonomy_edit_controller.dart 참고)
+  final ReferenceTaxonomyEditController _taxonomyEdit =
+      ReferenceTaxonomyEditController();
+
+  /// 즐겨찾기·고정은 분류 항목이 아니라 별도로 둡니다.
   /// 저장을 누르기 전까지는 데이터베이스에 반영되지 않습니다.
-  String? _folderId;
-  String? _categoryId;
-  String? _partId;
-  List<String> _tagIds = <String>[];
-  List<String> _projectIds = <String>[];
   bool _isFavorite = false;
   bool _isPinned = false;
-
-  /// 고를 수 있는 분류 항목 목록입니다. (종류별로 나눠 담습니다)
-  final Map<TaxonomyKind, List<TaxonomyItem>> _taxonomyOptions =
-      <TaxonomyKind, List<TaxonomyItem>>{};
 
   /// 이미지 파일의 전체 경로입니다.
   String? _imagePath;
@@ -99,33 +96,25 @@ class _ReferenceDetailScreenState extends State<ReferenceDetailScreen> {
     // 넘겨받은 레퍼런스의 값으로 화면을 채웁니다.
     _titleController = TextEditingController(text: widget.item.title);
     _memoJson = widget.item.memo;
-    _folderId = widget.item.folderId;
-    _categoryId = widget.item.categoryId;
-    _partId = widget.item.partId;
-    _tagIds = List<String>.from(widget.item.tagIds);
-    _projectIds = List<String>.from(widget.item.projectIds);
+    _taxonomyEdit.initFrom(widget.item);
     _isFavorite = widget.item.isFavorite;
     _isPinned = widget.item.isPinned;
 
     _loadOptions();
   }
 
-  /// 화면이 사라질 때 입력창 도구들을 정리합니다.
+  /// 화면이 사라질 때 만들어둔 것들을 정리합니다.
   /// 안 하면 화면을 닫아도 메모리에 남습니다.
   @override
   void dispose() {
     _titleController.dispose();
+    _taxonomyEdit.dispose();
     super.dispose();
   }
 
   /// 고를 수 있는 분류 항목들, 이미지 경로, 비슷한 레퍼런스를 불러옵니다.
   Future<void> _loadOptions() async {
-    final Map<TaxonomyKind, List<TaxonomyItem>> loaded =
-        <TaxonomyKind, List<TaxonomyItem>>{};
-
-    for (final TaxonomyKind kind in TaxonomyKind.values) {
-      loaded[kind] = await widget.taxonomyRepository.getAll(kind);
-    }
+    await _taxonomyEdit.load(widget.taxonomyRepository);
 
     String? path;
     final String? fileName = widget.item.fileName;
@@ -154,29 +143,10 @@ class _ReferenceDetailScreenState extends State<ReferenceDetailScreen> {
     }
 
     setState(() {
-      _taxonomyOptions
-        ..clear()
-        ..addAll(loaded);
       _imagePath = path;
       _similarItems = similar;
       _similarImagePaths = lookup.imagePaths;
       _isLoading = false;
-    });
-  }
-
-  /// 한 종류의 분류 항목 목록만 다시 불러옵니다.
-  ///
-  /// + 버튼으로 새 항목을 만든 직후에 부릅니다.
-  /// 전체를 다시 불러올 필요는 없어서 바뀐 종류만 갱신합니다.
-  Future<void> _reloadOptionsFor(TaxonomyKind kind) async {
-    final List<TaxonomyItem> loaded = await widget.taxonomyRepository.getAll(kind);
-
-    if (!mounted) {
-      return;
-    }
-
-    setState(() {
-      _taxonomyOptions[kind] = loaded;
     });
   }
 
@@ -221,11 +191,11 @@ class _ReferenceDetailScreenState extends State<ReferenceDetailScreen> {
       // 아래부터가 이 화면에서 고친 값들입니다.
       title: _titleController.text.trim(),
       memo: memoIsEmpty ? null : memoJson,
-      folderId: _folderId,
-      categoryId: _categoryId,
-      partId: _partId,
-      tagIds: _tagIds,
-      projectIds: _projectIds,
+      folderId: _taxonomyEdit.folderId,
+      categoryId: _taxonomyEdit.categoryId,
+      partId: _taxonomyEdit.partId,
+      tagIds: _taxonomyEdit.tagIds,
+      projectIds: _taxonomyEdit.projectIds,
       isFavorite: _isFavorite,
       isPinned: _isPinned,
     );
@@ -263,9 +233,16 @@ class _ReferenceDetailScreenState extends State<ReferenceDetailScreen> {
           ),
         ],
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _buildForm(),
+      // ListenableBuilder = _taxonomyEdit가 바뀌면 이 안을 다시 그려주는
+      // 위젯입니다. home_screen.dart가 컨트롤러를 쓰는 것과 같은 방식입니다.
+      body: ListenableBuilder(
+        listenable: _taxonomyEdit,
+        builder: (BuildContext context, Widget? _) {
+          return _isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : _buildForm();
+        },
+      ),
     );
   }
 
@@ -313,77 +290,71 @@ class _ReferenceDetailScreenState extends State<ReferenceDetailScreen> {
         // 위에서 아래로 좁혀지는 순서가 자연스럽습니다.
         TaxonomySingleField(
           kind: TaxonomyKind.part,
-          options: _taxonomyOptions[TaxonomyKind.part] ?? <TaxonomyItem>[],
-          selectedId: _partId,
+          options: _taxonomyEdit.options[TaxonomyKind.part] ?? <TaxonomyItem>[],
+          selectedId: _taxonomyEdit.partId,
           repository: widget.taxonomyRepository,
-          onChanged: (String? id) => setState(() => _partId = id),
-          onCreated: (TaxonomyItem created) async {
-            await _reloadOptionsFor(TaxonomyKind.part);
-            if (mounted) {
-              setState(() => _partId = created.id);
-            }
-          },
+          onChanged: _taxonomyEdit.setPart,
+          onCreated: (TaxonomyItem created) => _taxonomyEdit.handleCreated(
+            widget.taxonomyRepository,
+            TaxonomyKind.part,
+            created,
+          ),
         ),
         const SizedBox(height: 16),
 
         TaxonomySingleField(
           kind: TaxonomyKind.folder,
-          options: _taxonomyOptions[TaxonomyKind.folder] ?? <TaxonomyItem>[],
-          selectedId: _folderId,
+          options: _taxonomyEdit.options[TaxonomyKind.folder] ?? <TaxonomyItem>[],
+          selectedId: _taxonomyEdit.folderId,
           repository: widget.taxonomyRepository,
-          onChanged: (String? id) => setState(() => _folderId = id),
-          onCreated: (TaxonomyItem created) async {
-            await _reloadOptionsFor(TaxonomyKind.folder);
-            // 방금 만든 것을 바로 골라줍니다. 또 고르게 하면 번거롭습니다.
-            if (mounted) {
-              setState(() => _folderId = created.id);
-            }
-          },
+          onChanged: _taxonomyEdit.setFolder,
+          onCreated: (TaxonomyItem created) => _taxonomyEdit.handleCreated(
+            widget.taxonomyRepository,
+            TaxonomyKind.folder,
+            created,
+          ),
         ),
         const SizedBox(height: 16),
 
         TaxonomySingleField(
           kind: TaxonomyKind.category,
-          options: _taxonomyOptions[TaxonomyKind.category] ?? <TaxonomyItem>[],
-          selectedId: _categoryId,
+          options: _taxonomyEdit.options[TaxonomyKind.category] ?? <TaxonomyItem>[],
+          selectedId: _taxonomyEdit.categoryId,
           repository: widget.taxonomyRepository,
-          onChanged: (String? id) => setState(() => _categoryId = id),
-          onCreated: (TaxonomyItem created) async {
-            await _reloadOptionsFor(TaxonomyKind.category);
-            if (mounted) {
-              setState(() => _categoryId = created.id);
-            }
-          },
+          onChanged: _taxonomyEdit.setCategory,
+          onCreated: (TaxonomyItem created) => _taxonomyEdit.handleCreated(
+            widget.taxonomyRepository,
+            TaxonomyKind.category,
+            created,
+          ),
         ),
         const SizedBox(height: 24),
 
         TaxonomyMultiField(
           kind: TaxonomyKind.tag,
-          options: _taxonomyOptions[TaxonomyKind.tag] ?? <TaxonomyItem>[],
-          selectedIds: _tagIds,
+          options: _taxonomyEdit.options[TaxonomyKind.tag] ?? <TaxonomyItem>[],
+          selectedIds: _taxonomyEdit.tagIds,
           repository: widget.taxonomyRepository,
-          onChanged: (List<String> ids) => setState(() => _tagIds = ids),
-          onCreated: (TaxonomyItem created) async {
-            await _reloadOptionsFor(TaxonomyKind.tag);
-            if (mounted) {
-              setState(() => _tagIds = <String>[..._tagIds, created.id]);
-            }
-          },
+          onChanged: _taxonomyEdit.setTags,
+          onCreated: (TaxonomyItem created) => _taxonomyEdit.handleCreated(
+            widget.taxonomyRepository,
+            TaxonomyKind.tag,
+            created,
+          ),
         ),
         const SizedBox(height: 24),
 
         TaxonomyMultiField(
           kind: TaxonomyKind.project,
-          options: _taxonomyOptions[TaxonomyKind.project] ?? <TaxonomyItem>[],
-          selectedIds: _projectIds,
+          options: _taxonomyEdit.options[TaxonomyKind.project] ?? <TaxonomyItem>[],
+          selectedIds: _taxonomyEdit.projectIds,
           repository: widget.taxonomyRepository,
-          onChanged: (List<String> ids) => setState(() => _projectIds = ids),
-          onCreated: (TaxonomyItem created) async {
-            await _reloadOptionsFor(TaxonomyKind.project);
-            if (mounted) {
-              setState(() => _projectIds = <String>[..._projectIds, created.id]);
-            }
-          },
+          onChanged: _taxonomyEdit.setProjects,
+          onCreated: (TaxonomyItem created) => _taxonomyEdit.handleCreated(
+            widget.taxonomyRepository,
+            TaxonomyKind.project,
+            created,
+          ),
         ),
         const SizedBox(height: 24),
 
