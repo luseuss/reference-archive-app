@@ -3837,3 +3837,139 @@ mounted 확인 → setState로 골라주기)가 다섯 번 반복돼 있었습�
 
 ### 알고 있는 한계
 - `reference_detail_screen.dart`가 여전히 300줄 기준을 넘습니다(495줄).
+
+---
+## PR #39 — board_viewport.dart 정리: 마퀴/클릭 판정을 도우미 클래스로 분리
+
+CLAUDE.md "밀린 정리거리"가 짚어둔 `board_viewport.dart`(531줄)의 마퀴
+부분을 뺐습니다. 순수 리팩터, 동작 변경 없음.
+
+**`lib/widgets/board_viewport_gestures.dart`(새 파일)** —
+`EmptyPointerGesture`(빈 곳을 눌렀다 뗄 때까지 클릭인지 끌기인지, 어느
+버튼이었는지 가리는 값)와 `MarqueeState`(마퀴 네모가 화면 어디에
+있는지)를 담습니다. `ChangeNotifier`가 아닙니다 — 이 둘은
+`board_viewport.dart` 한 파일 안에서만 쓰는 순수 상태 보관함이라, 그
+파일의 State가 이미 쓰고 있는 `setState` 하나로 다시 그립니다. 판 좌표
+변환(`_scaleFor`/`_offsetFor`/`_toCanvasPoint`)은 옮기지 않고
+`board_viewport.dart`에 그대로 뒀습니다.
+
+`board_viewport.dart`가 531 → 540줄로 오히려 조금 늘었습니다 — 문서
+주석이 새 파일로 옮겨가며 총량은 늘었지만, 마퀴 관련 필드·메서드는
+짧은 위임 코드로 줄었습니다.
+
+**어떻게 확인했나**: `flutter test` 588건 전부 통과(마퀴 다중선택·판
+이동 시나리오 포함, 코드 수정 없이 그대로 통과), `flutter analyze` 클린.
+
+---
+## PR #40 — board_interaction_controller.dart 정리: 선택 상태를 별도 클래스로 분리
+
+CLAUDE.md가 다음 후보로 짚어둔 `board_interaction_controller.dart`
+(567줄)의 선택 관련 상태를 뺐습니다.
+
+**`lib/utils/board_card_selection.dart`(새 파일)** — `BoardCardSelection`
+클래스가 "지금 무엇이 골라져 있는지"(`ids`)와 마퀴 계산에 필요한 내부
+상태, 동작(`toggle`/`selectOnly`/`clear`/`beginMarquee`/`applyMarqueeHits`/
+`endMarquee`)을 담습니다. `board_viewport_gestures.dart`의 `MarqueeState`와
+같은 이유로 `ChangeNotifier`가 아닙니다.
+
+**Dart는 클래스 하나의 몸통을 여러 파일로 쪼갤 수 없습니다**(C#의
+partial class 같은 기능이 없습니다). 그래서 "정렬·분배 메서드"
+(`alignSelected`/`matchSizeSelected`)는 `_cards`/`_selection`/
+`_measuredHeights`/`_saveCards`를 함께 쓰는데, 클래스 자체를 쪼갤
+방법이 없어서 그대로 뒀습니다. 대신 값 하나(선택 상태)만 별도
+객체로 빼고, 그 객체를 다루는 코드만 위임하는 얇은 메서드로 바꿨습니다.
+
+`board_interaction_controller.dart`가 567 → 546줄로 줄었습니다.
+
+**어떻게 확인했나**: `flutter test` 588건 전부 통과(마퀴 다중선택
+시나리오 포함, 코드 수정 없이 그대로 통과), `flutter analyze` 클린.
+
+---
+## PR #41 — reference_card.dart 정리: 그림 부분과 호버 효과를 분리
+
+CLAUDE.md가 다음 후보로 짚어둔 `reference_card.dart`(632줄)를
+정리했습니다.
+
+**`lib/widgets/reference_card_thumbnail.dart`(새 파일)** — 카드의 그림
+부분(자리표시자, 유튜브 재생 버튼, 호버 미리보기, 고르기 체크박스)을
+통째로 옮겼습니다. 상태 없이 값만 받아 그리는 `StatelessWidget`이라
+별도 컨트롤러 없이 그대로 뺄 수 있었습니다.
+
+**`lib/widgets/hover_lift.dart`(새 파일)** — "마우스를 올리면 살짝
+떠오른다" 효과만 하는 범용 도우미 위젯(`_HoverLift`)을 공개
+클래스(`HoverLift`)로 바꿔 옮겼습니다. 레퍼런스 카드에만 매인 게 아니라
+다른 카드 종류가 생겨도 그대로 쓸 수 있습니다.
+
+카드 본체 조립과 아래쪽 글자 부분(제목·폴더·카테고리·태그·메모·날짜)은
+`reference_card.dart`에 그대로 남았습니다. 635 → **378줄**로 줄었습니다.
+
+**어떻게 확인했나**: `flutter test` 588건 전부 통과(코드 수정 없이
+그대로 통과), `flutter analyze` 클린, `flutter run -d windows`로 크래시
+없이 뜨는 것 확인.
+
+**알고 있는 한계**: `reference_card.dart`가 여전히 300줄 기준을
+넘습니다(378줄). 다음 후보는 `_buildBody`(글자 부분)입니다.
+
+---
+## PR #42 — home_screen.dart 정리: 격자와 드롭 영역을 분리
+
+CLAUDE.md가 다음 후보로 짚어둔 `home_screen.dart`(1049줄, PR #37에서
+1280 → 1049로 이미 한 번 줄인 상태)를 한 번 더 정리했습니다.
+
+**`lib/widgets/reference_grid.dart`(새 파일)** — 레퍼런스를 메이슨리
+격자로 늘어놓는 `_buildGrid()`를 통째로 옮겼습니다. 상태 없이 값과
+콜백만 받는 `StatelessWidget`입니다.
+
+**`lib/widgets/home_drop_area.dart`(새 파일)** — 화면 전체를 "끌어다
+놓을 수 있는 영역"으로 감싸던 `_buildDropArea()`를 옮겼습니다. **이때
+`_isDragging` 상태 자체도 함께 옮겼습니다** — 그 상태를 쓰는 곳이 이
+위젯 하나뿐이라, `home_screen.dart`가 아예 몰라도 되게 `StatefulWidget`으로
+통째로 뺐습니다(`hover_lift.dart`와 같은 방식).
+
+두 파일 다 `lib/widgets/`에 있지만 `lib/screens/home_hover_preview_controller.dart`의
+`supportsHoverPreview`를 그대로 가져다 씁니다 — `board_toolbar_actions.dart`가
+`board_interaction_controller.dart`를 가져다 쓰는 것과 같은 기존 선례를
+따랐습니다(`lib/widgets/`가 `lib/screens/`의 것을 가져다 쓰는 것 자체는
+이 프로젝트에서 이미 있던 방식입니다).
+
+`home_screen.dart`가 1049 → **938줄**로 줄었습니다.
+
+**어떻게 확인했나**: `flutter test` 588건 전부 통과(코드 수정 없이
+그대로 통과), `flutter analyze` 클린, `flutter run -d windows`로 크래시
+없이 뜨는 것 확인.
+
+**알고 있는 한계**: `home_screen.dart`가 여전히 300줄 기준을
+넘습니다(938줄). 남은 것(필터바·사이드바 조립)은 우선순위가 낮습니다.
+
+---
+## PR #43 — reference_detail_screen.dart 정리: 위쪽 미리보기를 분리
+
+CLAUDE.md가 다음 후보로 짚어둔 `reference_detail_screen.dart`(495줄,
+PR #38에서 524 → 495로 이미 한 번 줄인 상태)를 한 번 더 정리했습니다.
+
+**`lib/widgets/reference_detail_preview.dart`(새 파일)** — 화면 위쪽의
+이미지·유튜브 재생 버튼 미리보기(`_buildPreview()`)를 통째로 옮겼습니다.
+`reference_card_thumbnail.dart`(#41)를 뺀 것과 같은 이유로, 상태 없이
+값(`imagePath`/`isYoutube`)과 콜백(`onPlay`)만 받는 `StatelessWidget`이라
+그대로 뺄 수 있었습니다.
+
+`reference_detail_screen.dart`가 495 → **431줄**로 줄었습니다. 남은
+것(제목·메모·저장 로직)은 분류 항목·미리보기와 성격이 달라서 그대로
+뒀습니다.
+
+**어떻게 확인했나**: `flutter test` 588건 전부 통과(코드 수정 없이
+그대로 통과), `flutter analyze` 클린, `flutter run -d windows`로 크래시
+없이 뜨는 것 확인.
+
+**알고 있는 한계**: `reference_detail_screen.dart`가 여전히 300줄
+기준을 넘습니다(431줄).
+
+---
+
+## 파일 정리 5개 PR(#39~#43)을 한 번에 병합한 뒤
+
+다섯 PR 모두 `main`에서 각자 독립적으로 갈라진 브랜치였고, 전부
+CLAUDE.md의 같은 "밀린 정리거리" 섹션을 건드렸지만 **서로 다른 위치라
+병합 충돌 없이** 순서대로(#39 → #40 → #41 → #42 → #43) 스쿼시 병합됐습니다.
+병합 후 `flutter analyze`와 `flutter test`(588건)를 다시 돌려 다섯 개가
+합쳐진 상태에서도 문제없음을 확인했습니다.
