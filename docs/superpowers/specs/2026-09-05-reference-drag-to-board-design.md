@@ -27,9 +27,16 @@ Flutter 엔진(=두 창) 사이의 드래그**가 됩니다. Flutter의 기본 `
 **포함**
 - 메인 화면(레퍼런스 격자)의 카드 **한 장**을 잡아 열려 있는 무드보드(팝업
   창)로 끌어다 놓으면, 놓은 지점에 새 카드로 배치됩니다.
-- 이미 그 판에 담겨 있는 레퍼런스를 또 끌어다 놓으면, 담지 않고 안내만
-  보여줍니다("레퍼런스 담기" 대화상자가 이미 담긴 레퍼런스를 애초에
-  고를 수 없게 막는 것과 같은 규칙).
+- **이미 그 판에 담겨 있는 레퍼런스를 또 끌어다 놓아도 그대로 담깁니다**
+  (중복 막지 않음). 처음에는 "레퍼런스 담기" 대화상자처럼 막는 쪽으로
+  설계했다가, `BoardCard` 모델 자체가 "같은 레퍼런스를 한 판에 두 장
+  놓을 수 있다"(`referenceId`는 같고 `id`만 다른 카드)를 이미 전제로
+  두고 있는 것을 계획 단계에서 확인하고 방향을 바꿨습니다. 대화상자의
+  제한은 "여러 장을 훑어 고르다 실수로 같은 것을 또 체크하는 것"을 막기
+  위한 것이지, "한 판에 같은 레퍼런스가 두 장 있으면 안 된다"는 규칙이
+  아닙니다. 드래그는 한 번에 한 장을 신중하게 놓는 동작이라 그 위험이
+  없고, 오히려 같은 이미지를 두 자리에 놓고 비교하고 싶을 때 막을
+  이유가 없습니다.
 
 **포함하지 않음 (다음 조각)**
 - **여러 장을 한꺼번에 드래그.** 의뢰인이 "한 장씩 먼저"를 선택했습니다.
@@ -40,6 +47,11 @@ Flutter 엔진(=두 창) 사이의 드래그**가 됩니다. Flutter의 기본 `
   없어서 이 기능 자체가 성립하지 않습니다. `supportsBoardPopupWindow`로
   가려 데스크톱에서만 드래그가 시작되게 합니다.
 - **판 목록 화면(아직 안 열린 판) 위로 드래그.** "열려 있는 판" 한정입니다.
+- **빈 판(카드가 한 장도 없는 판) 위로 드래그.** 판이 비어 있으면
+  `board_screen.dart`가 확대·이동 화면(`BoardViewport`) 자체를 안 그리고
+  안내(`_buildEmptyState`)만 보여줍니다 — 드롭 좌표를 판 좌표로 바꿀 기준
+  (배율·이동값)이 아직 없다는 뜻이라, 이번 범위에서는 다루지 않습니다.
+  빈 판의 첫 카드는 지금처럼 "레퍼런스 담기" 버튼으로 넣습니다.
 
 ## 데이터 전달 방식
 
@@ -85,6 +97,14 @@ Flutter 엔진(=두 창) 사이의 드래그**가 됩니다. Flutter의 기본 `
 이미 쓴 해법(카드 안쪽 탭 인식을 `Listener`로 내리는 것 등, `board_canvas.dart`
 참고)을 같은 방식으로 적용합니다.
 
+**드롭 대상 쪽은 이 위험이 없습니다.** `DropRegion`의 소스(`drop_internal.dart`)를
+읽어보니, 놓기 이벤트는 네이티브 쪽에서 직접 좌표를 받아 수동으로 히트테스트를
+하는 별도 경로(`GestureBinding.instance.hitTest`를 직접 호출)라 **일반
+포인터 이벤트·제스처 인식기와 전혀 안 겹칩니다.** `home_drop_area.dart`가
+이미 화면 전체를 `DropRegion`으로 감싸고 있는데도 기존 클릭·드래그가 멀쩡한
+것이 그 증거입니다. 그래서 `BoardViewport` 전체를 `DropRegion`으로 감싸도
+빈 곳 끌기(판 이동·마퀴)·카드 끌기 어느 쪽과도 겨루지 않습니다.
+
 ## 드롭 대상: 무드보드 화면
 
 `lib/widgets/board_viewport.dart`가 화면 좌표 ↔ 판 좌표 변환(`_toCanvasPoint`)을
@@ -94,20 +114,22 @@ Flutter 엔진(=두 창) 사이의 드래그**가 됩니다. Flutter의 기본 `
 - `BoardViewport`에 새 콜백 `onReferenceDropped: void Function(String
   referenceId, Offset canvasPosition)?`를 추가합니다.
 - 위젯 트리 전체(판을 옮기는 바닥 포함)를 `DropRegion`으로 감쌉니다.
-  - `formats: Formats.standardFormats`
-  - `onDropOver`: 접두사가 붙은 값인지 확인해 `DropOperation.copy`를
-    돌려주고(아니면 `DropOperation.none`), 판 가장자리를 살짝 강조합니다
-    (`onDropEnter`/`onDropLeave`로 상태만 켜고 끕니다. 격자 스냅 안내선처럼
+  - `formats: <DataFormat<Object>>[Formats.plainText]` — 딱 이 포맷만
+    받습니다. 나중에 "탐색기에서 이미지 파일을 바로 무드보드로" 같은
+    기능을 붙일 때 목록을 늘리면 됩니다(이번 범위 밖).
+  - `onDropOver`: `DropOperation.copy`를 돌려줍니다(진짜 우리 페이로드인지는
+    `onPerformDrop`에서 접두사로 가립니다 — `home_drop_area.dart`와 같은
+    수준의 단순함). 동시에 판 가장자리를 살짝 강조합니다(`onDropEnter`/
+    `onDropLeave`로 상태만 켜고 끕니다. 격자 스냅 안내선처럼
     `IgnorePointer`로 감싸 클릭을 가로채지 않게 합니다).
   - `onPerformDrop`: `dataReader.getValue(Formats.plainText, ...)`로 문자열을
     받아 `tryDecodeReferenceDragPayload()`로 해석하고, 성공하면
     `event.position.local`을 `_toCanvasPoint()`로 판 좌표로 바꿔
     `onReferenceDropped`를 부릅니다.
-- `BoardScreen`은 이 콜백을 받아 `_handleReferenceDropped(referenceId,
-  canvasPosition)`으로 처리합니다:
-  1. `_interaction.cards`에 같은 `referenceId`가 이미 있으면 스낵바
-     "이미 담겨 있는 레퍼런스입니다"만 띄우고 끝냅니다.
-  2. 없으면 `_interaction.addCardAt(referenceId, canvasPosition)`을 부릅니다.
+- `BoardScreen`은 이 콜백을 받아 그대로
+  `_interaction.addCardAt(referenceId, canvasPosition)`을 부릅니다. 중복
+  검사는 하지 않습니다(위 "범위" 참고 — 같은 레퍼런스를 두 번 놓는 것을
+  일부러 막지 않기로 했습니다).
 
 ## 카드 생성: `BoardInteractionController.addCardAt`
 
@@ -162,9 +184,9 @@ Future<void> addCardAt(String referenceId, Offset position) async {
 
 - **순수 함수는 유닛 테스트로 확인합니다**: `reference_drag_payload.dart`의
   인코딩/디코딩(정상 값, 접두사 없는 값, 빈 문자열), `addCardAt`(저장·
-  `onSaved` 호출·중복 시 스낵바 분기는 `LocalBoardRepository` + 메모리
-  drift DB로 확인 가능 — `board_interaction_controller_test.dart`의 기존
-  패턴을 그대로 따릅니다).
+  `onSaved` 호출·지정한 자리 그대로 놓이는지는 `LocalBoardRepository` +
+  메모리 drift DB로 확인 가능 — `board_interaction_controller_test.dart`의
+  기존 패턴을 그대로 따릅니다).
 - **실제 네이티브 드래그 자체는 위젯 테스트로 못 잡습니다** (이 프로젝트의
   웹뷰·다중 창 기능들과 같은 사정 — CLAUDE.md 참고). `DropRegion`의
   `onPerformDrop` 콜백은 직접 함수로 호출해 로직만 확인하고, 실제 마우스로
@@ -180,3 +202,5 @@ Future<void> addCardAt(String referenceId, Offset position) async {
 - 드롭 위치는 카드 왼쪽 위 모서리 기준이라, 커서가 카드 한가운데를 가리키는
   것과는 살짝 다를 수 있습니다.
 - 판 목록(아직 안 연 판) 위로 드래그하는 것은 다루지 않습니다.
+- 빈 판(카드 0장) 위로는 드래그로 못 놓습니다. "레퍼런스 담기" 버튼을 씁니다.
+- 같은 레퍼런스를 여러 번 놓아도 막지 않습니다(의도적 — 위 "범위" 참고).
