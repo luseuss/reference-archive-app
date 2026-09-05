@@ -3786,3 +3786,54 @@ SQL로 표현할 수 없어서 후보 전부를 손에 들고 있어야 하는�
 
 ### 알고 있는 한계
 - `home_screen.dart`가 여전히 300줄 기준을 넘습니다(1049줄).
+
+---
+## PR #38 — reference_detail_screen.dart 정리: 분류 항목 편집을 컨트롤러로 분리
+
+`home_screen.dart` 정리(PR #37)와 같은 이유·같은 패턴입니다. CLAUDE.md가
+"밀린 정리거리"로 짚어둔 `reference_detail_screen.dart`(524줄, 300줄 기준
+초과)의 **분류 항목 편집 부분**을 뺐습니다. 기능은 하나도 안 바뀐 순수
+리팩터입니다.
+
+### 새로 만든 것
+
+**`lib/screens/reference_taxonomy_edit_controller.dart`** — 파트·폴더·
+카테고리·태그·프로젝트를 고르는 상태(`partId`/`folderId`/`categoryId`/
+`tagIds`/`projectIds`)와 동작(`load`/`reloadFor`/`setXxx`/`handleCreated`)이
+여기 있습니다.
+
+**이미지 경로를 불러오거나 "비슷한 레퍼런스"를 계산하는 일은 분류 항목과
+상관없는 별개의 관심사라 그대로 `reference_detail_screen.dart`에
+남겨뒀습니다** — `_loadOptions()`가 이 컨트롤러의 `load()`를 부른 뒤 이어서
+이미지 경로·유사도를 계산합니다. 컨트롤러 하나가 "화면이 하는 일 전부"를
+떠안지 않도록, 성격이 다른 일은 화면에 남기고 분류 항목만 옮긴 것이
+`home_screen.dart` 정리(PR #37) 때와 같은 판단입니다.
+
+**"+ 버튼으로 새 항목을 만들면 바로 골라진다"는 다섯 곳(파트/폴더/카테고리/
+태그/프로젝트) 전부 똑같은 모양이라 `handleCreated(repository, kind,
+created)` 하나로 합쳤습니다.** 예전에는 같은 코드(목록 다시 불러오기 →
+mounted 확인 → setState로 골라주기)가 다섯 번 반복돼 있었습니다.
+`switch (kind)`로 파트·폴더·카테고리는 바꿔치기, 태그·프로젝트는 목록 맨
+뒤에 더하는 것만 가릅니다.
+
+### 파일 크기
+
+`reference_detail_screen.dart`가 524 → **495줄**로 줄었지만 여전히 300줄
+기준을 넘습니다. 남은 것(제목·메모·미리보기·저장 로직)은 분류 항목과
+성격이 달라서 그대로 뒀습니다.
+
+### 나중에 이 부분을 고치려면 어디를 보면 되나
+
+| 고치고 싶은 것 | 봐야 할 곳 |
+|---|---|
+| 파트·폴더·카테고리·태그·프로젝트 고르는 동작 | `lib/screens/reference_taxonomy_edit_controller.dart` |
+| 제목·메모·미리보기·저장 | `lib/screens/reference_detail_screen.dart` |
+
+### 어떻게 테스트했나
+- `flutter analyze` 문제 없음, `flutter test` **588건 전부 통과**(코드
+  수정 없이 그대로 통과 — 태그 붙이기/떼기, 폴더 고르기, **+ 칩으로 새
+  항목을 만들면 바로 골라지는지**, 비슷한 레퍼런스 관련 테스트 전부 포함)
+- `flutter run -d windows`로 크래시 없이 뜨는 것 확인
+
+### 알고 있는 한계
+- `reference_detail_screen.dart`가 여전히 300줄 기준을 넘습니다(495줄).
