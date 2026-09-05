@@ -31,14 +31,13 @@ import '../services/image_source.dart';
 import '../services/image_storage.dart';
 import '../services/phash_backfill.dart';
 import '../services/youtube_info_source.dart';
-import '../theme/app_metrics.dart';
-import '../theme/app_palette.dart';
-import '../theme/app_text.dart';
 import '../widgets/add_youtube_dialog.dart';
 import '../widgets/app_sidebar.dart';
 import '../widgets/bulk_action_bar.dart';
 import '../widgets/home_drop_area.dart';
+import '../widgets/home_selection_app_bar.dart';
 import '../widgets/main_header.dart';
+import '../widgets/reference_empty_state.dart';
 import '../widgets/reference_filter_bar.dart';
 import '../widgets/reference_grid.dart';
 import 'board_list_screen.dart';
@@ -611,7 +610,14 @@ class _HomeScreenState extends State<HomeScreen> {
 
           // 고르는 중에만 위쪽 막대가 나옵니다.
           // 평소에는 본문 안의 머리줄(MainHeader)이 그 역할을 합니다.
-          appBar: _selection.isSelecting ? _buildSelectionAppBar() : null,
+          appBar: _selection.isSelecting
+              ? HomeSelectionAppBar(
+                  selectedCount: _selection.selectedIds.length,
+                  totalCount: _items.length,
+                  onExit: _exitSelectionMode,
+                  onToggleSelectAll: _toggleSelectAll,
+                )
+              : null,
 
           // 좁은 창에서 메뉴 버튼으로 꺼내는 사이드바입니다.
           drawer: isWide ? null : Drawer(child: _buildSidebar()),
@@ -808,44 +814,6 @@ class _HomeScreenState extends State<HomeScreen> {
     _showMessage('로그인 기능은 아직 만들지 않았습니다.');
   }
 
-  /// 고르는 중일 때의 위쪽 막대를 만듭니다.
-  ///
-  /// 색과 내용을 통째로 바꿔서 "지금은 평소와 다른 모드"임을 분명히 합니다.
-  PreferredSizeWidget _buildSelectionAppBar() {
-    final ColorScheme colors = Theme.of(context).colorScheme;
-
-    final bool allSelected =
-        _items.isNotEmpty && _selection.selectedIds.length == _items.length;
-
-    return AppBar(
-      backgroundColor: colors.primaryContainer,
-      foregroundColor: colors.onPrimaryContainer,
-
-      // 왼쪽 X 버튼으로 고르기를 끝냅니다.
-      leading: IconButton(
-        onPressed: _exitSelectionMode,
-        icon: const Icon(Icons.close),
-        tooltip: '고르기 끝내기',
-      ),
-
-      title: Text(
-        _selection.selectedIds.isEmpty
-            ? '고를 카드를 눌러주세요'
-            : '${_selection.selectedIds.length}장 선택',
-      ),
-
-      actions: <Widget>[
-        IconButton(
-          onPressed: _items.isEmpty ? null : _toggleSelectAll,
-          icon: Icon(
-            allSelected ? Icons.deselect : Icons.select_all,
-          ),
-          tooltip: allSelected ? '전체 해제' : '전체 선택',
-        ),
-      ],
-    );
-  }
-
   /// 화면 가운데 내용을 만듭니다. 상황에 따라 셋 중 하나를 보여줍니다.
   Widget _buildBody() {
     if (_isLoading) {
@@ -853,64 +821,16 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     if (_items.isEmpty) {
-      return _buildEmptyState();
+      return ReferenceEmptyState(
+        isFiltered: _query.hasAnyFilter,
+        onClearFilter: () {
+          _searchController.clear();
+          _applyQuery(_query.clearAll());
+        },
+      );
     }
 
     return _buildGrid();
-  }
-
-  /// 보여줄 레퍼런스가 없을 때의 안내입니다.
-  ///
-  /// **"아직 아무것도 없음"과 "조건에 맞는 게 없음"을 구분해서 보여줍니다.**
-  /// 사진이 100장 있는데 "아직 없습니다"라고 하면 사용자가 데이터가 날아간 줄 알고,
-  /// 반대로 하나도 없는데 "조건에 맞는 게 없다"고 하면 있지도 않은 조건을
-  /// 지우려고 헤매게 됩니다.
-  Widget _buildEmptyState() {
-    final AppPalette palette = AppPalette.of(context);
-
-    final bool isFiltered = _query.hasAnyFilter;
-
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(screenPaddingHorizontal),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: <Widget>[
-            Icon(
-              isFiltered ? Icons.search_off : Icons.photo_library_outlined,
-              size: 64,
-
-              // 아이콘까지 강조색이면 시선을 너무 끕니다. 안내는 거들 뿐이라
-              // 옅게 두고, 눌러야 할 버튼만 또렷하게 남깁니다.
-              color: palette.textDim,
-            ),
-            const SizedBox(height: 24),
-            Text(
-              isFiltered ? '조건에 맞는 레퍼런스가 없습니다' : '아직 모아둔 레퍼런스가 없습니다',
-              style: AppText.emptyTitle.copyWith(color: palette.text),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 6),
-            Text(
-              isFiltered ? '검색어나 필터를 바꿔보세요.' : '오른쪽 아래 버튼으로 이미지를 추가해보세요.',
-              style: AppText.emptyBody.copyWith(color: palette.textDim),
-              textAlign: TextAlign.center,
-            ),
-            if (isFiltered) ...<Widget>[
-              const SizedBox(height: 16),
-              FilledButton.tonalIcon(
-                onPressed: () {
-                  _searchController.clear();
-                  _applyQuery(_query.clearAll());
-                },
-                icon: const Icon(Icons.filter_alt_off_outlined),
-                label: const Text('조건 지우기'),
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
   }
 
   /// 레퍼런스를 격자로 보여줍니다. 격자 자체는 reference_grid.dart가 압니다.
