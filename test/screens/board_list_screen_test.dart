@@ -229,6 +229,21 @@ void main() {
     expect(items.length, 1, reason: '판을 지워도 레퍼런스는 남아야 합니다');
   });
 
+  testWidgets('테스트 환경에서는 팝업으로 열기 버튼이 안 보인다', (WidgetTester tester) async {
+    // desktop_multi_window는 실제 데스크톱 플랫폼에서만 동작합니다.
+    // 위젯 테스트 환경(supportsBoardPopupWindow == false)에서는 눌러도
+    // 진짜 창을 못 띄우므로, 버튼 자체가 안 보여야 합니다 — board_screen_test.dart의
+    // "항상 위" 버튼과 같은 판정 방식입니다.
+    await saveBoard('겨울 무드');
+
+    await openList(tester);
+
+    expect(
+      find.byIcon(Icons.picture_in_picture_alt_outlined),
+      findsNothing,
+    );
+  });
+
   testWidgets('취소하면 지워지지 않는다', (WidgetTester tester) async {
     await saveBoard('겨울 무드');
 
