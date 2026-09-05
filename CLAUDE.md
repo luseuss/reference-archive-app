@@ -912,14 +912,31 @@ lib/
 - **`lib/widgets/reference_card.dart`가 632줄** (300줄 기준 초과, PR #31
   이전부터 이미 넘어 있었습니다 — 이번에 새로 생긴 초과가 아닙니다).
   아직 손대지 않았습니다.
-- **`lib/screens/reference_detail_screen.dart`가 524줄** (300줄 기준 초과,
-  PR #31 이전부터 이미 넘어 있었고, PR #35에서 "비슷한 레퍼런스" 섹션을
-  붙이며 464 → 524로 더 늘었습니다). 그림을 그리는 부분은
-  `lib/widgets/similar_references_section.dart`로 빼냈지만, 그걸 불러오고
-  계산을 부르는 부분(`_loadOptions`)은 이 화면에 남아 있습니다.
-  다음에 뺄 후보는 **분류 항목 편집 부분**입니다 — `_loadOptions` /
-  `_reloadOptionsFor` / 파트·폴더·카테고리·태그·프로젝트 필드들을 묶으면
-  꽤 빠집니다.
+- **`lib/screens/reference_detail_screen.dart`가 524 → 495줄로 줄었지만
+  여전히 300줄 기준 초과** (별도 PR — "reference-detail-cleanup"). 분류
+  항목(파트·폴더·카테고리·태그·프로젝트) 편집 부분을
+  `home_selection_controller.dart`와 같은 `ChangeNotifier` 패턴으로 뺐습니다.
+  - **`lib/screens/reference_taxonomy_edit_controller.dart`**(새 파일) —
+    "지금 무엇을 골랐는지" 상태 다섯 개(`partId`/`folderId`/`categoryId`/
+    `tagIds`/`projectIds`)와 `load`/`reloadFor`/`setXxx`/`handleCreated`
+    동작이 여기 있습니다. **이미지 경로를 불러오거나 "비슷한 레퍼런스"를
+    계산하는 일은 분류 항목과 상관없는 별개의 관심사라 그대로
+    `reference_detail_screen.dart`에 남겨뒀습니다** — `_loadOptions()`가
+    이 컨트롤러의 `load()`를 부른 뒤 이어서 이미지 경로·유사도를
+    계산합니다.
+  - **"+ 버튼으로 새 항목을 만들면 바로 골라진다"는 다섯 곳 전부 똑같은
+    모양이라 `handleCreated(repository, kind, created)` 하나로
+    합쳤습니다.** 파트·폴더·카테고리는 바꿔치기, 태그·프로젝트는 목록
+    맨 뒤에 더합니다 — `switch (kind)`로 종류만 가릅니다.
+  - `reference_detail_screen.dart`는 이 컨트롤러를 `ListenableBuilder`로
+    감싸 다시 그리기만 합니다.
+  - 순수 리팩터라 기존 위젯 테스트(태그 붙이기/떼기, 폴더 고르기, **+
+    칩으로 새 항목을 만들면 바로 골라지는지**, 비슷한 레퍼런스 관련
+    전부)가 그대로 통과하는 것으로 검증했습니다(회귀 없음).
+
+  **다음에 분류 항목 고르는 부분을 고칠 때는 이 컨트롤러를 보세요.**
+  `reference_detail_screen.dart`에 남은 것(제목·메모·미리보기·저장 로직)은
+  분류 항목과 성격이 달라서 그대로 뒀습니다.
 - ~~파트를 지울 때 그 안의 레퍼런스가 미아가 됩니다~~ ✅ **PR #33에서 완료**
   (PR #16에서 빠뜨렸던 것). 이제 파트를 지우면 그 안의 레퍼런스가 **기본
   파트로 옮겨집니다.** 그 결과로 **기본 파트 자체는 지울 수 없습니다**
