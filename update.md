@@ -4117,3 +4117,113 @@ PR #39부터 #46까지, 총 8개 PR에 걸쳐 CLAUDE.md "밀린 정리거리"에
 
 ### 알고 있는 한계
 - "비슷한 레퍼런스"로 들어간 화면은 여전히 화면 전체로 뜹니다(의도적).
+
+---
+
+## PR #48 — 무드보드를 진짜 별도 창(팝업)으로 띄운다
+
+의뢰인이 옛 웹앱 스크린샷(무드보드가 작은 별도 창처럼 메인 창 위에
+떠 있는 모습)을 보여주며 요청한 기능입니다. PR #30의 "항상 위"는 앱
+창 하나가 위로 뜨는 것뿐이지만, 이번엔 **메인 창과 완전히 다른 OS
+창**입니다 — 메인 창에서 레퍼런스를 정리하면서 동시에 무드보드
+창을 따로 띄워둘 수 있습니다.
+
+### 새로운 개념: 여러 개의 OS 창 (desktop_multi_window)
+
+Flutter 앱은 보통 창 하나(=엔진 하나)로 돌아갑니다. `desktop_multi_window`
+패키지는 **같은 앱 실행 파일을 다시 시작해서 새 창(=새 엔진)을 하나
+더 띄우는** 방식으로 여러 창을 만듭니다. 중요한 점은 **두 창이 Dart
+메모리(변수·객체)를 전혀 안 나눈다**는 것입니다 — 그래서 "카드가
+바뀌었다"를 서로 알려주려면 신호를 직접 주고받아야 합니다(drift의
+`.watch()` 같은 자동 반응성은 창 사이에서는 안 통합니다).
+
+### 어떻게 했나 (기획 → 스펙 → 계획 → 구현 순서)
+
+이번 기능은 "아키텍처" 단계로 분류해 브레인스토밍부터 다시 했습니다
+(CLAUDE.md가 2026-08-31 스파이크 때부터 이렇게 하라고 남겨둔 항목이었습니다).
+의뢰인에게 세 가지를 먼저 확인했습니다.
+
+1. 팝업이 보여줄 판 — **"지금 메인 창에서 열어둘 판 하나"**
+2. 메인 창을 닫으면 팝업도 같이 닫히는지 — **예**
+3. 두 창 사이 실시간 동기화가 필요한지 — **예**
+
+이 확인 내용은 `docs/superpowers/specs/2026-09-05-board-popup-window-design.md`에,
+구현 순서는 `docs/superpowers/plans/2026-09-05-board-popup-window-plan.md`에
+그대로 남아 있습니다.
+
+**실제 구현은 6개 작업으로 나눴습니다.**
+
+1. **네이티브 러너에 창 생성 콜백을 등록** — `desktop_multi_window`가
+   새 창을 만들 때마다 drift(sqlite)·window_manager 같은 플러그인이
+   자동으로 안 실립니다. `windows/runner/flutter_window.cpp`,
+   `macos/Runner/MainFlutterWindow.swift`, `linux/runner/my_application.cc`
+   세 곳에 "창이 새로 만들어지면 플러그인을 등록하라"는 콜백을 추가했습니다.
+2. **저장이 끝났다는 신호(`onSaved`)** — `BoardInteractionController`에
+   카드를 담거나 내리거나 옮기거나 크기를 바꿔 **저장이 실제로 끝날
+   때마다**(끄는 도중에는 안 불림) 불리는 콜백을 추가했습니다.
+3. **창 사이 통신(`BoardWindowSync`)과 팝업 열기/닫기(`BoardPopupController`)** —
+   `WindowMethodChannel`로 "카드가 바뀌었다"(`cardsChanged`), "이 판을
+   보여줘"(`showBoard`) 두 신호만 주고받는 얇은 통로를 만들었습니다.
+   `WindowController`에는 원래 `close()`가 없어서(0.3.1 기준 `show()`/
+   `hide()`뿐), README가 권하는 대로 "닫아라" 신호를 보내고 그 창이
+   스스로 `window_manager`로 닫게 만드는 확장을 뒀습니다.
+4. **무드보드 화면에 팝업 버튼 + 실시간 동기화 연결** — `board_screen.dart`가
+   `onSaved`에서 `BoardWindowSync.notifyCardsChanged()`를 부르고,
+   상대 창의 `cardsChanged` 신호를 받으면 카드만 다시 읽어옵니다.
+5. **팝업 창 전용 진입점(`BoardPopupApp`)과 `main()` 갈림길** —
+   desktop_multi_window로 만든 창은 "같은 실행 파일을 다시 시작"하는
+   방식으로 뜨므로, `main()`이 `WindowController.fromCurrentEngine().arguments`로
+   "나는 메인 창인가 팝업 창인가"부터 가립니다.
+6. **실제로 두 창을 띄워 확인** — 의뢰인이 `flutter run -d windows`로
+   직접 켜서 확인했습니다(아래 "어떻게 테스트했나" 참고).
+
+**중간에 의뢰인 피드백으로 한 번 더 바뀐 부분이 있습니다.** 처음에는
+"메인 창 안에서 열기"가 기본이고 팝업은 무드보드 목록의 줄마다 따로
+둔 아이콘 버튼으로만 띄웠는데, 의뢰인이 써보고 "따로 버튼 빼는 것보다
+그냥 누르면 팝업이 뜨는 게 낫다"고 해서, **목록에서 판을 탭 하나만
+하면 데스크톱에서는 곧장 팝업이 뜨도록** 바꿨습니다
+(`board_list_screen.dart`의 `_openBoard()`). 폰·태블릿(팝업 개념이
+없는 플랫폼)은 예전처럼 메인 창 안에서 엽니다.
+
+### 새로 만든 파일
+
+| 파일 | 역할 |
+|---|---|
+| `lib/services/board_window_sync.dart` | 창 사이 신호(`cardsChanged`/`showBoard`) 통로. `supportsBoardPopupWindow`(데스크톱만 참)도 여기 있습니다 |
+| `lib/screens/board_popup_controller.dart` | 팝업 창을 열고 닫는 싱글턴. "한 번에 하나만" 규칙을 여기서 지킵니다 |
+| `lib/screens/board_popup_app.dart` | 팝업 창 전체를 채우는 진입점. 자기만의 `AppDatabase` 연결을 하나 더 엽니다(파일 경로가 같아 같은 데이터를 봅니다) |
+
+### 나중에 이 부분을 고치려면 어디를 보면 되나
+
+| 고치고 싶은 것 | 봐야 할 곳 |
+|---|---|
+| 판을 눌렀을 때 팝업으로 열지 메인 창에 열지 정하는 곳 | `board_list_screen.dart`의 `_openBoard()` |
+| 팝업을 열고 닫는 로직, "한 번에 하나만" 규칙 | `board_popup_controller.dart`의 `BoardPopupController` |
+| 창 사이에 새 신호(예: "판 이름이 바뀌었다")를 추가하고 싶을 때 | `board_window_sync.dart`에 메서드 하나씩 추가하는 패턴을 그대로 따르면 됩니다 |
+| 메인 창을 닫을 때 팝업을 정리하는 곳 | `lib/main.dart`의 `_MainWindowCloseGuard` |
+| 새 창에서 플러그인이 하나도 안 먹는 버그가 날 때 | `windows/runner/flutter_window.cpp` 등 네이티브 러너 3곳에 창 생성 콜백이 그대로 있는지 먼저 확인하세요 |
+
+### 어떻게 테스트했나
+
+- `flutter analyze` 문제 없음, `flutter test` **595건 전부 통과**
+  (기존 594건 + 새 1건). 기존 테스트는 코드 수정 없이 그대로 통과했습니다.
+- `BoardInteractionController`의 `onSaved`가 저장이 끝난 시점에만
+  불리는지(드래그·크기조절 도중에는 안 불림)를 4개 테스트로 확인했습니다
+  (`test/screens/board_interaction_controller_test.dart`, 새 파일).
+- **웹뷰·다중 창이 얽힌 부분은 위젯 테스트로 못 잡습니다**(PR #10부터
+  있던 사정과 같습니다). 실제 두 창을 띄우고, 팝업이 올바른 판을
+  보여주는지·양방향 실시간 동기화가 되는지·팝업이 하나만 뜨는지·메인
+  창을 닫으면 팝업도 닫히는지·목록에서 탭 하나로 팝업이 바로 뜨는지는
+  의뢰인이 `flutter run -d windows`로 직접 켜서 확인했습니다.
+
+### 알고 있는 한계
+
+- 팝업을 목록에서 직접 열면(메인 창에 `BoardScreen`을 안 거치므로)
+  목록의 카드 장수가 팝업에서 바뀐 뒤에도 바로 안 맞습니다 — 목록
+  화면을 나갔다 들어오면 맞습니다.
+- 창 크기·위치는 기억하지 않습니다. 팝업을 열 때마다 기본 위치·크기로
+  뜹니다.
+- `board_screen.dart` 안의 "팝업으로 띄우기" 툴바 버튼(`canPopOut`)은
+  지금은 데스크톱에서 쓰일 일이 없습니다(목록에서 탭하면 곧장 팝업으로
+  가버리기 때문입니다). 코드는 지우지 않고 남겨뒀습니다 — 나중에
+  "메인 창 안에서도 열 수 있게" 되돌릴 일이 생기면 그대로 쓸 수 있습니다.
