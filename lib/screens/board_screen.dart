@@ -324,6 +324,11 @@ class _BoardScreenState extends State<BoardScreen> {
               onMarqueeEnd: _interaction.endMarquee,
               onEmptyTap: ({required bool shiftHeld}) =>
                   _interaction.handleEmptyTap(shiftHeld: shiftHeld),
+
+              // 메인 화면에서 레퍼런스를 끌어다 놓으면 그 자리에 담습니다.
+              // 좌표 변환(화면→판)은 BoardViewport가 이미 해서 넘겨줍니다.
+              onReferenceDropped: _interaction.addCardAt,
+
               child: BoardCanvas(
                 cards: cards,
                 canvasRect: canvasRect,

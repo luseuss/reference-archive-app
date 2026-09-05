@@ -945,6 +945,93 @@ lib/
   나중에 "메인 창 안에서도 열 수 있게" 되돌릴 일이 생기면 그대로
   쓸 수 있습니다.
 
+### 단계 밖 작업: 레퍼런스를 무드보드로 끌어다 배치하기 ✅ 완료 (별도 PR — "reference-drag-to-board")
+
+의뢰인 요청: "아카이브 메인화면에서 레퍼런스를 바로 끌어다 배치할 수 있게
+만들어줘." 지금까지는 무드보드에 레퍼런스를 넣으려면 판을 연 뒤 "레퍼런스
+담기" 대화상자로 골라야 했는데, 그보다 훨씬 빠른 경로입니다. 스펙 문서는
+`docs/superpowers/specs/2026-09-05-reference-drag-to-board-design.md`,
+구현 계획은 `docs/superpowers/plans/2026-09-05-reference-drag-to-board-plan.md`에
+남아 있습니다.
+
+**확정된 동작 (의뢰인이 직접 켜서 확인함, 2026-09-05):**
+
+- 메인 화면의 레퍼런스 카드 한 장을 잡아 **열려 있는 무드보드(팝업 창)**
+  위로 끌어다 놓으면, 놓은 자리에 정확히 새 카드로 배치됩니다.
+- 같은 레퍼런스를 여러 번 끌어다 놓아도 막지 않고 그대로 담깁니다
+  (의도적 — 아래 참고).
+- 끄는 동안 판 가장자리가 강조되고, 관계없는 텍스트를 끌어다 놓으면
+  조용히 무시됩니다.
+- **첫 번째 드래그에서 잠깐 멈칫하는 현상이 있습니다.** 그 이후로는
+  매끄럽습니다. `super_native_extensions`(드래그 앤 드롭을 구현하는
+  네이티브 쪽 패키지)가 처음 쓰일 때 내부 상태를 준비하는 것으로
+  보이는 일회성 비용입니다 — 데이터가 잘못되거나 동작이 안 되는 것은
+  아니라서 그대로 두기로 했습니다. 나중에 거슬리면 앱을 켤 때 미리
+  "몸풀기" 드래그를 한 번 흘려보내는 식으로 없앨 수 있습니다.
+
+**왜 "아키텍처" 분류였나:** PR #48부터 데스크톱에서 무드보드는 항상
+메인 창과 다른 OS 창(팝업)으로 뜹니다. 그래서 "열려 있는 판 위로 끌어다
+놓기"는 사실상 **서로 다른 두 Flutter 엔진(=두 창) 사이의 드래그**이고,
+Flutter의 기본 `Draggable`/`DragTarget`(한 창 안에서만 동작)으로는 안
+됩니다. 착수 전에 "메인 창 → 팝업 창으로 텍스트 드래그가 실제로 되는지"
+를 스파이크로 먼저 확인했습니다(그 코드는 버렸고 브랜치도 지웠습니다).
+
+**어떻게 되어 있나 (나중에 고칠 때 볼 곳):**
+
+- **새 패키지를 추가하지 않았습니다.** `super_drag_and_drop`/
+  `super_clipboard`/`super_native_extensions`는 이미 PR #7(웹 이미지
+  드래그 가져오기)이 쓰던 의존성입니다. `lib/widgets/home_drop_area.dart`
+  가 이미 `DropRegion`을 실전에서 쓰고 있던 것도 이번 설계의 근거였습니다.
+- **데이터는 `Formats.plainText`에 접두사를 붙여 보냅니다**
+  (`refarchive-reference:<레퍼런스 id>`). 두 창이 서로 다른 엔진이라
+  `DragItem.localData`(같은 앱 안에서만 보이는 값)를 못 쓰고, 실제 OS
+  드래그 페이로드로 보내야 하기 때문입니다. 인코딩/디코딩은
+  `lib/utils/reference_drag_payload.dart`의 순수 함수
+  (`encodeReferenceDragPayload`/`tryDecodeReferenceDragPayload`)로
+  뺐습니다 — 접두사 문자열을 두 곳(보내는 쪽·받는 쪽)에 따로 적어두면
+  오타로 어긋날 수 있어서입니다.
+- **드래그 소스는 `lib/widgets/reference_card.dart`**입니다. 카드 본체를
+  `DragItemWidget`+`DraggableWidget`으로 감쌉니다. **데스크톱에서만,
+  그리고 고르기 모드가 아닐 때만** 감쌉니다
+  (`services/board_window_sync.dart`의 `supportsBoardPopupWindow`) —
+  고르기 모드에서는 카드를 눌러 체크를 토글해야 하는데 드래그 인식기가
+  끼면 씹힐 위험이 있어서입니다.
+- **드롭 대상은 `lib/widgets/board_viewport.dart`**입니다. 이 파일이
+  이미 화면 좌표 ↔ 판 좌표 변환(`_toCanvasPoint`)을 갖고 있어서, 그
+  변환을 다른 곳에 복제하지 않으려고 `DropRegion`도 여기 뒀습니다.
+  새 선택적 콜백 `onReferenceDropped(String referenceId, Offset
+  canvasPosition)`을 추가했고, `board_screen.dart`가 이걸
+  `BoardInteractionController.addCardAt`으로 그대로 연결합니다.
+  **빈 판(카드 0장)일 때는 안 됩니다** — 판이 비어 있으면
+  `BoardViewport` 자체가 안 그려져서 좌표 변환 기준(배율·이동값)이
+  없기 때문입니다. 그때는 지금처럼 "레퍼런스 담기" 버튼을 씁니다.
+- **`BoardInteractionController.addCardAt(referenceId, position)`**
+  (새 메서드)이 카드를 만들어 저장합니다. 기존 `addCards()`는 여러
+  장을 자동으로 줄지어 놓지만(`initialCardPosition`), 이건 사용자가
+  직접 고른 자리에 한 장만 그대로 놓습니다. `onSaved?.call()`을 그대로
+  부르므로 PR #48의 `BoardWindowSync.notifyCardsChanged` 경로를 그대로
+  타 **다른 창에도 자동으로 실시간 반영됩니다** — 새로 만든 동기화
+  코드가 없습니다.
+- **같은 레퍼런스를 여러 번 담아도 막지 않습니다.** 처음에는 "레퍼런스
+  담기" 대화상자처럼 막는 쪽으로 설계했다가, `BoardCard` 모델 자체가
+  "같은 레퍼런스를 한 판에 두 장 놓을 수 있다"(`referenceId`는 같고
+  `id`만 다른 카드)를 이미 전제로 두고 있는 것을 계획 단계에서 확인하고
+  방향을 바꿨습니다. 대화상자의 제한은 "여러 장을 훑어 고르다 실수로
+  같은 것을 또 체크하는 것"을 막기 위한 것이지, "한 판에 같은
+  레퍼런스가 두 장 있으면 안 된다"는 규칙이 아닙니다.
+- **`DropRegion`은 제스처 아레나와 안 겹칩니다.** `super_drag_and_drop`
+  소스(`drop_internal.dart`)를 읽어보니, 놓기 이벤트는 네이티브 쪽에서
+  직접 좌표를 받아 수동으로 히트테스트하는 별도 경로라 일반 포인터
+  이벤트·제스처 인식기와 전혀 안 겹칩니다. **드래그를 시작하는 쪽
+  (`DragItemWidget`/`DraggableWidget`)은 다릅니다** — 진짜 Flutter
+  제스처 인식기(`_ImmediateMultiDragGestureRecognizer`)를 쓰므로
+  `InkWell`의 탭 인식기와 경쟁합니다. 이번엔 문제없이 확인됐지만, 이
+  프로젝트가 이미 여러 번(PR #18, #25) 겪은 경쟁 부류라 카드 관련
+  드래그 기능을 더 추가할 때는 항상 의심해야 합니다.
+- **저장 구조는 안 바뀌었습니다. 마이그레이션 없음.**
+- **여러 장 동시 드래그는 안 됩니다.** 의뢰인이 "한 장씩 먼저"를
+  골랐습니다. 필요해지면 별도 작업입니다.
+
 ### 밀린 정리거리
 
 기능을 붙이다 보면 파일이 커집니다. 지금 알고 있는 것:

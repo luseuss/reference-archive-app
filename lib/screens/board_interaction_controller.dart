@@ -208,6 +208,39 @@ class BoardInteractionController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// 레퍼런스 하나를 [position](판 좌표)에 새 카드로 만들어 담고 저장합니다.
+  ///
+  /// addCards()와 다른 점: addCards()는 여러 장을 자동으로 줄지어
+  /// 놓지만(initialCardPosition), 이건 **사용자가 직접 고른 자리**에
+  /// 한 장만 그대로 놓습니다. 무드보드로 레퍼런스를 끌어다 놓았을 때
+  /// board_screen.dart가 부릅니다.
+  ///
+  /// 같은 레퍼런스가 이미 판에 있어도 막지 않습니다 — BoardCard는 원래
+  /// 같은 레퍼런스를 한 판에 여러 장 놓을 수 있게 만들어져 있고
+  /// (referenceId는 같고 id만 다른 카드), 드래그는 한 번에 하나씩
+  /// 신중하게 놓는 동작이라 실수로 중복될 위험도 적습니다.
+  Future<void> addCardAt(String referenceId, Offset position) async {
+    final DateTime now = DateTime.now().toUtc();
+    final BoardCard newCard = BoardCard(
+      id: newId(),
+      boardId: boardId,
+      referenceId: referenceId,
+      x: position.dx,
+      y: position.dy,
+
+      // 방금 놓은 것이 맨 위에 옵니다. addCards()와 같은 규칙입니다.
+      zOrder: topZOrderOf(_cards) + 1,
+      createdAt: now,
+      updatedAt: now,
+    );
+
+    await boardRepository.addCards(<BoardCard>[newCard]);
+    onSaved?.call();
+
+    _cards = <BoardCard>[..._cards, newCard];
+    notifyListeners();
+  }
+
   /// 카드를 판에서 내립니다.
   ///
   /// **레퍼런스를 지우는 것이 아닙니다.** 판에서만 내려가고 목록에는 그대로 남습니다.

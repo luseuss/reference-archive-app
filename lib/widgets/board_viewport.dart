@@ -50,10 +50,13 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:super_drag_and_drop/super_drag_and_drop.dart';
 
+import '../services/board_window_sync.dart';
 import '../theme/app_metrics.dart';
 import '../theme/app_palette.dart';
 import '../utils/board_view.dart';
+import '../utils/reference_drag_payload.dart';
 import 'board_viewport_gestures.dart';
 import 'board_zoom_controls.dart';
 
@@ -69,6 +72,7 @@ class BoardViewport extends StatefulWidget {
     required this.onMarqueeEnd,
     required this.onEmptyTap,
     required this.child,
+    this.onReferenceDropped,
   });
 
   /// 카드를 그릴 자리입니다. (`boardCanvasRect`로 구합니다)
@@ -128,6 +132,17 @@ class BoardViewport extends StatefulWidget {
   /// 판이 안 움직입니다. (board_canvas.dart가 바탕을 안 그리는 이유입니다)
   final Widget child;
 
+  /// 메인 화면에서 레퍼런스 카드를 이 판 위로 끌어다 놓았을 때 알려줍니다.
+  /// [referenceId]는 놓은 레퍼런스의 번호, [canvasPosition]은 놓은 자리를
+  /// **판 좌표**로 바꾼 값입니다(화면 좌표가 아닙니다 — 이 파일만 아는
+  /// 배율·이동값을 반영해 바꿔서 넘겨줍니다).
+  ///
+  /// null이면 드롭을 아예 안 받습니다. `supportsBoardPopupWindow`가
+  /// 거짓인 플랫폼(모바일·태블릿)에서는 이 콜백을 안 만들어도 되게
+  /// 선택적으로 뒀습니다.
+  final void Function(String referenceId, Offset canvasPosition)?
+  onReferenceDropped;
+
   @override
   State<BoardViewport> createState() => _BoardViewportState();
 }
@@ -149,6 +164,10 @@ class _BoardViewportState extends State<BoardViewport> {
   /// 마퀴(다중선택 네모)가 화면 어디에 있는지 담고 있습니다.
   /// (board_viewport_gestures.dart 참고)
   final MarqueeState _marquee = MarqueeState();
+
+  /// 레퍼런스를 이 판 위로 끌고 온 동안(아직 놓지는 않은 상태) 참입니다.
+  /// 가장자리를 강조해서 "여기 놓으면 된다"를 알려주는 데만 씁니다.
+  bool _isDropHighlighted = false;
 
   /// 부모가 [BoardViewport.viewResetCount]를 올리면 보던 화면을 되돌립니다.
   ///
@@ -391,7 +410,7 @@ class _BoardViewportState extends State<BoardViewport> {
 
         // Listener = 손가락·마우스의 날것 신호를 그대로 받는 위젯입니다.
         // 휠 신호는 "끌기"가 아니라서 GestureDetector로는 안 잡힙니다.
-        return Listener(
+        final Widget content = Listener(
           onPointerSignal: (PointerSignalEvent event) =>
               _onPointerSignal(event, viewport),
 
@@ -531,6 +550,76 @@ class _BoardViewportState extends State<BoardViewport> {
                   onResetToFit: _resetToFitAll,
                 ),
               ),
+            ],
+          ),
+        );
+
+        // 레퍼런스를 무드보드로 끌어다 놓는 기능이 없는 플랫폼(모바일·
+        // 태블릿)이거나, 이 화면이 그 기능을 안 쓰겠다고 하면(콜백이
+        // null이면) DropRegion으로 감싸지 않고 그대로 돌려줍니다.
+        // super_drag_and_drop이 이미 제 역할을 하는 곳(home_drop_area.dart)
+        // 밖에서까지 켜둘 필요가 없습니다.
+        if (!supportsBoardPopupWindow || widget.onReferenceDropped == null) {
+          return content;
+        }
+
+        return DropRegion(
+          // 우리가 보내는 것(Formats.plainText에 접두사 붙인 문자열)만
+          // 받습니다. 접두사가 없는 값(다른 곳에서 온 텍스트)은
+          // onPerformDrop에서 조용히 무시합니다.
+          formats: const <DataFormat<Object>>[Formats.plainText],
+
+          // 끌고 지나가는 동안 "놓을 수 있다"고 알려줍니다. 진짜 우리
+          // 페이로드인지는 onPerformDrop에서 접두사로 가립니다 —
+          // home_drop_area.dart와 같은 수준의 단순함입니다.
+          onDropOver: (DropOverEvent event) => DropOperation.copy,
+
+          onDropEnter: (DropEvent event) {
+            setState(() => _isDropHighlighted = true);
+          },
+          onDropLeave: (DropEvent event) {
+            setState(() => _isDropHighlighted = false);
+          },
+
+          onPerformDrop: (PerformDropEvent event) async {
+            setState(() => _isDropHighlighted = false);
+
+            final DropItem item = event.session.items.first;
+            item.dataReader?.getValue<String>(Formats.plainText, (
+              String? value,
+            ) {
+              final String? referenceId = tryDecodeReferenceDragPayload(
+                value,
+              );
+              if (referenceId == null) {
+                return;
+              }
+
+              final Offset canvasPoint = _toCanvasPoint(
+                event.position.local,
+                viewport,
+              );
+              widget.onReferenceDropped?.call(referenceId, canvasPoint);
+            });
+          },
+
+          child: Stack(
+            children: <Widget>[
+              content,
+
+              // 끄는 동안에만 가장자리를 강조합니다. 격자 스냅 안내선과
+              // 같은 이유로 IgnorePointer로 감쌉니다 — 안 그러면 이
+              // 겹치는 네모가 클릭을 가로채 판이 안 움직입니다.
+              if (_isDropHighlighted)
+                Positioned.fill(
+                  child: IgnorePointer(
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        border: Border.all(color: colors.primary, width: 3),
+                      ),
+                    ),
+                  ),
+                ),
             ],
           ),
         );
