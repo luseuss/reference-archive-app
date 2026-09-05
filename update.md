@@ -3973,3 +3973,93 @@ CLAUDE.md의 같은 "밀린 정리거리" 섹션을 건드렸지만 **서로 다
 병합 충돌 없이** 순서대로(#39 → #40 → #41 → #42 → #43) 스쿼시 병합됐습니다.
 병합 후 `flutter analyze`와 `flutter test`(588건)를 다시 돌려 다섯 개가
 합쳐진 상태에서도 문제없음을 확인했습니다.
+
+---
+## PR #44 — reference_card.dart 정리: 글자 부분(_buildBody)을 분리
+
+`reference_card.dart`(378줄, #41에서 635 → 378로 이미 한 번 줄인 상태)를
+정리했습니다. **이제 300줄 기준 안으로 들어왔습니다(187줄).**
+
+**`lib/widgets/reference_card_body.dart`(새 파일)** — 제목·폴더·카테고리·
+태그·메모·날짜·삭제 버튼(`_buildBody`와 그 하위 메서드 전부)을 통째로
+옮겼습니다. `reference_card_thumbnail.dart`(#41)와 같은 이유로, 상태
+없이 값(`item`/`taxonomyNames`/`isSelectionMode`)과 콜백(`onDelete`)만
+받는 `StatelessWidget`이라 그대로 뺄 수 있었습니다.
+
+`reference_card.dart`에는 이제 카드 본체(테두리·그림자·클릭) 조립만
+남았습니다.
+
+**어떻게 확인했나**: `flutter test` 588건 전부 통과(코드 수정 없이
+그대로 통과), `flutter analyze` 클린, `flutter run -d windows`로 크래시
+없이 뜨는 것 확인.
+
+---
+## PR #45 — reference_detail_screen.dart 정리: 분류 항목 칸 다섯 개를 분리
+
+`reference_detail_screen.dart`(431줄, #43에서 495 → 431로 이미 한 번
+줄인 상태)에 남아 있던 파트/폴더/카테고리/태그/프로젝트 다섯 칸이 전부
+`ReferenceTaxonomyEditController`를 그대로 받아쓰는 반복된 모양이라, 그
+반복 자체를 새 위젯으로 묶었습니다.
+
+**`lib/widgets/reference_detail_taxonomy_fields.dart`(새 파일)** —
+`ReferenceDetailTaxonomyFields`가 `controller`/`repository` 두 값만
+받아 다섯 칸을 세로로 늘어놓습니다.
+
+`reference_detail_screen.dart`가 431 → **362줄**로 줄었습니다. 남은
+것(제목·메모·저장 로직)은 분류 항목·미리보기와 성격이 달라서 그대로
+뒀습니다.
+
+**어떻게 확인했나**: `flutter test` 588건 전부 통과(코드 수정 없이
+그대로 통과), `flutter analyze` 클린, `flutter run -d windows`로 크래시
+없이 뜨는 것 확인.
+
+---
+## PR #46 — home_screen.dart 정리: 고르기 위쪽 막대와 빈 안내를 분리
+
+`home_screen.dart`(938줄, #42에서 1049 → 938로 이미 한 번 줄인 상태)에서
+두 조각을 더 뺐습니다.
+
+**`lib/widgets/home_selection_app_bar.dart`(새 파일)** — 고르는 중일 때
+나오는 위쪽 막대(`_buildSelectionAppBar`)를 옮겼습니다. 상태 없이 값
+(`selectedCount`/`totalCount`)과 콜백만 받습니다.
+
+**`lib/widgets/reference_empty_state.dart`(새 파일)** — 레퍼런스가
+하나도 안 보일 때의 안내(`_buildEmptyState`)를 옮겼습니다. 상태 없이
+`isFiltered` 하나와 콜백 하나만 받습니다.
+
+`home_screen.dart`가 938 → **861줄**로 줄었습니다.
+
+**여기서 정리를 멈췄습니다.** 남은 것(필터바·사이드바 조립, 검색·
+가져오기·탐색 로직)은 화면을 읽어오고 조립하는 일 자체라, 더 잘게
+쪼개면 오히려 따라가기 어려워질 것 같았습니다 — `board_screen.dart`가
+321줄에서 멈춘 것과 같은 판단입니다.
+
+**어떻게 확인했나**: `flutter test` 588건 전부 통과(코드 수정 없이
+그대로 통과), `flutter analyze` 클린, `flutter run -d windows`로 크래시
+없이 뜨는 것 확인.
+
+---
+
+## 파일 정리 작업 마무리 (PR #39~#46)
+
+PR #39부터 #46까지, 총 8개 PR에 걸쳐 CLAUDE.md "밀린 정리거리"에 있던
+파일들을 정리했습니다. 전부 충돌 없이 순서대로 스쿼시 병합됐고, 병합 뒤
+`flutter test`(588건)와 `flutter analyze`로 다시 확인했습니다.
+
+**최종 상태:**
+
+| 파일 | 처음 | 최종 | 비고 |
+|---|---|---|---|
+| `board_viewport.dart` | 531줄 | 540줄 | 마퀴/클릭 판정 분리(#39) — 문서가 새 파일로 옮겨가 총량은 늘었지만 관심사는 나뉨 |
+| `board_interaction_controller.dart` | 567줄 | 546줄 | 선택 상태 분리(#40) — 정렬·분배 메서드는 Dart가 클래스를 파일로 못 쪼개 그대로 |
+| `reference_card.dart` | 632줄 | **187줄** | 그림(#41)·글자(#44) 부분 분리 — 300줄 기준 안으로 들어옴 |
+| `home_screen.dart` | 1280줄 | 861줄 | 여러 장 고르기·호버(#37), 격자·드롭(#42), 위쪽 막대·빈 안내(#46) 분리 — 남은 조립 로직에서 의도적으로 멈춤 |
+| `reference_detail_screen.dart` | 524줄 | 362줄 | 분류 항목 편집(#38), 미리보기(#43), 분류 항목 칸(#45) 분리 |
+
+이번 정리로 만들어진 새 파일들: `home_selection_controller.dart`,
+`home_hover_preview_controller.dart`, `reference_taxonomy_edit_controller.dart`,
+`board_viewport_gestures.dart`, `board_card_selection.dart`,
+`hover_lift.dart`, `reference_card_thumbnail.dart`, `reference_card_body.dart`,
+`reference_detail_preview.dart`, `reference_detail_taxonomy_fields.dart`,
+`reference_grid.dart`, `home_drop_area.dart`, `home_selection_app_bar.dart`,
+`reference_empty_state.dart`.
