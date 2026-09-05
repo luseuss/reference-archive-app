@@ -19,12 +19,53 @@ import '../services/image_storage.dart';
 import '../services/reference_lookup.dart';
 import '../utils/rich_text_memo.dart';
 import '../utils/similarity.dart';
+import '../widgets/app_sidebar.dart' show sidebarBreakpoint;
 import '../widgets/reference_detail_preview.dart';
 import '../widgets/reference_detail_taxonomy_fields.dart';
 import '../widgets/rich_memo_editor.dart';
 import '../widgets/similar_references_section.dart';
 import 'reference_taxonomy_edit_controller.dart';
 import 'youtube_player_screen.dart';
+
+/// 레퍼런스 편집 화면을 엽니다. 저장했으면(닫힐 때 true를 돌려주면) true를 돌려줍니다.
+///
+/// 화면이 넓을 때(데스크톱)는 가운데 뜨는 작은 대화상자로, 좁을 때(폰)는
+/// 지금까지처럼 화면 전체를 채우는 새 화면으로 엽니다. 사이드바가 서랍으로
+/// 바뀌는 기준(`sidebarBreakpoint`)과 같은 기준을 씁니다 — 고정폭
+/// 대화상자를 좁은 화면에 그대로 띄우면 여백만 남고 오히려 쓰기 불편해집니다.
+Future<bool?> showReferenceDetailDialog({
+  required BuildContext context,
+  required ReferenceItem item,
+  required ReferenceRepository referenceRepository,
+  required TaxonomyRepository taxonomyRepository,
+  required ImageStorage imageStorage,
+}) {
+  final bool isWide = MediaQuery.sizeOf(context).width >= sidebarBreakpoint;
+
+  if (isWide) {
+    return showDialog<bool>(
+      context: context,
+      builder: (BuildContext context) => ReferenceDetailScreen(
+        item: item,
+        referenceRepository: referenceRepository,
+        taxonomyRepository: taxonomyRepository,
+        imageStorage: imageStorage,
+        isDialog: true,
+      ),
+    );
+  }
+
+  return Navigator.of(context).push<bool>(
+    MaterialPageRoute<bool>(
+      builder: (BuildContext context) => ReferenceDetailScreen(
+        item: item,
+        referenceRepository: referenceRepository,
+        taxonomyRepository: taxonomyRepository,
+        imageStorage: imageStorage,
+      ),
+    ),
+  );
+}
 
 /// 레퍼런스 상세/편집 화면입니다.
 class ReferenceDetailScreen extends StatefulWidget {
@@ -34,6 +75,7 @@ class ReferenceDetailScreen extends StatefulWidget {
     required this.referenceRepository,
     required this.taxonomyRepository,
     required this.imageStorage,
+    this.isDialog = false,
   });
 
   /// 고칠 레퍼런스입니다.
@@ -42,6 +84,14 @@ class ReferenceDetailScreen extends StatefulWidget {
   final ReferenceRepository referenceRepository;
   final TaxonomyRepository taxonomyRepository;
   final ImageStorage imageStorage;
+
+  /// 대화상자로 띄워졌는지 여부입니다.
+  ///
+  /// 참이면 `Scaffold`+`AppBar` 대신 `AlertDialog`로 그립니다 —
+  /// `showReferenceDetailDialog()`가 화면 너비를 보고 정해서 넘겨줍니다.
+  /// 직접 이 위젯을 만들 때(예: 테스트)는 거짓이 기본값이라 지금까지처럼
+  /// 화면 전체를 채우는 모습 그대로입니다.
+  final bool isDialog;
 
   @override
   State<ReferenceDetailScreen> createState() => _ReferenceDetailScreenState();
@@ -208,8 +258,26 @@ class _ReferenceDetailScreenState extends State<ReferenceDetailScreen> {
   }
 
   /// 화면의 생김새를 만들어 돌려줍니다.
+  ///
+  /// [ReferenceDetailScreen.isDialog]가 참이면 대화상자(`AlertDialog`)로,
+  /// 거짓이면 지금까지처럼 화면 전체(`Scaffold`)로 그립니다.
   @override
   Widget build(BuildContext context) {
+    // ListenableBuilder = _taxonomyEdit가 바뀌면 이 안을 다시 그려주는
+    // 위젯입니다. home_screen.dart가 컨트롤러를 쓰는 것과 같은 방식입니다.
+    final Widget content = ListenableBuilder(
+      listenable: _taxonomyEdit,
+      builder: (BuildContext context, Widget? _) {
+        return _isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : _buildForm();
+      },
+    );
+
+    if (widget.isDialog) {
+      return _buildDialog(content);
+    }
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('레퍼런스 편집'),
@@ -230,16 +298,43 @@ class _ReferenceDetailScreenState extends State<ReferenceDetailScreen> {
           ),
         ],
       ),
-      // ListenableBuilder = _taxonomyEdit가 바뀌면 이 안을 다시 그려주는
-      // 위젯입니다. home_screen.dart가 컨트롤러를 쓰는 것과 같은 방식입니다.
-      body: ListenableBuilder(
-        listenable: _taxonomyEdit,
-        builder: (BuildContext context, Widget? _) {
-          return _isLoading
-              ? const Center(child: CircularProgressIndicator())
-              : _buildForm();
-        },
+      body: content,
+    );
+  }
+
+  /// 옛 웹앱처럼 가운데에 뜨는 작은 대화상자 모습으로 그립니다.
+  ///
+  /// 너비를 고정폭(560)으로 두고, 높이는 화면 높이의 80%로 제한합니다 —
+  /// 안 그러면 태그·프로젝트가 많은 레퍼런스에서 대화상자가 화면 밖으로
+  /// 넘칩니다. 넘치지 않는 범위 안에서는 [_buildForm]이 이미 쓰고 있는
+  /// `ListView`가 알아서 스크롤됩니다.
+  Widget _buildDialog(Widget content) {
+    return AlertDialog(
+      title: const Text('레퍼런스 편집'),
+      content: SizedBox(
+        width: 560,
+        height: MediaQuery.sizeOf(context).height * 0.8,
+        child: content,
       ),
+      actions: <Widget>[
+        TextButton(
+          // 저장하는 도중에는 취소를 눌러도 반쯤 저장된 상태로 나가지
+          // 않게 잠급니다.
+          onPressed: _isSaving ? null : () => Navigator.of(context).pop(),
+          child: const Text('취소'),
+        ),
+        FilledButton.icon(
+          onPressed: (_isLoading || _isSaving) ? null : _save,
+          icon: _isSaving
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.check),
+          label: const Text('저장'),
+        ),
+      ],
     );
   }
 

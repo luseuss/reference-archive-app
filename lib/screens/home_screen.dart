@@ -563,21 +563,18 @@ class _HomeScreenState extends State<HomeScreen> {
 
   /// 편집 화면을 열고, 돌아오면 목록을 다시 불러옵니다.
   Future<void> _openDetail(ReferenceItem item) async {
-    // push는 새 화면을 띄우고, 그 화면이 닫힐 때까지 기다렸다가
-    // 닫으면서 돌려준 값을 받습니다.
+    // showReferenceDetailDialog가 화면 너비를 보고, 넓으면 가운데 뜨는
+    // 작은 대화상자로, 좁으면(폰) 지금까지처럼 화면 전체로 엽니다.
     // 편집 화면은 저장했을 때만 true를 돌려줍니다.
-    final bool? changed = await Navigator.of(context).push<bool>(
-      MaterialPageRoute<bool>(
-        builder: (BuildContext context) => ReferenceDetailScreen(
-          item: item,
-          referenceRepository: widget.repository,
-          taxonomyRepository: widget.taxonomyRepository,
-          imageStorage: widget.imageStorage,
-        ),
-      ),
+    final bool? changed = await showReferenceDetailDialog(
+      context: context,
+      item: item,
+      referenceRepository: widget.repository,
+      taxonomyRepository: widget.taxonomyRepository,
+      imageStorage: widget.imageStorage,
     );
 
-    // 저장 없이 그냥 뒤로 나왔으면 다시 불러올 필요가 없습니다.
+    // 저장 없이 그냥 닫았으면 다시 불러올 필요가 없습니다.
     if (changed == true) {
       // 편집 화면에서 새 폴더나 태그를 만들었을 수 있으므로
       // 필터 메뉴 목록도 함께 갱신합니다. 안 하면 방금 만든 태그가
