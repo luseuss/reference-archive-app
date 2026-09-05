@@ -885,18 +885,32 @@ lib/
   어려워질 것 같아 여기서 멈췄습니다. 굳이 더 뺄 곳을 찾자면
   `_loadBoard`/`_addCards`를 "읽기 전용 화면 진입점" 클래스로 한 번 더
   뺄 수는 있지만, 지금은 우선순위가 낮습니다.
-- **두 파일은 여전히 300줄을 넘습니다:**
-  `board_viewport.dart` 531줄(PR #25 이후 그대로),
-  `board_interaction_controller.dart` 567줄(PR #26에서 494 → 545 →
-  PR #27에서 567). 뺄 후보는 이전 메모(마퀴 부분, 정렬·선택 관련
-  메서드) 그대로입니다 — 아직 손대지 않았습니다.
-
-  뺄 후보는 **`board_viewport.dart`의 마퀴 부분**입니다 —
-  `_onEmptyPointerDown/Move/Up`, `_onEmptyDragStart/Update/End`,
-  `_marqueeActive`/`_marqueeStart`/`_marqueeCurrent`, `_toCanvasPoint`.
-  판 이동(팬)과 성격이 다른 별개의 손잡이라 나눌 수 있습니다. 다만
-  `_scaleFor`/`_offsetFor`(좌표 변환)를 공유하고 있어서, 마퀴 클래스에
-  그 둘을 인자로 넘기거나 콜백으로 받는 모양을 먼저 정해야 합니다.
+- **`board_viewport.dart`가 531 → 540줄로 오히려 조금 늘었지만
+  내용은 정리됐습니다** (별도 PR — "board-viewport-cleanup"). 마퀴·클릭
+  판정 부분을 뺐는데도 줄 수가 준 게 아니라 는 이유: 이 파일은
+  `ChangeNotifier` 패턴이 아니라 **작은 값 보관 클래스 둘**로 뺐고,
+  그 클래스들의 문서 주석이 새 파일에 새로 붙어서 총량은 늘었습니다 —
+  다만 `board_viewport.dart` 자기 자신은 마퀴 관련 필드·메서드가 짧은
+  위임 코드로 줄었습니다.
+  - **`lib/widgets/board_viewport_gestures.dart`**(새 파일) —
+    `EmptyPointerGesture`(빈 곳을 눌렀다 뗄 때까지 클릭인지 끌기인지,
+    어느 버튼이었는지 가리는 값)와 `MarqueeState`(마퀴 네모가 화면
+    어디에 있는지)를 담습니다.
+  - **`ChangeNotifier`로 만들지 않았습니다.** 다른 컨트롤러들과 달리
+    이 둘은 `board_viewport.dart` 한 파일 안에서만 쓰는, 화면과 무관한
+    순수 상태 보관함입니다. 그 파일의 State가 이미 pan·zoom 때문에
+    `setState`를 쓰고 있어서, 여기서 또 다른 "다시 그려라" 체계를
+    두면 오히려 헷갈립니다 — **언제 다시 그릴지는 여전히
+    `board_viewport.dart`가 `setState`로 정합니다.**
+  - **판 좌표 변환(`_scaleFor`/`_offsetFor`/`_toCanvasPoint`)은
+    옮기지 않고 `board_viewport.dart`에 그대로 뒀습니다.** `MarqueeState`는
+    화면 좌표만 알고, 판 좌표로 바꾸는 일은 여전히 `_onEmptyDragUpdate`가
+    합니다 — 미리 남겨둔 주의사항(배율·이동 값을 공유하는 문제)대로
+    처리했습니다.
+  - 순수 리팩터라 기존 위젯 테스트(마퀴 다중선택·판 이동 시나리오
+    포함)가 그대로 통과하는 것으로 검증했습니다(회귀 없음).
+- **`board_interaction_controller.dart`(567줄)는 아직 손대지 않았습니다.**
+  뺄 후보는 이전 메모(정렬·선택 관련 메서드) 그대로입니다.
 
   `board_interaction_controller.dart`는 **정렬·분배 메서드**
   (`alignSelected`/`matchSizeSelected`)와 **선택 관련 메서드**
