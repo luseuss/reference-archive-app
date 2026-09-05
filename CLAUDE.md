@@ -1020,6 +1020,17 @@ lib/
   - 순수 리팩터라 기존 위젯 테스트가 코드 수정 없이 그대로 통과하는
     것으로 검증했습니다(회귀 없음).
 
+  **`reference_detail_screen.dart`가 431 → 362줄로 한 번 더 줄었습니다**
+  (별도 PR — "reference-detail-taxonomy-fields-cleanup"). 분류 항목
+  칸 다섯 개를 늘어놓는 반복 부분을 뺐습니다.
+  - **`lib/widgets/reference_detail_taxonomy_fields.dart`**(새 파일) —
+    파트·폴더·카테고리·태그·프로젝트 다섯 칸이 전부
+    `ReferenceTaxonomyEditController`를 그대로 받아쓰는 똑같은 모양이라,
+    그 반복 자체를 `controller`/`repository` 두 값만 받는
+    `StatelessWidget` 하나로 묶었습니다.
+  - 순수 리팩터라 기존 위젯 테스트가 코드 수정 없이 그대로 통과하는
+    것으로 검증했습니다(회귀 없음).
+
   `reference_detail_screen.dart`에 남은 것(제목·메모·저장 로직)은
   분류 항목·미리보기와 성격이 달라서 그대로 뒀습니다.
 - ~~파트를 지울 때 그 안의 레퍼런스가 미아가 됩니다~~ ✅ **PR #33에서 완료**

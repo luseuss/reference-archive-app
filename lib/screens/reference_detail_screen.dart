@@ -13,7 +13,6 @@ import 'package:flutter/material.dart';
 
 import '../models/enums.dart';
 import '../models/reference_item.dart';
-import '../models/taxonomy_item.dart';
 import '../repositories/reference_repository.dart';
 import '../repositories/taxonomy_repository.dart';
 import '../services/image_storage.dart';
@@ -21,10 +20,9 @@ import '../services/reference_lookup.dart';
 import '../utils/rich_text_memo.dart';
 import '../utils/similarity.dart';
 import '../widgets/reference_detail_preview.dart';
+import '../widgets/reference_detail_taxonomy_fields.dart';
 import '../widgets/rich_memo_editor.dart';
 import '../widgets/similar_references_section.dart';
-import '../widgets/taxonomy_multi_field.dart';
-import '../widgets/taxonomy_single_field.dart';
 import 'reference_taxonomy_edit_controller.dart';
 import 'youtube_player_screen.dart';
 
@@ -289,77 +287,10 @@ class _ReferenceDetailScreenState extends State<ReferenceDetailScreen> {
         ),
         const SizedBox(height: 24),
 
-        // 파트를 맨 위에 둡니다. 폴더·카테고리보다 큰 갈래라서
-        // 위에서 아래로 좁혀지는 순서가 자연스럽습니다.
-        TaxonomySingleField(
-          kind: TaxonomyKind.part,
-          options: _taxonomyEdit.options[TaxonomyKind.part] ?? <TaxonomyItem>[],
-          selectedId: _taxonomyEdit.partId,
+        ReferenceDetailTaxonomyFields(
+          controller: _taxonomyEdit,
           repository: widget.taxonomyRepository,
-          onChanged: _taxonomyEdit.setPart,
-          onCreated: (TaxonomyItem created) => _taxonomyEdit.handleCreated(
-            widget.taxonomyRepository,
-            TaxonomyKind.part,
-            created,
-          ),
         ),
-        const SizedBox(height: 16),
-
-        TaxonomySingleField(
-          kind: TaxonomyKind.folder,
-          options: _taxonomyEdit.options[TaxonomyKind.folder] ?? <TaxonomyItem>[],
-          selectedId: _taxonomyEdit.folderId,
-          repository: widget.taxonomyRepository,
-          onChanged: _taxonomyEdit.setFolder,
-          onCreated: (TaxonomyItem created) => _taxonomyEdit.handleCreated(
-            widget.taxonomyRepository,
-            TaxonomyKind.folder,
-            created,
-          ),
-        ),
-        const SizedBox(height: 16),
-
-        TaxonomySingleField(
-          kind: TaxonomyKind.category,
-          options: _taxonomyEdit.options[TaxonomyKind.category] ?? <TaxonomyItem>[],
-          selectedId: _taxonomyEdit.categoryId,
-          repository: widget.taxonomyRepository,
-          onChanged: _taxonomyEdit.setCategory,
-          onCreated: (TaxonomyItem created) => _taxonomyEdit.handleCreated(
-            widget.taxonomyRepository,
-            TaxonomyKind.category,
-            created,
-          ),
-        ),
-        const SizedBox(height: 24),
-
-        TaxonomyMultiField(
-          kind: TaxonomyKind.tag,
-          options: _taxonomyEdit.options[TaxonomyKind.tag] ?? <TaxonomyItem>[],
-          selectedIds: _taxonomyEdit.tagIds,
-          repository: widget.taxonomyRepository,
-          onChanged: _taxonomyEdit.setTags,
-          onCreated: (TaxonomyItem created) => _taxonomyEdit.handleCreated(
-            widget.taxonomyRepository,
-            TaxonomyKind.tag,
-            created,
-          ),
-        ),
-        const SizedBox(height: 24),
-
-        TaxonomyMultiField(
-          kind: TaxonomyKind.project,
-          options: _taxonomyEdit.options[TaxonomyKind.project] ?? <TaxonomyItem>[],
-          selectedIds: _taxonomyEdit.projectIds,
-          repository: widget.taxonomyRepository,
-          onChanged: _taxonomyEdit.setProjects,
-          onCreated: (TaxonomyItem created) => _taxonomyEdit.handleCreated(
-            widget.taxonomyRepository,
-            TaxonomyKind.project,
-            created,
-          ),
-        ),
-        const SizedBox(height: 24),
 
         SwitchListTile(
           value: _isFavorite,
