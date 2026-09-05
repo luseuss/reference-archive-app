@@ -229,19 +229,21 @@ void main() {
     expect(items.length, 1, reason: '판을 지워도 레퍼런스는 남아야 합니다');
   });
 
-  testWidgets('테스트 환경에서는 팝업으로 열기 버튼이 안 보인다', (WidgetTester tester) async {
-    // desktop_multi_window는 실제 데스크톱 플랫폼에서만 동작합니다.
-    // 위젯 테스트 환경(supportsBoardPopupWindow == false)에서는 눌러도
-    // 진짜 창을 못 띄우므로, 버튼 자체가 안 보여야 합니다 — board_screen_test.dart의
-    // "항상 위" 버튼과 같은 판정 방식입니다.
+  testWidgets('무드보드를 누르면 열린다 (테스트 환경은 팝업이 아니라 화면 이동)', (
+    WidgetTester tester,
+  ) async {
+    // supportsBoardPopupWindow는 위젯 테스트 환경에서 항상 거짓입니다
+    // (board_screen_test.dart의 "항상 위" 버튼과 같은 사정). 그래서 이
+    // 테스트는 "탭하면 팝업이 뜨는지"가 아니라, 팝업을 못 쓰는 플랫폼의
+    // 대체 경로(메인 창 안에서 여는 것)가 여전히 동작하는지를 봅니다.
     await saveBoard('겨울 무드');
 
     await openList(tester);
 
-    expect(
-      find.byIcon(Icons.picture_in_picture_alt_outlined),
-      findsNothing,
-    );
+    await tester.tap(find.text('겨울 무드'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(BoardScreen), findsOneWidget);
   });
 
   testWidgets('취소하면 지워지지 않는다', (WidgetTester tester) async {

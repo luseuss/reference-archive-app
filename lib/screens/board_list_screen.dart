@@ -6,13 +6,14 @@
 //
 // 판 안에서 실제로 카드를 늘어놓는 일은 board_screen.dart가 합니다.
 //
-// ── 줄마다 있는 "팝업으로 열기" 버튼 ──
-// 판을 메인 창 안에서 열지 않고, 여기서 바로 별도 OS 창(팝업)으로 띄울 수
-// 있습니다. board_screen.dart 안에도 같은 기능의 버튼이 있지만(이미 연 판을
-// 팝업으로 옮기는 용도), 의뢰인은 "어느 판을 볼지 고르는 이 자리에서 바로
-// 팝업으로 뜨는 것"을 원했습니다 — 메인 창에서 먼저 열었다가 다시 팝업
-// 버튼을 누르는 두 단계를 거치지 않아도 됩니다. 실제로 창을 만들고 관리하는
-// 일은 board_popup_controller.dart(BoardPopupController)가 합니다.
+// ── 판을 누르면 데스크톱에서는 곧바로 팝업이 뜹니다 ──
+// 처음에는 "메인 창 안에서 열기"가 기본이고, 팝업은 줄마다 따로 둔
+// 버튼으로만 띄웠습니다. 의뢰인이 써보고 "따로 버튼 빼는 것보다 그냥
+// 누르면 팝업이 뜨는 게 낫다"고 해서(2026-09-05), 데스크톱에서는 탭 한
+// 번으로 바로 팝업이 뜨도록 바꿨습니다 — _openBoard() 안에서
+// supportsBoardPopupWindow로 가릅니다. 폰·태블릿은 팝업이라는 개념
+// 자체가 없어서 예전처럼 메인 창 안에서 엽니다. 실제로 창을 만들고
+// 관리하는 일은 board_popup_controller.dart(BoardPopupController)가 합니다.
 
 import 'package:flutter/material.dart';
 
@@ -118,11 +119,22 @@ class _BoardListScreenState extends State<BoardListScreen> {
     await _openBoard(board);
   }
 
-  /// 무드보드를 엽니다. 돌아오면 목록을 다시 읽습니다.
+  /// 무드보드를 엽니다.
   ///
-  /// 다시 읽는 이유: 판에서 카드를 올리거나 내렸으면 목록에 보이는 장수가
-  /// 달라져 있습니다. 안 읽으면 예전 숫자가 그대로 남아 틀린 정보가 됩니다.
+  /// **데스크톱에서는 메인 창 안에 열지 않고 곧바로 팝업 창으로 띄웁니다.**
+  /// 팝업은 별도 OS 창이라 이 화면이 "언제 돌아오는지" 알 수 없습니다(사용자가
+  /// 직접 닫습니다) — 그래서 목록을 다시 읽지 않습니다. 카드 장수가 살짝
+  /// 오래된 값으로 보일 수 있지만, 화면을 나갔다 들어오면 다시 맞습니다.
+  ///
+  /// 폰·태블릿(팝업 개념이 없는 플랫폼)은 예전처럼 메인 창 안에 새 화면을
+  /// 쌓습니다(Navigator.push). 이때는 돌아왔을 때 목록을 다시 읽습니다 —
+  /// 판에서 카드를 올리거나 내렸으면 장수가 달라져 있기 때문입니다.
   Future<void> _openBoard(Board board) async {
+    if (supportsBoardPopupWindow) {
+      await BoardPopupController.instance.showBoard(board.id);
+      return;
+    }
+
     await Navigator.of(context).push<void>(
       MaterialPageRoute<void>(
         builder: (BuildContext context) => BoardScreen(
@@ -138,18 +150,6 @@ class _BoardListScreenState extends State<BoardListScreen> {
       return;
     }
     await _loadBoards();
-  }
-
-  /// 무드보드를 메인 창에는 열지 않고 **곧바로 팝업 창으로** 띄웁니다.
-  ///
-  /// ── 왜 _openBoard와 다른가 ──
-  /// _openBoard는 메인 창 안에서 화면을 새로 쌓는(Navigator.push) 방식이라
-  /// 돌아올 때까지 기다렸다가 목록을 다시 읽습니다. 팝업은 별도 OS 창이라
-  /// 이 화면이 "돌아올 때"를 알 수 없습니다(팝업은 사용자가 직접 닫습니다).
-  /// 그래서 목록을 다시 읽지 않고 그냥 띄우기만 합니다 — 카드 장수가 살짝
-  /// 오래된 값으로 보일 수 있지만, 화면을 나갔다 들어오면 다시 맞습니다.
-  Future<void> _openBoardAsPopup(Board board) async {
-    await BoardPopupController.instance.showBoard(board.id);
   }
 
   /// 무드보드 이름을 바꿉니다.
@@ -291,37 +291,22 @@ class _BoardListScreenState extends State<BoardListScreen> {
 
         // 이름 바꾸기와 지우기는 자주 쓰지 않아서 메뉴 안에 넣습니다.
         // 줄마다 버튼을 두 개씩 늘어놓으면 정작 중요한 "열기"가 묻힙니다.
-        // 팝업으로 띄우기는 그것과 성격이 달라 따로 아이콘을 둡니다 — 목록에서
-        // 판을 고르는 것 자체가 "어느 판을 팝업으로 띄울지 고르는" 자리이길
-        // 원한다는 의뢰인 요청(2026-09-05)에 따른 것입니다.
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            if (supportsBoardPopupWindow)
-              IconButton(
-                onPressed: () => _openBoardAsPopup(board),
-                icon: const Icon(Icons.picture_in_picture_alt_outlined),
-                tooltip: '팝업으로 열기',
-              ),
-            PopupMenuButton<String>(
-              onSelected: (String value) {
-                if (value == 'rename') {
-                  _renameBoard(board);
-                } else if (value == 'delete') {
-                  _deleteBoard(board);
-                }
-              },
-              itemBuilder: (BuildContext context) {
-                return const <PopupMenuEntry<String>>[
-                  PopupMenuItem<String>(
-                    value: 'rename',
-                    child: Text('이름 바꾸기'),
-                  ),
-                  PopupMenuItem<String>(value: 'delete', child: Text('지우기')),
-                ];
-              },
-            ),
-          ],
+        // 팝업으로 여는 것도 이제 별도 버튼이 아니라 onTap 자체이므로
+        // (위 _openBoard 설명 참고), 여기 남는 것은 이 메뉴뿐입니다.
+        trailing: PopupMenuButton<String>(
+          onSelected: (String value) {
+            if (value == 'rename') {
+              _renameBoard(board);
+            } else if (value == 'delete') {
+              _deleteBoard(board);
+            }
+          },
+          itemBuilder: (BuildContext context) {
+            return const <PopupMenuEntry<String>>[
+              PopupMenuItem<String>(value: 'rename', child: Text('이름 바꾸기')),
+              PopupMenuItem<String>(value: 'delete', child: Text('지우기')),
+            ];
+          },
         ),
       ),
     );
