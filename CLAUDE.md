@@ -912,12 +912,26 @@ lib/
 - **`board_interaction_controller.dart`(567줄)는 아직 손대지 않았습니다.**
   뺄 후보는 이전 메모(정렬·선택 관련 메서드) 그대로입니다.
 
-  `board_interaction_controller.dart`는 **정렬·분배 메서드**
-  (`alignSelected`/`matchSizeSelected`)와 **선택 관련 메서드**
-  (`onCardPressed`/`beginMarquee`/`updateMarquee`/`endMarquee`/
-  `removeSelectedCards`/`_toggleSelection`)가 후보입니다. `_cards`와
-  `_selectedCardIds`를 같이 보는 메서드가 많아서, 이번에도 "선택 상태를
-  포함한 작은 클래스"로 빼는 편(PR #24와 같은 방식)이 맞을 겁니다.
+  **`board_interaction_controller.dart`가 567 → 546줄로 줄었습니다**
+  (별도 PR — "board-interaction-cleanup"). 선택·마퀴 관련 상태를 뺐습니다.
+  - **`lib/utils/board_card_selection.dart`**(새 파일) — `BoardCardSelection`
+    클래스가 "지금 무엇이 골라져 있는지"(`ids`)와 마퀴 계산에 필요한
+    내부 상태(`_marqueeBase`/`_marqueeAdditive`/`_marqueeMoved`), 동작
+    (`toggle`/`selectOnly`/`clear`/`beginMarquee`/`applyMarqueeHits`/
+    `endMarquee`)을 담습니다.
+  - **왜 `ChangeNotifier`가 아닌가**: `board_viewport_gestures.dart`의
+    `MarqueeState`와 같은 이유입니다. 이 값은 `board_interaction_controller`가
+    이미 갖고 있는 `notifyListeners()` 체계 하나에 얹혀서 화면에
+    알려지므로, 여기서 또 다른 알림 체계를 두면 오히려 헷갈립니다.
+  - **Dart는 클래스 하나의 몸통을 여러 파일로 쪼갤 수 없습니다**
+    (C#의 partial class 같은 기능이 없습니다). 그래서 "정렬·분배
+    메서드"(`alignSelected`/`matchSizeSelected`)는 이번에도 옮기지
+    못했습니다 — `_cards`/`_selection`/`_measuredHeights`/`_saveCards`를
+    함께 쓰는데, `BoardInteractionController` 클래스 자체를 쪼갤 방법이
+    없어서 그대로 뒀습니다. 대신 값 하나(선택 상태)만 별도 객체로 빼고,
+    그 객체를 다루는 코드만 위임하는 얇은 메서드로 바꿨습니다.
+  - 순수 리팩터라 기존 위젯 테스트(마퀴 다중선택 시나리오 포함)가
+    그대로 통과하는 것으로 검증했습니다(회귀 없음).
 - **다른 무드보드 파일들은 아직 여유가 있습니다** (PR #26 기준):
   `board_card_view.dart` 398줄, `board_selection_bar.dart` 174줄,
   `board_card_actions.dart` 299줄, `board_align.dart` 153줄,

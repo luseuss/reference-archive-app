@@ -23,6 +23,7 @@ import '../models/board.dart';
 import '../repositories/board_repository.dart';
 import '../utils/board_align.dart';
 import '../utils/board_card_actions.dart';
+import '../utils/board_card_selection.dart';
 import '../utils/board_layout.dart';
 import '../utils/id_generator.dart';
 
@@ -107,23 +108,11 @@ class BoardInteractionController extends ChangeNotifier {
   /// 저장하지 않습니다 — 판을 나갔다 오면 비워집니다. "무엇이 골라져
   /// 있는지"는 지금 보고 있는 화면에서만 뜻이 있는 값이라, 다음에 판을
   /// 열었을 때까지 기억할 이유가 없습니다.
-  Set<String> get selectedCardIds => _selectedCardIds;
-  Set<String> _selectedCardIds = <String>{};
-
-  /// 마퀴(드래그로 그리는 네모)를 시작할 때, 그 전까지 골라져 있던 카드들의
-  /// 번호입니다. Shift를 누른 채 시작했으면(=더하기) 마퀴가 끝나도 이 카드들이
-  /// 계속 선택에 남습니다. Shift 없이 시작했으면 빈 목록입니다.
-  Set<String> _marqueeBase = <String>{};
-
-  /// Shift를 누른 채 마퀴를 시작했는지 여부입니다. "더하기" 모드입니다.
-  bool _marqueeAdditive = false;
-
-  /// 마퀴를 시작한 뒤 조금이라도 움직였는지 여부입니다.
   ///
-  /// 움직이지 않고 그냥 뗐다면 "클릭"으로 봅니다. Shift 없이 그런 클릭을
-  /// 했다면 선택을 지웁니다 — 빈 곳을 눌렀는데 아무 반응이 없으면
-  /// "선택을 지우고 싶었는데 안 지워졌다"는 인상을 줍니다.
-  bool _marqueeMoved = false;
+  /// 실제 값과 마퀴 계산은 `lib/utils/board_card_selection.dart`의
+  /// `BoardCardSelection`이 담고 있습니다.
+  Set<String> get selectedCardIds => _selection.ids;
+  final BoardCardSelection _selection = BoardCardSelection();
 
   /// 지금 스냅을 걸어야 하는지 알려줍니다.
   ///
@@ -157,11 +146,11 @@ class BoardInteractionController extends ChangeNotifier {
   /// 빈 곳을 클릭해도 같은 일이 일어나지만(handleEmptyTap), 마우스를
   /// 옮기지 않고 바로 누를 수 있는 버튼을 하나 더 둔 것입니다.
   void clearSelection() {
-    if (_selectedCardIds.isEmpty) {
+    if (_selection.isEmpty) {
       return;
     }
 
-    _selectedCardIds = <String>{};
+    _selection.clear();
     notifyListeners();
   }
 
@@ -229,12 +218,15 @@ class BoardInteractionController extends ChangeNotifier {
   /// 선택합니다.
   void onCardPressed(BoardCard card, {required bool shiftHeld}) {
     if (shiftHeld) {
-      _toggleSelection(card.id);
+      _selection.toggle(card.id);
+      notifyListeners();
       return;
     }
 
-    if (!(_selectedCardIds.contains(card.id) && _selectedCardIds.length > 1)) {
-      _selectedCardIds = <String>{card.id};
+    final bool keepMultiSelection =
+        _selection.ids.contains(card.id) && _selection.ids.length > 1;
+    if (!keepMultiSelection) {
+      _selection.selectOnly(card.id);
       notifyListeners();
     }
   }
@@ -253,8 +245,8 @@ class BoardInteractionController extends ChangeNotifier {
     }
 
     _activeCardId = card.id;
-    _draggingIds = _selectedCardIds.contains(card.id) && _selectedCardIds.length > 1
-        ? _selectedCardIds
+    _draggingIds = _selection.ids.contains(card.id) && _selection.ids.length > 1
+        ? _selection.ids
         : <String>{card.id};
     _cards = raiseCardToTop(_cards, card.id);
     notifyListeners();
@@ -416,16 +408,10 @@ class BoardInteractionController extends ChangeNotifier {
   }
 
   // ── 여기서부터는 선택·마퀴(5단계 마퀴 다중선택)입니다 ──
-
-  /// [cardId]가 선택돼 있으면 빼고, 아니면 더합니다. (Shift+클릭)
-  void _toggleSelection(String cardId) {
-    final Set<String> next = Set<String>.of(_selectedCardIds);
-    if (!next.remove(cardId)) {
-      next.add(cardId);
-    }
-    _selectedCardIds = next;
-    notifyListeners();
-  }
+  // 실제 값과 계산은 lib/utils/board_card_selection.dart의
+  // BoardCardSelection이 담고 있습니다. 여기 남은 메서드들은 그 계산에
+  // 필요한 카드 목록(_cards)을 건네주고, 언제 notifyListeners를 부를지만
+  // 정합니다.
 
   /// 빈 곳을 눌렀을 때 실행됩니다.
   ///
@@ -436,11 +422,11 @@ class BoardInteractionController extends ChangeNotifier {
   /// 처리합니다. 이건 **끌지 않고 그냥 눌렀을 때**만 board_viewport.dart가
   /// 부릅니다.
   void handleEmptyTap({required bool shiftHeld}) {
-    if (shiftHeld || _selectedCardIds.isEmpty) {
+    if (shiftHeld || _selection.isEmpty) {
       return;
     }
 
-    _selectedCardIds = <String>{};
+    _selection.clear();
     notifyListeners();
   }
 
@@ -450,9 +436,7 @@ class BoardInteractionController extends ChangeNotifier {
   /// 선택을 남겨두고 마퀴에 걸리는 카드를 더합니다. 거짓이면 마퀴에 걸리는
   /// 카드로 통째로 바꿉니다.
   void beginMarquee({required bool additive}) {
-    _marqueeBase = Set<String>.of(_selectedCardIds);
-    _marqueeAdditive = additive;
-    _marqueeMoved = false;
+    _selection.beginMarquee(additive: additive);
   }
 
   /// 마퀴를 끄는 동안 실행됩니다. [canvasRect]는 지금까지 그려진 네모입니다(판 좌표).
@@ -465,8 +449,6 @@ class BoardInteractionController extends ChangeNotifier {
   /// 매 순간 그때까지의 결과를 바로 selectedCardIds에 반영합니다. 그래야
   /// 마퀴를 끄는 동안 카드가 실시간으로 파랗게 물듭니다.
   void updateMarquee(Rect canvasRect) {
-    _marqueeMoved = true;
-
     final Set<String> hits = <String>{
       for (final BoardCard card in _cards)
         if (boardCardRect(
@@ -476,9 +458,7 @@ class BoardInteractionController extends ChangeNotifier {
           card.id,
     };
 
-    _selectedCardIds = _marqueeAdditive
-        ? <String>{..._marqueeBase, ...hits}
-        : hits;
+    _selection.applyMarqueeHits(hits);
     notifyListeners();
   }
 
@@ -487,8 +467,7 @@ class BoardInteractionController extends ChangeNotifier {
   /// 움직이지 않고 그냥 뗐다면(=클릭) [handleEmptyTap]과 같은 규칙을
   /// 적용합니다. Shift 없이 눌렀다 뗐을 뿐이라면 선택을 지웁니다.
   void endMarquee() {
-    if (!_marqueeMoved && !_marqueeAdditive) {
-      _selectedCardIds = <String>{};
+    if (_selection.endMarquee()) {
       notifyListeners();
     }
   }
@@ -498,11 +477,11 @@ class BoardInteractionController extends ChangeNotifier {
   /// 한 장 내리는 것(removeCard)과 같은 이유로 확인을 묻지 않습니다.
   /// 판에서만 내려가고 레퍼런스 목록에는 그대로 남습니다.
   Future<void> removeSelectedCards() async {
-    if (_selectedCardIds.isEmpty) {
+    if (_selection.isEmpty) {
       return;
     }
 
-    final Set<String> toRemove = _selectedCardIds;
+    final Set<String> toRemove = _selection.ids;
 
     for (final String cardId in toRemove) {
       await boardRepository.removeCard(cardId);
@@ -511,7 +490,7 @@ class BoardInteractionController extends ChangeNotifier {
     _cards = _cards
         .where((BoardCard card) => !toRemove.contains(card.id))
         .toList();
-    _selectedCardIds = <String>{};
+    _selection.clear();
     notifyListeners();
   }
 
@@ -522,19 +501,19 @@ class BoardInteractionController extends ChangeNotifier {
   /// 선택이 2장 미만이면 아무 일도 안 합니다 — 정렬은 "여럿을 나란히
   /// 맞추는" 동작이라 기준으로 삼을 다른 카드가 없으면 뜻이 없습니다.
   Future<void> alignSelected(BoardAlignMode mode) async {
-    if (_selectedCardIds.length < 2) {
+    if (_selection.ids.length < 2) {
       return;
     }
 
     _cards = alignSelectedCards(
       _cards,
-      _selectedCardIds,
+      _selection.ids,
       mode,
       measuredHeights: _measuredHeights,
     );
     notifyListeners();
 
-    await _saveCards(_selectedCardIds);
+    await _saveCards(_selection.ids);
   }
 
   /// 선택된 카드들의 크기를 하나로 맞추고 저장합니다. 자리(x, y)는 그대로입니다.
@@ -544,24 +523,24 @@ class BoardInteractionController extends ChangeNotifier {
   /// 카드를 마지막으로 만지면(잡거나 새로 담으면) 맨 위로 올라오기 때문에,
   /// 대개 "방금 크기를 확인한 카드"와 일치합니다.
   Future<void> matchSizeSelected() async {
-    if (_selectedCardIds.length < 2) {
+    if (_selection.ids.length < 2) {
       return;
     }
 
     final BoardCard reference = _cards
-        .where((BoardCard card) => _selectedCardIds.contains(card.id))
+        .where((BoardCard card) => _selection.ids.contains(card.id))
         .reduce(
           (BoardCard a, BoardCard b) => a.zOrder > b.zOrder ? a : b,
         );
 
     _cards = matchSizeSelectedCards(
       _cards,
-      _selectedCardIds,
+      _selection.ids,
       reference.id,
       measuredHeights: _measuredHeights,
     );
     notifyListeners();
 
-    await _saveCards(_selectedCardIds);
+    await _saveCards(_selection.ids);
   }
 }
