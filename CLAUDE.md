@@ -973,9 +973,18 @@ lib/
   - 순수 리팩터라 기존 위젯 테스트가 그대로 통과하는 것으로
     검증했습니다(회귀 없음).
 
-  **다음에 뺄 후보는 `_buildBody`(글자 부분)입니다** — 아직 200줄
-  가까이 남아 있어서, 필요하면 `ReferenceCardBody`로 한 번 더 뺄 수
-  있습니다.
+  **`reference_card.dart`가 378 → 187줄로 300줄 기준 안으로 들어왔습니다**
+  (별도 PR — "reference-card-body-cleanup"). `_buildBody`(글자 부분)를
+  뺐습니다.
+  - **`lib/widgets/reference_card_body.dart`**(새 파일) — 제목·폴더·
+    카테고리·태그·메모·날짜·삭제 버튼을 통째로 담습니다.
+    `reference_card_thumbnail.dart`와 같은 이유로, 상태 없이 값
+    (`item`/`taxonomyNames`/`isSelectionMode`)과 콜백(`onDelete`)만
+    받는 `StatelessWidget`이라 그대로 뺄 수 있었습니다.
+  - `reference_card.dart`에는 이제 카드 본체(테두리·그림자·클릭) 조립만
+    남았습니다.
+  - 순수 리팩터라 기존 위젯 테스트가 코드 수정 없이 그대로 통과하는
+    것으로 검증했습니다(회귀 없음).
 - **`lib/screens/reference_detail_screen.dart`가 524 → 495줄로 줄었지만
   여전히 300줄 기준 초과** (별도 PR — "reference-detail-cleanup"). 분류
   항목(파트·폴더·카테고리·태그·프로젝트) 편집 부분을
