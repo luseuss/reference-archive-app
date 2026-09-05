@@ -14,9 +14,7 @@
 
 import 'dart:async';
 
-
 import 'package:super_drag_and_drop/super_drag_and_drop.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
@@ -33,10 +31,8 @@ import '../services/reference_importer.dart';
 import '../services/dropped_item_reader.dart';
 import '../services/image_source.dart';
 import '../services/image_storage.dart';
-import '../services/local_player_server.dart';
 import '../services/phash_backfill.dart';
 import '../services/youtube_info_source.dart';
-import '../services/youtube_url.dart';
 import '../theme/app_metrics.dart';
 import '../theme/app_palette.dart';
 import '../theme/app_text.dart';
@@ -44,31 +40,22 @@ import '../widgets/add_youtube_dialog.dart';
 import '../widgets/app_sidebar.dart';
 import '../widgets/bulk_action_bar.dart';
 import '../widgets/main_header.dart';
-import '../widgets/pick_taxonomy_dialog.dart';
 import '../widgets/reference_card.dart';
 import '../widgets/reference_filter_bar.dart';
 import 'board_list_screen.dart';
+import 'home_hover_preview_controller.dart';
+import 'home_selection_controller.dart';
 import 'reference_detail_screen.dart';
 import 'settings_screen.dart';
 import 'taxonomy_manage_screen.dart';
 import 'youtube_player_screen.dart';
 
-/// 마우스를 올린 뒤 미리보기를 시작하기까지 기다리는 시간입니다.
-///
-/// 짧으면 목록을 훑을 때 지나가는 영상이 줄줄이 켜지고, 길면 "왜 안 나오지?"
-/// 하게 됩니다. 처음엔 0.4초로 뒀는데 써보니 답답해서 0.2초로 줄였습니다.
-/// 너무 부산스럽거나 굼뜨면 이 값을 고치세요.
-const Duration hoverPreviewDelay = Duration(milliseconds: 200);
-
-/// 이 기기에서 호버 미리보기를 쓸 수 있는지 여부입니다.
-///
-/// 폰·태블릿에는 마우스가 없어서 "올려두기"라는 동작 자체가 없습니다.
-/// 억지로 흉내내지 않고 데스크톱에서만 켭니다. (CLAUDE.md 플랫폼 차이표)
-bool get supportsHoverPreview {
-  return defaultTargetPlatform == TargetPlatform.windows ||
-      defaultTargetPlatform == TargetPlatform.macOS ||
-      defaultTargetPlatform == TargetPlatform.linux;
-}
+// 여러 장 고르기(HomeSelectionController)와 호버 미리보기
+// (HomeHoverPreviewController)는 각각 자기 파일로 옮겨져 있습니다.
+// hoverPreviewDelay/supportsHoverPreview는 예전부터 이 파일에서
+// 가져다 썼던 곳(테스트 포함)이 그대로 동작하도록 다시 내보냅니다.
+export 'home_hover_preview_controller.dart'
+    show hoverPreviewDelay, supportsHoverPreview;
 
 /// 레퍼런스 목록 화면입니다.
 ///
@@ -159,13 +146,13 @@ class _HomeScreenState extends State<HomeScreen> {
   /// 켜져 있으면 "여기 놓으세요" 안내를 덧그립니다.
   bool _isDragging = false;
 
-  /// 지금 여러 장을 고르는 중인지 여부입니다.
-  ///
-  /// ── 왜 "고른 게 하나라도 있으면 고르기 모드"로 하지 않았나 ──
-  /// 그렇게 하면 마지막 한 장의 선택을 풀었을 때 체크박스와 작업 막대가
-  /// 통째로 사라집니다. 사용자는 잘못 눌러서 모드가 꺼졌다고 느낍니다.
-  /// 그래서 "고르기 모드"와 "무엇을 골랐는지"를 따로 둡니다.
-  bool _isSelecting = false;
+  /// "여러 장 고르기" 모드의 상태와 동작을 담고 있습니다.
+  /// (home_selection_controller.dart 참고)
+  final HomeSelectionController _selection = HomeSelectionController();
+
+  /// 유튜브 카드 호버 미리보기의 상태와 동작을 담고 있습니다.
+  /// (home_hover_preview_controller.dart 참고)
+  final HomeHoverPreviewController _hoverPreview = HomeHoverPreviewController();
 
   /// 사이드바 서랍을 열고 닫을 때 쓰는 열쇠입니다.
   ///
@@ -173,40 +160,6 @@ class _HomeScreenState extends State<HomeScreen> {
   /// 본문 머리줄에 있는데, 서랍은 Scaffold가 갖고 있습니다. 서로 다른 곳에
   /// 있어서 이 열쇠로 Scaffold를 찾아 서랍을 엽니다.
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
-
-  /// 지금 골라둔 레퍼런스들의 id입니다.
-  ///
-  /// List가 아니라 Set인 이유: Set은 같은 값이 두 번 안 들어가고,
-  /// "이게 들어있나?"를 확인하는 것이 목록이 길어져도 빠릅니다.
-  /// 카드를 그릴 때마다 확인하는 값이라 이 차이가 실제로 체감됩니다.
-  final Set<String> _selectedIds = <String>{};
-
-  /// 지금 미리보기 영상을 틀고 있는 카드의 id입니다. 없으면 null입니다.
-  ///
-  /// **한 번에 하나만 틀 수 있게** 이렇게 하나만 기억합니다.
-  /// 카드마다 웹뷰를 두면 목록에 영상이 서른 개일 때 감당이 안 됩니다.
-  /// 마우스는 한 곳에만 있으므로 이걸로 충분합니다.
-  String? _previewingItemId;
-
-  /// 미리보기 영상을 띄울 주소입니다.
-  String? _previewUrl;
-
-  /// 마우스를 올린 뒤 미리보기를 시작하기까지 기다리는 타이머입니다.
-  Timer? _hoverTimer;
-
-  /// 미리보기를 시작하려고 마음먹은 카드의 id입니다.
-  ///
-  /// ── 왜 따로 기억하나 ──
-  /// 미리보기를 켜려면 임시 서버를 띄워야 하고, 그동안 사용자는 이미 마우스를
-  /// 다른 데로 옮겼을 수 있습니다. 그때 그대로 진행하면 **마우스가 없는 카드에서
-  /// 영상이 재생됩니다.** 서버가 준비된 뒤 이 값을 다시 확인해서 막습니다.
-  String? _pendingPreviewId;
-
-  /// 미리보기 페이지를 띄워주는 임시 서버입니다.
-  ///
-  /// 재생 화면이 쓰는 것과 같은 도구입니다. 유튜브 재생기는 진짜 주소를 가진
-  /// 페이지 안에 있어야 하기 때문입니다. (local_player_server.dart 참고)
-  final LocalPlayerServer _previewServer = LocalPlayerServer();
 
   /// 끌어다 놓은 것을 읽어 이미지 데이터로 만들어주는 도구입니다.
   ///
@@ -261,91 +214,11 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void dispose() {
     _searchDebounce?.cancel();
-    _hoverTimer?.cancel();
-    _previewServer.stop();
+    _selection.dispose();
+    _hoverPreview.dispose();
     _searchController.removeListener(_onSearchTextChanged);
     _searchController.dispose();
     super.dispose();
-  }
-
-  /// 마우스가 카드에 올라오거나 벗어났을 때 실행됩니다.
-  ///
-  /// ── 왜 바로 틀지 않고 기다리나 ──
-  /// 목록을 훑을 때 마우스는 카드 여러 장을 스쳐 지나갑니다. 올라오자마자 틀면
-  /// 지나가는 길에 있던 영상이 줄줄이 켜졌다 꺼지면서 화면이 정신없어지고,
-  /// 볼 생각도 없던 영상을 계속 받아오게 됩니다.
-  ///
-  /// 그래서 잠깐 머물렀을 때만 켭니다. "보려고 멈춘 것"과 "지나가는 것"의 차이입니다.
-  void _onCardHoverChanged(ReferenceItem item, bool isHovering) {
-    // 지나가던 타이머는 언제나 취소합니다.
-    _hoverTimer?.cancel();
-
-    if (!isHovering) {
-      _pendingPreviewId = null;
-
-      // 다른 카드에서 이미 틀고 있는 중이라면 건드리지 않습니다.
-      // 카드 A를 벗어나는 알림이 카드 B에 들어온 뒤에 올 수도 있습니다.
-      if (_previewingItemId == item.id) {
-        _stopPreview();
-      }
-      return;
-    }
-
-    // 고르는 중에는 틀지 않습니다. 여러 장 고르는 데 집중하는 상황이고,
-    // 지나갈 때마다 영상이 켜지면 방해만 됩니다.
-    if (_isSelecting) {
-      return;
-    }
-
-    _pendingPreviewId = item.id;
-    _hoverTimer = Timer(hoverPreviewDelay, () => _startPreview(item));
-  }
-
-  /// 카드 위에서 미리보기 영상을 켭니다.
-  Future<void> _startPreview(ReferenceItem item) async {
-    final String? videoId = item.youtubeVideoId;
-    if (videoId == null) {
-      return;
-    }
-
-    // 소리는 끕니다. 목록을 훑을 때마다 소리가 나면 쓸 수 없는 기능이 됩니다.
-    final String? url = await _previewServer.start(
-      youtubePlayerHtml(videoId, muted: true),
-    );
-
-    if (!mounted || url == null) {
-      return;
-    }
-
-    // 서버를 켜는 사이에 마우스가 다른 데로 갔으면 그만둡니다.
-    // 이걸 안 보면 마우스가 없는 카드에서 영상이 재생됩니다.
-    if (_pendingPreviewId != item.id) {
-      await _previewServer.stop();
-      return;
-    }
-
-    setState(() {
-      _previewingItemId = item.id;
-      _previewUrl = url;
-    });
-  }
-
-  /// 미리보기 영상을 끕니다.
-  void _stopPreview() {
-    _pendingPreviewId = null;
-
-    if (_previewingItemId == null) {
-      return;
-    }
-
-    setState(() {
-      _previewingItemId = null;
-      _previewUrl = null;
-    });
-
-    // 서버는 끄는 데 시간이 걸리므로 기다리지 않습니다.
-    // 화면은 이미 미리보기를 치웠고, 서버는 뒤에서 정리되면 됩니다.
-    _previewServer.stop();
   }
 
   /// 검색창의 글자가 바뀌었을 때 실행됩니다.
@@ -447,42 +320,27 @@ class _HomeScreenState extends State<HomeScreen> {
         ..clear()
         ..addAll(paths);
       _isLoading = false;
-
-      // 화면에 안 보이게 된 것은 골라둔 목록에서도 뺍니다.
-      //
-      // 예를 들어 세 장을 골라둔 채 검색어를 바꾸면 그중 두 장이 목록에서
-      // 사라질 수 있습니다. 그대로 두면 "1장 골랐다"고 보이는데 실제로는
-      // 3장이 지워지는, 사용자가 예상할 수 없는 일이 벌어집니다.
-      _selectedIds.removeWhere((String id) {
-        return !items.any((ReferenceItem item) => item.id == id);
-      });
     });
+
+    // 화면에 안 보이게 된 것은 골라둔 목록에서도 뺍니다.
+    //
+    // 예를 들어 세 장을 골라둔 채 검색어를 바꾸면 그중 두 장이 목록에서
+    // 사라질 수 있습니다. 그대로 두면 "1장 골랐다"고 보이는데 실제로는
+    // 3장이 지워지는, 사용자가 예상할 수 없는 일이 벌어집니다.
+    _selection.pruneSelection(items);
   }
 
   /// 고르기 모드를 켜거나 끕니다.
   void _toggleSelectionMode() {
     // 고르기로 넘어가면 틀고 있던 미리보기를 끕니다.
     // 체크박스를 누르려는데 뒤에서 영상이 돌아가면 산만합니다.
-    _hoverTimer?.cancel();
-    _stopPreview();
-
-    setState(() {
-      _isSelecting = !_isSelecting;
-
-      // 모드를 끄면 골라둔 것도 함께 비웁니다.
-      // 안 비우면 다음에 모드를 켤 때 예전 선택이 되살아나 놀라게 됩니다.
-      if (!_isSelecting) {
-        _selectedIds.clear();
-      }
-    });
+    _hoverPreview.stopPreview();
+    _selection.toggleSelectionMode();
   }
 
   /// 고르기 모드를 끝내고 골라둔 것을 모두 비웁니다.
   void _exitSelectionMode() {
-    setState(() {
-      _isSelecting = false;
-      _selectedIds.clear();
-    });
+    _selection.exitSelectionMode();
   }
 
   /// 카드 하나를 고르거나 고르기를 취소합니다.
@@ -490,33 +348,13 @@ class _HomeScreenState extends State<HomeScreen> {
   /// 고르기 모드가 꺼져 있을 때 불리면(카드를 길게 눌렀을 때) 모드를 켭니다.
   void _toggleSelected(ReferenceItem item) {
     // 길게 눌러 고르기로 들어오는 경로입니다. 여기서도 미리보기를 끕니다.
-    _hoverTimer?.cancel();
-    _stopPreview();
-
-    setState(() {
-      _isSelecting = true;
-
-      if (_selectedIds.contains(item.id)) {
-        _selectedIds.remove(item.id);
-      } else {
-        _selectedIds.add(item.id);
-      }
-    });
+    _hoverPreview.stopPreview();
+    _selection.toggleSelected(item.id);
   }
 
   /// 지금 보이는 것을 전부 고릅니다. 이미 전부 골랐으면 전부 풉니다.
   void _toggleSelectAll() {
-    setState(() {
-      final bool allSelected = _selectedIds.length == _items.length;
-
-      _selectedIds.clear();
-
-      if (!allSelected) {
-        for (final ReferenceItem item in _items) {
-          _selectedIds.add(item.id);
-        }
-      }
-    });
+    _selection.toggleSelectAll(_items);
   }
 
   /// 골라둔 것들을 한 폴더로 옮깁니다.
@@ -524,38 +362,12 @@ class _HomeScreenState extends State<HomeScreen> {
     final List<TaxonomyItem> folders =
         _taxonomyOptions[TaxonomyKind.folder] ?? <TaxonomyItem>[];
 
-    // 폴더가 하나도 없으면 고를 것이 없습니다.
-    // "폴더 없음"만 덩그러니 뜨는 대화상자보다, 무엇을 하면 되는지 알려줍니다.
-    if (folders.isEmpty) {
-      _showMessage('먼저 오른쪽 위 "분류 관리"에서 폴더를 만들어주세요.');
-      return;
-    }
-
-    final int count = _selectedIds.length;
-
-    final PickedTaxonomy? picked = await showPickTaxonomyDialog(
+    final BulkActionOutcome outcome = await _selection.moveToFolder(
       context: context,
-      kind: TaxonomyKind.folder,
-      items: folders,
-      title: '$count장을 옮길 폴더',
-
-      // "폴더 없음"을 고르면 폴더에서 빼냅니다.
-      allowNone: true,
+      repository: widget.repository,
+      folders: folders,
     );
-
-    // 대화상자를 그냥 닫았으면 아무것도 하지 않습니다.
-    if (picked == null) {
-      return;
-    }
-
-    // picked.item이 null이면 "폴더에서 빼기"입니다. 취소와는 다릅니다.
-    await widget.repository.moveManyToFolder(
-      _selectedIds.toList(),
-      picked.item?.id,
-    );
-
-    final String where = picked.item == null ? '폴더에서 빼냈습니다' : '"${picked.item!.name}"으로 옮겼습니다';
-    await _finishBulkAction('$count장을 $where.');
+    await _handleBulkActionOutcome(outcome);
   }
 
   /// 골라둔 것들에 태그를 붙입니다.
@@ -563,97 +375,40 @@ class _HomeScreenState extends State<HomeScreen> {
     final List<TaxonomyItem> tags =
         _taxonomyOptions[TaxonomyKind.tag] ?? <TaxonomyItem>[];
 
-    if (tags.isEmpty) {
-      _showMessage('먼저 오른쪽 위 "분류 관리"에서 태그를 만들어주세요.');
-      return;
-    }
-
-    final int count = _selectedIds.length;
-
-    final PickedTaxonomy? picked = await showPickTaxonomyDialog(
+    final BulkActionOutcome outcome = await _selection.addTag(
       context: context,
-      kind: TaxonomyKind.tag,
-      items: tags,
-      title: '$count장에 붙일 태그',
+      repository: widget.repository,
+      tags: tags,
     );
-
-    // 태그 고르기에는 "없음"이 없으므로 item은 반드시 들어 있습니다.
-    if (picked == null || picked.item == null) {
-      return;
-    }
-
-    await widget.repository.addTaxonomyItemToMany(
-      _selectedIds.toList(),
-      picked.item!.id,
-    );
-
-    await _finishBulkAction('$count장에 "${picked.item!.name}" 태그를 붙였습니다.');
+    await _handleBulkActionOutcome(outcome);
   }
 
   /// 골라둔 것들을 한꺼번에 지웁니다.
   Future<void> _deleteSelected() async {
-    final int count = _selectedIds.length;
-
-    final bool confirmed = await _confirmBulkDelete(count);
-    if (!confirmed) {
-      return;
-    }
-
-    await widget.repository.deleteMany(_selectedIds.toList());
-
-    await _finishBulkAction('$count장을 지웠습니다.');
-  }
-
-  /// 여러 장을 정말 지울지 확인받습니다.
-  ///
-  /// 낱장 삭제에는 확인이 없지만 여기에는 둡니다. 한 장을 잘못 지우는 것과
-  /// 50장을 잘못 지우는 것은 되돌리는 수고가 완전히 다르기 때문입니다.
-  Future<bool> _confirmBulkDelete(int count) async {
-    final bool? result = await showDialog<bool>(
+    final BulkActionOutcome outcome = await _selection.delete(
       context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text('레퍼런스 삭제'),
-          content: Text(
-            '고른 $count장을 지웁니다.\n\n'
-            '이미지 파일은 남지만 목록에서는 사라집니다.',
-          ),
-          actions: <Widget>[
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('취소'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.of(context).pop(true),
-              style: FilledButton.styleFrom(
-                backgroundColor: Theme.of(context).colorScheme.error,
-                foregroundColor: Theme.of(context).colorScheme.onError,
-              ),
-              child: const Text('삭제'),
-            ),
-          ],
-        );
-      },
+      repository: widget.repository,
     );
-
-    // 바깥을 눌러 닫으면 null이 옵니다. 그때는 안 지웁니다.
-    return result ?? false;
+    await _handleBulkActionOutcome(outcome);
   }
 
-  /// 일괄 작업이 끝난 뒤 목록을 새로 고치고 결과를 알려줍니다.
+  /// 일괄 작업(폴더 이동/태그 추가/삭제)이 끝난 뒤 결과를 화면에 반영합니다.
   ///
-  /// 셋 다 끝나면 고르기 모드를 **끕니다.** 작업 하나가 끝났는데 선택이
-  /// 그대로 남아 있으면, 다음 작업이 방금 그 장들에 또 적용되는 줄 모르고
-  /// 두 번 실행하기 쉽습니다.
-  Future<void> _finishBulkAction(String message) async {
-    _exitSelectionMode();
-    await _loadItems();
+  /// 고르기 모드를 끝내는 일은 _selection이 스스로 처리합니다(성공했을
+  /// 때만). 여기서는 그 결과를 보고 목록을 다시 불러올지, 안내를 띄울지만
+  /// 정합니다 — "무엇을 보여줄지"는 화면 책임이기 때문입니다.
+  Future<void> _handleBulkActionOutcome(BulkActionOutcome outcome) async {
+    if (outcome.shouldReload) {
+      await _loadItems();
+    }
 
     if (!mounted) {
       return;
     }
 
-    _showMessage(message);
+    if (outcome.message != null) {
+      _showMessage(outcome.message!);
+    }
   }
 
   /// 화면 아래쪽에 짧은 안내를 띄웁니다.
@@ -701,8 +456,7 @@ class _HomeScreenState extends State<HomeScreen> {
     // 재생 버튼을 누르는 시점에는 마우스가 카드 위에 있으므로 미리보기가 돌고
     // 있습니다. 그대로 두면 **뒤에서 같은 영상이 하나 더 돌아갑니다.** 보이지도
     // 않는 영상을 계속 받아오는 셈이고, 웹뷰도 두 개가 됩니다.
-    _hoverTimer?.cancel();
-    _stopPreview();
+    _hoverPreview.stopPreview();
 
     await Navigator.of(context).push<void>(
       MaterialPageRoute<void>(
@@ -850,60 +604,69 @@ class _HomeScreenState extends State<HomeScreen> {
     final bool isWide =
         MediaQuery.sizeOf(context).width >= sidebarBreakpoint;
 
-    return Scaffold(
-      key: _scaffoldKey,
+    // ListenableBuilder = _selection이나 _hoverPreview가 바뀌면 이 안을
+    // 다시 그려주는 위젯입니다. board_screen.dart가 컨트롤러를 쓰는 것과
+    // 같은 방식입니다. Listenable.merge로 묶으면 둘 중 아무거나 바뀌어도
+    // 한 번에 다시 그립니다.
+    return ListenableBuilder(
+      listenable: Listenable.merge(<Listenable>[_selection, _hoverPreview]),
+      builder: (BuildContext context, Widget? _) {
+        return Scaffold(
+          key: _scaffoldKey,
 
-      // 고르는 중에만 위쪽 막대가 나옵니다.
-      // 평소에는 본문 안의 머리줄(MainHeader)이 그 역할을 합니다.
-      appBar: _isSelecting ? _buildSelectionAppBar() : null,
+          // 고르는 중에만 위쪽 막대가 나옵니다.
+          // 평소에는 본문 안의 머리줄(MainHeader)이 그 역할을 합니다.
+          appBar: _selection.isSelecting ? _buildSelectionAppBar() : null,
 
-      // 좁은 창에서 메뉴 버튼으로 꺼내는 사이드바입니다.
-      drawer: isWide ? null : Drawer(child: _buildSidebar()),
+          // 좁은 창에서 메뉴 버튼으로 꺼내는 사이드바입니다.
+          drawer: isWide ? null : Drawer(child: _buildSidebar()),
 
-      // CallbackShortcuts는 지정한 키 조합이 눌리면 함수를 실행합니다.
-      // Focus(autofocus: true)로 감싸야 화면이 키 입력을 받습니다.
-      // 안 감싸면 아무 데도 초점이 없어서 Ctrl+V가 무시됩니다.
-      body: CallbackShortcuts(
-        bindings: <ShortcutActivator, VoidCallback>{
-          const SingleActivator(LogicalKeyboardKey.keyV, control: true):
-              () => _runImport(
-                () => _importer.importFromClipboard(
-                  partId: _partIdForNewItems,
-                ),
+          // CallbackShortcuts는 지정한 키 조합이 눌리면 함수를 실행합니다.
+          // Focus(autofocus: true)로 감싸야 화면이 키 입력을 받습니다.
+          // 안 감싸면 아무 데도 초점이 없어서 Ctrl+V가 무시됩니다.
+          body: CallbackShortcuts(
+            bindings: <ShortcutActivator, VoidCallback>{
+              const SingleActivator(LogicalKeyboardKey.keyV, control: true):
+                  () => _runImport(
+                    () => _importer.importFromClipboard(
+                      partId: _partIdForNewItems,
+                    ),
+                  ),
+              // macOS는 Ctrl 대신 Command를 씁니다.
+              const SingleActivator(LogicalKeyboardKey.keyV, meta: true):
+                  () => _runImport(
+                    () => _importer.importFromClipboard(
+                      partId: _partIdForNewItems,
+                    ),
+                  ),
+            },
+            child: Focus(
+              autofocus: true,
+              child: Row(
+                children: <Widget>[
+                  // 넓은 창에서만 사이드바를 늘 펼쳐둡니다.
+                  if (isWide) _buildSidebar(),
+
+                  // Expanded로 감싸야 본문이 남는 폭을 다 차지합니다.
+                  Expanded(child: _buildMainArea(isWide)),
+                ],
               ),
-          // macOS는 Ctrl 대신 Command를 씁니다.
-          const SingleActivator(LogicalKeyboardKey.keyV, meta: true):
-              () => _runImport(
-                () => _importer.importFromClipboard(
-                  partId: _partIdForNewItems,
-                ),
-              ),
-        },
-        child: Focus(
-          autofocus: true,
-          child: Row(
-            children: <Widget>[
-              // 넓은 창에서만 사이드바를 늘 펼쳐둡니다.
-              if (isWide) _buildSidebar(),
-
-              // Expanded로 감싸야 본문이 남는 폭을 다 차지합니다.
-              Expanded(child: _buildMainArea(isWide)),
-            ],
+            ),
           ),
-        ),
-      ),
 
-      // 고르는 중에는 화면 아래에 일괄 작업 막대가 붙습니다.
-      // bottomNavigationBar에 넣으면 목록이 그만큼 위로 줄어들어서,
-      // 떠 있는 버튼과 달리 마지막 줄의 카드를 가리지 않습니다.
-      bottomNavigationBar: _isSelecting
-          ? BulkActionBar(
-              selectedCount: _selectedIds.length,
-              onMoveToFolder: _moveSelectedToFolder,
-              onAddTag: _addTagToSelected,
-              onDelete: _deleteSelected,
-            )
-          : null,
+          // 고르는 중에는 화면 아래에 일괄 작업 막대가 붙습니다.
+          // bottomNavigationBar에 넣으면 목록이 그만큼 위로 줄어들어서,
+          // 떠 있는 버튼과 달리 마지막 줄의 카드를 가리지 않습니다.
+          bottomNavigationBar: _selection.isSelecting
+              ? BulkActionBar(
+                  selectedCount: _selection.selectedIds.length,
+                  onMoveToFolder: _moveSelectedToFolder,
+                  onAddTag: _addTagToSelected,
+                  onDelete: _deleteSelected,
+                )
+              : null,
+        );
+      },
     );
   }
 
@@ -999,7 +762,7 @@ class _HomeScreenState extends State<HomeScreen> {
   /// 계속 재생됩니다. 소리는 꺼져 있지만 자원을 계속 씁니다.
   /// (호버 미리보기를 만들 때 앱이 꺼지던 문제도 이 자리와 관련이 있었습니다)
   Future<void> _openBoards() async {
-    _stopPreview();
+    _hoverPreview.stopPreview();
 
     // 좁은 창이면 사이드바가 서랍으로 열려 있으므로 먼저 닫습니다.
     // 안 닫으면 무드보드 화면 위에 서랍이 겹쳐 보입니다.
@@ -1054,7 +817,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final ColorScheme colors = Theme.of(context).colorScheme;
 
     final bool allSelected =
-        _items.isNotEmpty && _selectedIds.length == _items.length;
+        _items.isNotEmpty && _selection.selectedIds.length == _items.length;
 
     return AppBar(
       backgroundColor: colors.primaryContainer,
@@ -1068,7 +831,9 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
 
       title: Text(
-        _selectedIds.isEmpty ? '고를 카드를 눌러주세요' : '${_selectedIds.length}장 선택',
+        _selection.selectedIds.isEmpty
+            ? '고를 카드를 눌러주세요'
+            : '${_selection.selectedIds.length}장 선택',
       ),
 
       actions: <Widget>[
@@ -1263,15 +1028,19 @@ class _HomeScreenState extends State<HomeScreen> {
           imagePath: _imagePaths[item.id],
           onDelete: () => _deleteItem(item),
           onTap: () => _openDetail(item),
-          isSelectionMode: _isSelecting,
-          isSelected: _selectedIds.contains(item.id),
+          isSelectionMode: _selection.isSelecting,
+          isSelected: _selection.selectedIds.contains(item.id),
           onSelectToggle: () => _toggleSelected(item),
           onPlay: () => _playYoutube(item),
           onHoverChanged: canPreview
-              ? (bool isHovering) => _onCardHoverChanged(item, isHovering)
+              ? (bool isHovering) => _hoverPreview.onCardHoverChanged(
+                  item,
+                  isHovering,
+                  isSelecting: _selection.isSelecting,
+                )
               : null,
-          isPreviewPlaying: _previewingItemId == item.id,
-          previewUrl: _previewUrl,
+          isPreviewPlaying: _hoverPreview.previewingItemId == item.id,
+          previewUrl: _hoverPreview.previewUrl,
           taxonomyNames: _taxonomyNames,
         );
       },
