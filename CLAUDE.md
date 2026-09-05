@@ -834,15 +834,28 @@ lib/
 
 - ~~이미지 가져오기 부분 분리~~ ✅ **PR #14에서 완료**
   (`lib/services/reference_importer.dart`)
-- **`lib/screens/home_screen.dart`가 아직 1268줄** (300줄 기준 초과).
-  가져오기를 빼냈는데도 사이드바·무드보드 입구가 들어오면서 계속 늘고 있습니다.
+- **`lib/screens/home_screen.dart`가 1280 → 1049줄로 줄었지만 여전히
+  300줄 기준 초과** (별도 PR — "home-screen-cleanup"). 여러 장 고르기와
+  호버 미리보기를 board_interaction_controller.dart와 같은
+  `ChangeNotifier` 패턴으로 뺐습니다.
+  - **`lib/screens/home_selection_controller.dart`**(새 파일) — "여러 장
+    고르기" 모드의 상태(`isSelecting`, `selectedIds`)와 동작(토글/전체선택/
+    폴더 이동/태그 추가/삭제, 확인 대화상자 포함)이 여기 있습니다.
+    대화상자를 띄우는 동작은 `board_export_controller.dart`의 `export()`와
+    같은 모양으로 결과(`BulkActionOutcome`)만 돌려주고, 스낵바 문구는
+    화면이 고릅니다.
+  - **`lib/screens/home_hover_preview_controller.dart`**(새 파일) — 유튜브
+    카드 호버 미리보기의 상태(`previewingItemId`, `previewUrl`)와
+    동작(타이머 대기, 임시 서버 켜고 끄기)이 여기 있습니다.
+  - `home_screen.dart`는 두 컨트롤러를 `ListenableBuilder`
+    (`Listenable.merge`)로 감싸 다시 그리기만 합니다.
+  - 순수 리팩터라 기존 위젯 테스트(특히 `home_bulk_select_test.dart`의
+    여러 장 고르기 시나리오 12개, `home_hover_preview_test.dart`)가 그대로
+    통과하는 것으로 검증했습니다(회귀 없음).
 
-  다음에 뺄 후보는 **여러 장 고르기 부분**입니다 — `_toggleSelected` /
-  `_toggleSelectAll` / `_moveSelectedToFolder` / `_addTagToSelected` /
-  `_deleteSelected` / `_confirmBulkDelete` 를 묶으면 200줄쯤 빠집니다.
-
-  그다음은 **호버 미리보기 부분**(`_onCardHoverChanged` / `_startPreview` /
-  `_stopPreview` / `_previewServer`)입니다.
+  **다음에 여러 장 고르기나 호버 미리보기를 고칠 때는 이 두 컨트롤러를
+  보세요.** `home_screen.dart`에 남은 것(필터바·격자·드롭 영역·사이드바
+  조립)은 여전히 뺄 여지가 있지만 우선순위는 낮습니다.
 - ~~`lib/screens/board_screen.dart`가 436줄이라 300줄 기준 초과~~ ✅ **완료**
   (5번을 시작하기 전에 처리). "조작" 부분(끌기·크기 조절·스냅 상태와
   동작 전부)을 `lib/screens/board_interaction_controller.dart`
