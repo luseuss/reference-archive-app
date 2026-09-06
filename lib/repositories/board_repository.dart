@@ -72,4 +72,11 @@ abstract class BoardRepository {
   ///
   /// **레퍼런스를 지우는 것이 아닙니다.** 판에서만 내려가고 목록에는 그대로 남습니다.
   Future<void> removeCard(String cardId);
+
+  /// 소프트 삭제된 카드를 되살립니다.
+  ///
+  /// **목록 화면에 노출되는 "복구" 기능이 아닙니다.** 판을 여는 동안의
+  /// 되돌리기(Ctrl+Z, `board_interaction_controller.dart`의 `undo()`)만
+  /// 이 메서드를 씁니다. 카드가 없거나 이미 살아있으면 조용히 넘어갑니다.
+  Future<void> restoreCard(String cardId);
 }

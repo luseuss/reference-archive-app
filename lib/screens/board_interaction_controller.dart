@@ -130,6 +130,26 @@ class BoardInteractionController extends ChangeNotifier {
   Set<String> get selectedCardIds => _selection.ids;
   final BoardCardSelection _selection = BoardCardSelection();
 
+  /// 되돌리기(Ctrl+Z) 기록입니다. 최근 [_maxUndoSteps]단계까지 기억합니다.
+  ///
+  /// ── 왜 "무엇을 되돌릴지"를 조작 종류마다 따로 안 적어뒀나 ──
+  /// 옮기기·크기 조절·추가·내리기·정렬·크기 맞추기가 전부 서로 다른
+  /// 값을 바꿉니다. 종류마다 "거꾸로 하는 법"을 따로 적으면 새 조작이
+  /// 하나 늘 때마다 되돌리기도 빠뜨리지 않고 함께 만들어야 합니다.
+  /// 대신 **조작이 일어나기 직전 카드 목록 전체**를 스냅샷으로 찍어
+  /// 두고, 되돌릴 때는 지금 목록과 견줘서 차이만 되돌립니다
+  /// (`_restoreSnapshot` 참고) — 새 조작을 추가할 때
+  /// `_pushUndoSnapshot()` 한 줄만 앞에 넣으면 되돌리기가 저절로
+  /// 따라옵니다.
+  ///
+  /// 저장하지 않습니다 — 판을 나갔다 오면 비워집니다. "방금 무엇을
+  /// 했는지"는 지금 열어본 화면에서만 뜻이 있는 값입니다.
+  final List<Future<void> Function()> _undoStack = <Future<void> Function()>[];
+
+  /// 한 번에 기억해두는 되돌리기 단계 수입니다. 무한히 쌓아두면 판을
+  /// 오래 만질수록 메모리를 계속 먹으므로 적당히 자릅니다.
+  static const int _maxUndoSteps = 20;
+
   /// 지금 스냅을 걸어야 하는지 알려줍니다.
   ///
   /// ── 기본은 자유롭게, Alt를 누르면 붙습니다 ──
@@ -148,6 +168,62 @@ class BoardInteractionController extends ChangeNotifier {
   /// 이 클래스 안의 메서드들이 목록을 조금씩 고칩니다.
   void setCards(List<BoardCard> cards) {
     _cards = cards;
+    notifyListeners();
+  }
+
+  /// 조작을 실제로 바꾸기 **직전에** 부릅니다. 지금 카드 목록을 그대로
+  /// 찍어 되돌리기 기록에 쌓아둡니다.
+  void _pushUndoSnapshot() {
+    final List<BoardCard> before = List<BoardCard>.of(_cards);
+    _undoStack.add(() => _restoreSnapshot(before));
+
+    if (_undoStack.length > _maxUndoSteps) {
+      _undoStack.removeAt(0);
+    }
+  }
+
+  /// 가장 최근 조작을 되돌립니다. (Ctrl+Z)
+  ///
+  /// 되돌릴 것이 없으면 조용히 아무 일도 안 합니다 — 판을 막 열어서
+  /// 아직 아무것도 안 만졌을 때 Ctrl+Z를 눌러도 오류가 나면 안 됩니다.
+  Future<void> undo() async {
+    if (_undoStack.isEmpty) {
+      return;
+    }
+
+    final Future<void> Function() step = _undoStack.removeLast();
+    await step();
+  }
+
+  /// 카드 목록을 [before] 상태로 되돌리고 저장소에도 반영합니다.
+  ///
+  /// 지금 목록과 [before]를 번호로 견줘서 세 가지로 가릅니다.
+  ///   - [before]에는 없고 지금은 있는 카드 → 그 조작이 새로 만든
+  ///     것이니 판에서 내립니다.
+  ///   - [before]에는 있는데 지금은 없는 카드 → 그 조작이 내린 것이니
+  ///     되살립니다.
+  ///   - 그 외(계속 남아있던 카드) → 옮기거나 크기를 바꿨을 수 있으니
+  ///     [before]의 값으로 다시 저장합니다. 실제로는 안 바뀐 카드까지
+  ///     함께 다시 써도 값은 똑같으므로, 어떤 카드가 진짜 바뀌었는지
+  ///     하나하나 가리지 않고 한 번에 처리합니다.
+  Future<void> _restoreSnapshot(List<BoardCard> before) async {
+    final Set<String> beforeIds = before.map((BoardCard c) => c.id).toSet();
+    final Set<String> afterIds = _cards.map((BoardCard c) => c.id).toSet();
+
+    final Set<String> addedByAction = afterIds.difference(beforeIds);
+    final Set<String> removedByAction = beforeIds.difference(afterIds);
+
+    for (final String id in addedByAction) {
+      await boardRepository.removeCard(id);
+    }
+    for (final String id in removedByAction) {
+      await boardRepository.restoreCard(id);
+    }
+    await boardRepository.saveCards(before);
+    onSaved?.call();
+
+    _cards = before;
+    _selection.clear();
     notifyListeners();
   }
 
@@ -176,6 +252,12 @@ class BoardInteractionController extends ChangeNotifier {
   /// 남아 있습니다. 대화상자가 번호 목록을 고르고 나면, **저장하고 목록에
   /// 넣는 부분**만 여기서 맡습니다.
   Future<void> addCards(List<String> referenceIds) async {
+    if (referenceIds.isEmpty) {
+      return;
+    }
+
+    _pushUndoSnapshot();
+
     final DateTime now = DateTime.now().toUtc();
     final int startIndex = _cards.length;
     final int topZ = topZOrderOf(_cards);
@@ -220,6 +302,8 @@ class BoardInteractionController extends ChangeNotifier {
   /// (referenceId는 같고 id만 다른 카드), 드래그는 한 번에 하나씩
   /// 신중하게 놓는 동작이라 실수로 중복될 위험도 적습니다.
   Future<void> addCardAt(String referenceId, Offset position) async {
+    _pushUndoSnapshot();
+
     final DateTime now = DateTime.now().toUtc();
     final BoardCard newCard = BoardCard(
       id: newId(),
@@ -256,6 +340,8 @@ class BoardInteractionController extends ChangeNotifier {
       return;
     }
 
+    _pushUndoSnapshot();
+
     final DateTime now = DateTime.now().toUtc();
     final int topZ = topZOrderOf(_cards);
     final Offset origin = initialCardPosition(0);
@@ -291,6 +377,8 @@ class BoardInteractionController extends ChangeNotifier {
   /// 그래서 "정말 지울까요?"를 묻지 않습니다. 되돌리기 쉬운 일에 매번 확인을 받으면
   /// 사용자는 확인 창을 안 읽고 누르는 버릇이 들고, 정작 위험한 확인도 그냥 넘깁니다.
   Future<void> removeCard(BoardCard card) async {
+    _pushUndoSnapshot();
+
     await boardRepository.removeCard(card.id);
     onSaved?.call();
 
@@ -338,6 +426,12 @@ class BoardInteractionController extends ChangeNotifier {
     if (HardwareKeyboard.instance.isShiftPressed) {
       return;
     }
+
+    // 실제로 옮기기 전, 지금 자리를 되돌리기 기록에 찍어둡니다.
+    // onDragEnd가 아니라 여기서 찍는 이유: onDragEnd 시점에는 이미
+    // 화면에서 옮겨진 뒤라, 거기서 찍으면 "옮긴 뒤" 자리를 찍는
+    // 셈이 됩니다.
+    _pushUndoSnapshot();
 
     _activeCardId = card.id;
     _draggingIds = _selection.ids.contains(card.id) && _selection.ids.length > 1
@@ -400,6 +494,9 @@ class BoardInteractionController extends ChangeNotifier {
   /// [corner]는 어느 손잡이를 잡았는지입니다. 그 반대쪽 모서리가 고정된
   /// 채로 크기가 바뀝니다. (board_card_actions.dart의 resizeCard 설명 참고)
   void onResizeStart(BoardCard card, Size currentSize, BoardResizeCorner corner) {
+    // onDragStart와 같은 이유로 크기를 바꾸기 전에 찍어둡니다.
+    _pushUndoSnapshot();
+
     _activeCardId = card.id;
     _resizeStartSize = currentSize;
     _resizeStartPosition = Offset(card.x, card.y);
@@ -578,6 +675,8 @@ class BoardInteractionController extends ChangeNotifier {
       return;
     }
 
+    _pushUndoSnapshot();
+
     final Set<String> toRemove = _selection.ids;
 
     for (final String cardId in toRemove) {
@@ -603,6 +702,8 @@ class BoardInteractionController extends ChangeNotifier {
       return;
     }
 
+    _pushUndoSnapshot();
+
     _cards = alignSelectedCards(
       _cards,
       _selection.ids,
@@ -624,6 +725,8 @@ class BoardInteractionController extends ChangeNotifier {
     if (_selection.ids.length < 2) {
       return;
     }
+
+    _pushUndoSnapshot();
 
     final BoardCard reference = _cards
         .where((BoardCard card) => _selection.ids.contains(card.id))

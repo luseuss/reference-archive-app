@@ -13,6 +13,7 @@ import 'package:reference_archive_app/data/app_database.dart';
 import 'package:reference_archive_app/models/board.dart';
 import 'package:reference_archive_app/repositories/local_board_repository.dart';
 import 'package:reference_archive_app/screens/board_interaction_controller.dart';
+import 'package:reference_archive_app/utils/board_align.dart';
 import 'package:reference_archive_app/utils/board_card_actions.dart';
 
 void main() {
@@ -162,5 +163,138 @@ void main() {
 
     expect(controller.cards, isEmpty);
     expect(savedCount, 0);
+  });
+
+  // ── 여기서부터는 되돌리기(Ctrl+Z, undo)입니다 ──
+  //
+  // 조작마다 "거꾸로 하는 법"을 따로 만들지 않고, 조작 직전 카드
+  // 목록 전체를 스냅샷으로 찍어뒀다가 되돌립니다(board_interaction_
+  // controller.dart의 _pushUndoSnapshot/_restoreSnapshot 설명 참고).
+  // 그래서 여기서는 "이미 확인한 개별 조작이 맞는지"가 아니라
+  // "그 조작을 되돌렸을 때 정말 원래대로 돌아가는지"만 봅니다.
+
+  group('되돌리기(undo)', () {
+    testWidgets('되돌릴 게 없으면 아무 일도 안 한다', (WidgetTester tester) async {
+      await controller.undo();
+
+      expect(controller.cards, isEmpty);
+      expect(savedCount, 0);
+    });
+
+    testWidgets('카드 담기를 되돌리면 그 카드가 없어진다', (WidgetTester tester) async {
+      await controller.addCards(<String>['ref-1']);
+      expect(controller.cards.length, 1);
+
+      await controller.undo();
+
+      expect(controller.cards, isEmpty);
+    });
+
+    testWidgets('카드 내리기를 되돌리면 다시 나타난다', (WidgetTester tester) async {
+      await controller.addCards(<String>['ref-1']);
+      final BoardCard original = controller.cards.single;
+
+      await controller.removeCard(original);
+      expect(controller.cards, isEmpty);
+
+      await controller.undo();
+
+      expect(controller.cards.length, 1);
+      final BoardCard restored = controller.cards.single;
+      expect(restored.id, original.id);
+      expect(restored.referenceId, 'ref-1');
+      expect(restored.x, original.x);
+      expect(restored.y, original.y);
+    });
+
+    testWidgets('카드 옮기기를 되돌리면 원래 자리로 돌아간다', (
+      WidgetTester tester,
+    ) async {
+      await controller.addCards(<String>['ref-1']);
+      final BoardCard original = controller.cards.single;
+
+      controller.onDragStart(original);
+      controller.onDragUpdate(original, const Offset(120, 60));
+      await controller.onDragEnd(controller.cards.single);
+
+      final BoardCard moved = controller.cards.single;
+      expect(moved.x, isNot(original.x), reason: '옮겨졌는지부터 확인합니다');
+
+      await controller.undo();
+
+      final BoardCard back = controller.cards.single;
+      expect(back.x, original.x);
+      expect(back.y, original.y);
+    });
+
+    testWidgets('크기 조절을 되돌리면 원래 크기로 돌아간다', (WidgetTester tester) async {
+      await controller.addCards(<String>['ref-1']);
+      final BoardCard original = controller.cards.single;
+      expect(original.height, isNull, reason: '처음엔 그림 비율대로라 비어 있습니다');
+
+      controller.onResizeStart(
+        original,
+        const Size(300, 225),
+        BoardResizeCorner.bottomRight,
+      );
+      controller.onResizeUpdate(original, const Offset(60, 0));
+      await controller.onResizeEnd(controller.cards.single);
+
+      final BoardCard resized = controller.cards.single;
+      expect(resized.width, isNot(original.width), reason: '커졌는지부터 확인합니다');
+
+      await controller.undo();
+
+      final BoardCard back = controller.cards.single;
+      expect(back.width, original.width);
+      expect(back.height, isNull);
+    });
+
+    testWidgets('여러 단계를 순서대로 되돌릴 수 있다', (WidgetTester tester) async {
+      await controller.addCards(<String>['ref-1']);
+      await controller.addCards(<String>['ref-2']);
+      expect(controller.cards.length, 2);
+
+      // 한 번 되돌리면 가장 최근 것(ref-2)만 사라집니다.
+      await controller.undo();
+      expect(controller.cards.length, 1);
+      expect(controller.cards.single.referenceId, 'ref-1');
+
+      // 한 번 더 되돌리면 그다음 것(ref-1)도 사라집니다.
+      await controller.undo();
+      expect(controller.cards, isEmpty);
+    });
+
+    testWidgets('정렬을 되돌리면 원래 자리로 돌아간다', (WidgetTester tester) async {
+      await controller.addCards(<String>['ref-1', 'ref-2']);
+      final BoardCard a = controller.cards[0];
+      final BoardCard b = controller.cards[1];
+
+      controller.onCardPressed(a, shiftHeld: false);
+      controller.onCardPressed(b, shiftHeld: true);
+
+      await controller.alignSelected(BoardAlignMode.left);
+
+      final BoardCard alignedB = controller.cards.firstWhere(
+        (BoardCard c) => c.id == b.id,
+      );
+      expect(alignedB.x, a.x, reason: '왼쪽 정렬이 실제로 됐는지부터 확인합니다');
+
+      await controller.undo();
+
+      final BoardCard back = controller.cards.firstWhere(
+        (BoardCard c) => c.id == b.id,
+      );
+      expect(back.x, b.x);
+    });
+
+    testWidgets('되돌리기도 onSaved를 부른다', (WidgetTester tester) async {
+      await controller.addCards(<String>['ref-1']);
+      savedCount = 0;
+
+      await controller.undo();
+
+      expect(savedCount, 1, reason: '상대 창(팝업)도 되돌린 결과를 알아야 합니다');
+    });
   });
 }

@@ -190,6 +190,21 @@ class LocalBoardRepository implements BoardRepository {
     );
   }
 
+  /// 소프트 삭제된 카드를 되살립니다. (Ctrl+Z 되돌리기 전용 — 위 설명 참고)
+  @override
+  Future<void> restoreCard(String cardId) async {
+    final DateTime now = DateTime.now().toUtc();
+
+    await (_db.update(
+      _db.boardCards,
+    )..where(($BoardCardsTable t) => t.id.equals(cardId))).write(
+      BoardCardsCompanion(
+        deletedAt: const Value<DateTime?>(null),
+        updatedAt: Value<DateTime>(now),
+      ),
+    );
+  }
+
   /// 데이터베이스의 한 줄을 화면이 쓰는 모델로 바꿉니다.
   Board _toBoard(BoardRow row) {
     return Board(
