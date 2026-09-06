@@ -36,12 +36,24 @@ const List<FileFormat> droppableImageFormats = <FileFormat>[
 
 /// 창이 "받을 수 있다"고 알릴 형식 전부입니다.
 ///
-/// 이미지 형식에 주소(uri)와 파일 경로(fileUri)를 더한 것입니다.
-/// 여기 없는 형식은 커서에 금지 표시가 뜨고 아예 놓을 수 없습니다.
+/// 이미지 형식에 주소(uri)·파일 경로(fileUri)·HTML 조각(htmlText)을
+/// 더한 것입니다. 여기 없는 형식은 커서에 금지 표시가 뜨고 아예 놓을 수
+/// 없습니다.
+///
+/// ── htmlText가 왜 꼭 있어야 하는가 (실제로 겪은 버그) ──
+/// read() 아래 2번 단계가 HTML 조각(`reader.canProvide(Formats.htmlText)`)을
+/// 읽어서 그 안의 `<img src>` 주소를 찾아냅니다. 그런데 예전에는 이
+/// 목록에 htmlText가 빠져 있었습니다. **읽을 줄은 알면서 받겠다고는
+/// 안 알린 셈**이라, 브라우저가 그 이미지에 대해 주소(uri)나 파일은 안
+/// 주고 HTML만 주는 경우(사이트 구조에 따라 흔합니다) 운영체제가
+/// 애초에 "놓을 수 없다"고 판단해 커서에 금지 표시가 뜨고, 놓아도
+/// onPerformDrop 자체가 안 불렸습니다 — 오류도 안내도 없이 그냥 아무
+/// 반응이 없는 것처럼 보였던 이유입니다.
 const List<DataFormat<Object>> dropRegionFormats = <DataFormat<Object>>[
   ...droppableImageFormats,
   Formats.uri,
   Formats.fileUri,
+  Formats.htmlText,
 ];
 
 /// 끌어다 놓은 항목 하나를 읽어 이미지 데이터로 만들어주는 도구입니다.
