@@ -36,6 +36,7 @@ class AppSidebar extends StatelessWidget {
     required this.selectedPartId,
     required this.onSelectPart,
     required this.onOpenBoards,
+    required this.onOpenTrash,
     required this.onOpenSettings,
     required this.onLogInOut,
   });
@@ -54,6 +55,9 @@ class AppSidebar extends StatelessWidget {
 
   /// 무드보드 목록을 눌렀을 때 실행할 동작입니다.
   final VoidCallback onOpenBoards;
+
+  /// 휴지통을 눌렀을 때 실행할 동작입니다.
+  final VoidCallback onOpenTrash;
 
   /// 설정을 눌렀을 때 실행할 동작입니다.
   final VoidCallback onOpenSettings;
@@ -228,6 +232,16 @@ class AppSidebar extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
+          // 휴지통은 파트 목록(②)이 아니라 여기 둡니다. 파트는 "레퍼런스를
+          // 어떻게 나눠 볼까"인데, 휴지통은 설정처럼 가끔 들르는 도구라
+          // 성격이 다릅니다.
+          _buildNavItem(
+            dark,
+            icon: Icons.delete_outline,
+            label: '휴지통',
+            isSelected: false,
+            onTap: onOpenTrash,
+          ),
           _buildNavItem(
             dark,
             icon: Icons.settings_outlined,

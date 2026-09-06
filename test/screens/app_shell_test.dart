@@ -18,6 +18,7 @@ import 'package:reference_archive_app/repositories/local_reference_repository.da
 import 'package:reference_archive_app/repositories/local_taxonomy_repository.dart';
 import 'package:reference_archive_app/screens/board_list_screen.dart';
 import 'package:reference_archive_app/screens/settings_screen.dart';
+import 'package:reference_archive_app/screens/trash_screen.dart';
 import 'package:reference_archive_app/services/app_settings.dart';
 import 'package:reference_archive_app/widgets/app_sidebar.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -181,6 +182,18 @@ void main() {
 
       expect(find.byType(BoardListScreen), findsOneWidget);
     });
+    testWidgets('사이드바에서 휴지통으로 갈 수 있다', (WidgetTester tester) async {
+      // 휴지통은 설정과 같은 묶음(아래쪽)에 있습니다. 실제로 그 자리가
+      // 휴지통 화면으로 이어지는지 확인합니다.
+      await openApp(tester, size: wide);
+
+      await tester.tap(find.text('휴지통'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(TrashScreen), findsOneWidget);
+      expect(find.text('휴지통이 비어 있습니다'), findsOneWidget);
+    });
+
     testWidgets('로그인은 아직 없다고 알려준다', (WidgetTester tester) async {
       // 눌렀는데 아무 일도 안 일어나면 고장난 줄 압니다.
       await openApp(tester, size: wide);

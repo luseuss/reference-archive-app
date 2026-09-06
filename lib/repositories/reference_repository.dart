@@ -69,6 +69,33 @@ abstract class ReferenceRepository {
   /// 구분할 수 없기 때문입니다.
   Future<void> delete(String id);
 
+  /// 지운 레퍼런스(휴지통에 있는 것)를 최근에 지운 순서로 가져옵니다.
+  ///
+  /// delete()가 진짜로 지우지 않고 표시만 해두기 때문에, 그렇게 표시된
+  /// 것들을 다시 꺼내볼 수 있습니다. 휴지통 화면(trash_screen.dart)이 씁니다.
+  Future<List<ReferenceItem>> getDeleted();
+
+  /// 지운 레퍼런스를 되살립니다. deletedAt 표시를 지웁니다.
+  ///
+  /// 폴더·태그 같은 분류는 지울 때 아예 안 건드리므로 **저절로 따라옵니다.**
+  /// 무드보드에 올려뒀던 카드도 마찬가지입니다.
+  Future<void> restore(String id);
+
+  /// 레퍼런스를 **진짜로** 지웁니다. 되돌릴 수 없습니다.
+  ///
+  /// 붙어있던 분류 연결과, 그 레퍼런스를 가리키던 무드보드 카드까지 함께
+  /// 지웁니다 — 주인 없는 배치 정보가 남으면 계속 쌓이고, 나중에 기기 간
+  /// 동기화를 붙일 때 그 찌꺼기가 다른 기기로도 퍼집니다
+  /// (local_board_repository.dart의 deleteBoard가 같은 이유로 그렇게 합니다).
+  ///
+  /// **사진 파일은 여기서 안 지웁니다.** 저장소는 데이터베이스만 다루고
+  /// 파일은 services/가 다루는 것이 이 프로젝트의 구조라서, 둘을 묶는 일은
+  /// 부르는 쪽(trash_controller.dart)이 합니다.
+  Future<void> purge(String id);
+
+  /// 휴지통을 비웁니다. 지워둔 것 전부를 [purge]와 같은 방식으로 없앱니다.
+  Future<void> purgeAll();
+
   /// 레퍼런스에 붙어있는 태그(또는 프로젝트)의 id 목록을 가져옵니다.
   Future<List<String>> getLinkedTaxonomyIds(String referenceId, TaxonomyKind kind);
 
