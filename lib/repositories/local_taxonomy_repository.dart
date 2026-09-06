@@ -135,18 +135,13 @@ class LocalTaxonomyRepository implements TaxonomyRepository {
   /// 어차피 한쪽에서만 걸립니다.
   @override
   Future<int> countReferencesUsing(String id) async {
-    // 폴더·카테고리·파트로 쓰이는 레퍼런스
-    //
-    // **파트를 빠뜨리면 안 됩니다.** 파트에 레퍼런스가 50장 들어있어도
-    // "쓰는 레퍼런스는 없습니다"라고 안내하게 되어, 사용자는 아무 일도
-    // 안 일어날 줄 알고 지웁니다. (파트를 만들 때 여기를 빠뜨렸던 실수입니다)
+    // 폴더·카테고리로 쓰이는 레퍼런스
     final int directCount = await _db
         .references
         .count(
           where: ($ReferencesTable t) =>
               (t.folderId.equals(id) |
-                  t.categoryId.equals(id) |
-                  t.partId.equals(id)) &
+                  t.categoryId.equals(id)) &
               t.deletedAt.isNull(),
         )
         .getSingle();
