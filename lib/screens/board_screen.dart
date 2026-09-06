@@ -29,6 +29,7 @@
 // 쓰게 되고, 안 누르고 나갔다가 배치를 통째로 잃습니다.
 
 import 'package:flutter/material.dart';
+import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:super_drag_and_drop/super_drag_and_drop.dart';
 
 import '../models/board.dart';
@@ -52,6 +53,7 @@ import '../widgets/pick_references_dialog.dart';
 import 'board_export_controller.dart';
 import 'board_interaction_controller.dart';
 import 'board_popup_controller.dart';
+import 'board_video_playback_controller.dart';
 import 'board_window_controller.dart';
 
 /// 무드보드 판 하나를 보여주는 화면입니다.
@@ -110,6 +112,10 @@ class _BoardScreenState extends State<BoardScreen> {
 
   /// 창을 항상 위로 띄우는 일을 맡습니다.
   final BoardWindowController _window = BoardWindowController();
+
+  /// 유튜브 카드를 판 위에서 그 자리에 바로 재생하는 일을 맡습니다.
+  final BoardVideoPlaybackController _videoPlayback =
+      BoardVideoPlaybackController();
 
   /// 탐색기·브라우저에서 파일을 이 판 위로 끌어다 놓았을 때 들여오는 일을
   /// 맡습니다. home_screen.dart의 `_importer`와 똑같은 도구입니다 —
@@ -188,6 +194,7 @@ class _BoardScreenState extends State<BoardScreen> {
     _interaction.dispose();
     _export.dispose();
     _window.dispose();
+    _videoPlayback.dispose();
     super.dispose();
   }
 
@@ -247,6 +254,16 @@ class _BoardScreenState extends State<BoardScreen> {
     }
 
     _interaction.setCards(cards);
+  }
+
+  /// 카드를 판에서 내립니다. (BoardCanvas.onRemoveCard)
+  ///
+  /// 그 카드가 지금 재생 중이었다면 먼저 멈춥니다 — 안 그러면 화면에서
+  /// 사라진 카드의 영상이 소리만 계속 나게 됩니다
+  /// (board_video_playback_controller.dart의 stopIfPlaying 참고).
+  void _removeCard(BoardCard card) {
+    _videoPlayback.stopIfPlaying(card.id);
+    _interaction.removeCard(card);
   }
 
   /// 레퍼런스를 골라 판에 담습니다.
@@ -422,8 +439,11 @@ class _BoardScreenState extends State<BoardScreen> {
 
     // ListenableBuilder = 컨트롤러가 바뀌면 이 안을 다시 그려주는 위젯입니다.
     // 카드를 끌 때마다 화면 전체(appBar 포함)가 아니라 이 안만 다시 그립니다.
+    // _videoPlayback도 함께 듣습니다 — 재생을 켜고 끌 때도 이 안이
+    // 다시 그려져야 카드가 썸네일 ↔ 재생기로 바뀝니다
+    // (home_screen.dart가 여러 컨트롤러를 합쳐 듣는 것과 같은 방식).
     return ListenableBuilder(
-      listenable: _interaction,
+      listenable: Listenable.merge(<Listenable>[_interaction, _videoPlayback]),
       builder: (BuildContext context, Widget? child) {
         final List<BoardCard> cards = _interaction.cards;
 
@@ -489,7 +509,19 @@ class _BoardScreenState extends State<BoardScreen> {
                 onResizeStart: _interaction.onResizeStart,
                 onResizeUpdate: _interaction.onResizeUpdate,
                 onResizeEnd: _interaction.onResizeEnd,
-                onRemoveCard: _interaction.removeCard,
+                onRemoveCard: _removeCard,
+
+                // 웹뷰가 없는 환경(리눅스 등)에서는 재생 버튼 자체를
+                // 안 보여줍니다. InAppWebViewPlatform.instance가 그
+                // 판정 기준입니다(youtube_player_screen.dart의
+                // `_canPlayInApp`과 같은 방식).
+                playingCardId: _videoPlayback.playingCardId,
+                playerUrl: _videoPlayback.playerUrl,
+                onPlayPressed: InAppWebViewPlatform.instance == null
+                    ? null
+                    : (BoardCard card, String videoId) =>
+                          _videoPlayback.play(card.id, videoId),
+                onStopPlaying: (BoardCard card) => _videoPlayback.stop(),
               ),
             ),
 
