@@ -150,8 +150,8 @@ class _HomeScreenState extends State<HomeScreen> {
   Map<TaxonomyKind, List<TaxonomyItem>> _taxonomyOptions =
       <TaxonomyKind, List<TaxonomyItem>>{};
 
-  /// 지금 사이드바에서 고른 파트의 id입니다. null이면 "전체"를 보는 중입니다.
-  String? _selectedPartId;
+  /// 지금 사이드바에서 고른 폴더의 id입니다. null이면 "전체"를 보는 중입니다.
+  String? _selectedFolderId;
 
   /// 분류 항목 id를 이름으로 바꿔주는 표입니다. (id → 이름)
   ///
@@ -191,12 +191,12 @@ class _HomeScreenState extends State<HomeScreen> {
     youtubeInfoSource: widget.youtubeInfoSource,
   );
 
-  /// 새로 넣는 레퍼런스를 어느 파트에 넣을지 정합니다.
+  /// 새로 넣는 레퍼런스를 어느 폴더에 넣을지 정합니다.
   ///
-  /// 사이드바에서 파트를 고르고 있으면 그 파트에, "전체"를 보고 있으면
-  /// 기본 파트에 넣습니다. "전체"는 자리가 아니라 보기 방식이라
-  /// 거기에 넣을 수는 없기 때문입니다.
-  String get _partIdForNewItems => _selectedPartId ?? defaultPartId;
+  /// 사이드바에서 폴더를 고르고 있으면 그 폴더로, "전체"를 보고 있으면
+  /// 폴더 없음(null)으로 들어갑니다. 폴더는 파트와 달리 없어도 정상
+  /// 상태이기 때문에 기본값으로 채울 필요가 없습니다.
+  String? get _folderIdForNewItems => _selectedFolderId;
 
   /// 화면이 처음 만들어질 때 딱 한 번 실행됩니다.
   @override
@@ -497,7 +497,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     await _runImport(
-      () => _importer.importYoutube(videoId, partId: _partIdForNewItems),
+      () => _importer.importYoutube(videoId, folderId: _folderIdForNewItems),
     );
   }
 
@@ -725,14 +725,14 @@ class _HomeScreenState extends State<HomeScreen> {
               const SingleActivator(LogicalKeyboardKey.keyV, control: true):
                   () => _runImport(
                     () => _importer.importFromClipboard(
-                      partId: _partIdForNewItems,
+                      folderId: _folderIdForNewItems,
                     ),
                   ),
               // macOS는 Ctrl 대신 Command를 씁니다.
               const SingleActivator(LogicalKeyboardKey.keyV, meta: true):
                   () => _runImport(
                     () => _importer.importFromClipboard(
-                      partId: _partIdForNewItems,
+                      folderId: _folderIdForNewItems,
                     ),
                   ),
 
@@ -794,9 +794,9 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildSidebar() {
     return AppSidebar(
       userName: widget.settings.userName,
-      parts: _taxonomyOptions[TaxonomyKind.part] ?? <TaxonomyItem>[],
-      selectedPartId: _selectedPartId,
-      onSelectPart: _selectPart,
+      folders: _taxonomyOptions[TaxonomyKind.folder] ?? <TaxonomyItem>[],
+      selectedFolderId: _selectedFolderId,
+      onSelectFolder: _selectFolder,
       onOpenBoards: _openBoards,
       onOpenTrash: _openTrash,
       onOpenSettings: _openSettings,
@@ -804,28 +804,28 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  /// 사이드바에서 파트를 골랐을 때 실행됩니다. null이면 "전체"입니다.
-  void _selectPart(String? partId) {
+  /// 사이드바에서 폴더를 골랐을 때 실행됩니다. null이면 "전체"입니다.
+  void _selectFolder(String? folderId) {
     // 좁은 창이면 사이드바가 서랍으로 열려 있습니다. 고른 뒤 닫아줍니다.
     // 안 닫으면 서랍에 가려서 결과가 안 보입니다.
     if (_scaffoldKey.currentState?.isDrawerOpen ?? false) {
       Navigator.of(context).pop();
     }
 
-    // 파트를 옮기면 고르던 것을 놓습니다.
+    // 폴더를 옮기면 고르던 것을 놓습니다.
     // 안 보이게 된 것을 골라둔 채로 두면 엉뚱한 것에 작업하게 됩니다.
     _exitSelectionMode();
 
     setState(() {
-      _selectedPartId = partId;
+      _selectedFolderId = folderId;
     });
 
     // clearFilter가 아니라 copyWith로 넣습니다. null을 넣어야 하는 경우
-    // ("전체")는 clearFilter(part)로 처리합니다.
-    if (partId == null) {
-      _applyQuery(_query.clearFilter(TaxonomyKind.part));
+    // ("전체")는 clearFilter(folder)로 처리합니다.
+    if (folderId == null) {
+      _applyQuery(_query.clearFilter(TaxonomyKind.folder));
     } else {
-      _applyQuery(_query.copyWith(partId: partId));
+      _applyQuery(_query.copyWith(folderId: folderId));
     }
   }
 
@@ -833,7 +833,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildMainArea(bool isWide) {
     return HomeDropArea(
       onDrop: (PerformDropEvent event) => _runImport(
-        () => _importer.importFromDrop(event, partId: _partIdForNewItems),
+        () => _importer.importFromDrop(event, folderId: _folderIdForNewItems),
       ),
       child: Column(
         children: <Widget>[
@@ -849,7 +849,7 @@ class _HomeScreenState extends State<HomeScreen> {
             isAdding: _isAdding,
             onAddImages: () => _runImport(
               () => _importer.importFromFilePicker(
-                partId: _partIdForNewItems,
+                folderId: _folderIdForNewItems,
               ),
             ),
             onAddYoutube: _addYoutube,

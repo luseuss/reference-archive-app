@@ -3,8 +3,15 @@
 // 의뢰인이 정해준 목업의 ①②③에 해당합니다.
 //
 //   ① 위   — 사용자 (지금은 이름만. 로그인 기능은 아직 없습니다)
-//   ② 가운데 — 파트 목록 (디자인/파티클 등 큰 갈래로 레퍼런스 나눠 보기)
+//   ② 가운데 — 폴더 목록 (이 프로젝트의 레퍼런스 묶음으로 나눠 보기)
 //   ③ 아래  — 설정 · 로그인/로그아웃
+//
+// ── 여기 있던 "파트"는 없앴습니다 (2026-09-06) ──
+// 원래 ②는 "파트"(디자인/파티클 같은 큰 갈래) 목록이었습니다. 그런데
+// References 테이블에는 폴더도 이미 있었고, 폴더와 파트가 하는 일이
+// 실제로는 겹쳤습니다(의뢰인이 직접 지적한 부분 — CLAUDE.md
+// "단계 밖 작업: 파트를 없애고 사이드바를 폴더로 바꾸기" 참고). 그래서
+// 이 자리를 폴더 목록으로 바꾸고 파트는 앱에서 완전히 지웠습니다.
 //
 // ── 색이 본문과 다릅니다 ──
 // 목업에서 사이드바만 짙은 색입니다. 본문은 밝은데 사이드바는 어둡게 두면
@@ -32,9 +39,9 @@ class AppSidebar extends StatelessWidget {
   const AppSidebar({
     super.key,
     required this.userName,
-    required this.parts,
-    required this.selectedPartId,
-    required this.onSelectPart,
+    required this.folders,
+    required this.selectedFolderId,
+    required this.onSelectFolder,
     required this.onOpenBoards,
     required this.onOpenTrash,
     required this.onOpenSettings,
@@ -44,14 +51,14 @@ class AppSidebar extends StatelessWidget {
   /// ①에 보여줄 사용자 이름입니다.
   final String userName;
 
-  /// ②에 보여줄 파트 목록입니다.
-  final List<TaxonomyItem> parts;
+  /// ②에 보여줄 폴더 목록입니다.
+  final List<TaxonomyItem> folders;
 
-  /// 지금 고른 파트의 id입니다. null이면 "전체"를 보고 있는 것입니다.
-  final String? selectedPartId;
+  /// 지금 고른 폴더의 id입니다. null이면 "전체"를 보고 있는 것입니다.
+  final String? selectedFolderId;
 
-  /// 파트를 골랐을 때 알려줍니다. null을 넘기면 "전체"입니다.
-  final ValueChanged<String?> onSelectPart;
+  /// 폴더를 골랐을 때 알려줍니다. null을 넘기면 "전체"입니다.
+  final ValueChanged<String?> onSelectFolder;
 
   /// 무드보드 목록을 눌렀을 때 실행할 동작입니다.
   final VoidCallback onOpenBoards;
@@ -85,19 +92,19 @@ class AppSidebar extends StatelessWidget {
 
               const SizedBox(height: 20),
 
-              // 무드보드로 가는 길입니다. 파트 목록 위에 따로 둡니다.
+              // 무드보드로 가는 길입니다. 폴더 목록 위에 따로 둡니다.
               //
-              // ── 왜 파트 목록 안에 넣지 않았나 ──
-              // 파트는 "레퍼런스를 어떻게 나눠 볼까"이고, 무드보드는 "레퍼런스로
-              // 무엇을 할까"입니다. 성격이 달라서 같은 목록에 섞으면 파트 중
+              // ── 왜 폴더 목록 안에 넣지 않았나 ──
+              // 폴더는 "레퍼런스를 어떻게 나눠 볼까"이고, 무드보드는 "레퍼런스로
+              // 무엇을 할까"입니다. 성격이 달라서 같은 목록에 섞으면 폴더 중
               // 하나처럼 보입니다. 한 칸 띄워 두면 다른 종류라는 것이 드러납니다.
               _buildBoardsBlock(dark),
 
               const SizedBox(height: 12),
 
-              // ② 파트 목록입니다. Expanded로 감싸 남는 공간을 다 차지하게 하면,
+              // ② 폴더 목록입니다. Expanded로 감싸 남는 공간을 다 차지하게 하면,
               // ③(설정)이 언제나 맨 아래에 붙습니다.
-              Expanded(child: _buildPartList(dark)),
+              Expanded(child: _buildFolderList(dark)),
 
               const SizedBox(height: 12),
               _buildBottomBlock(dark),
@@ -182,11 +189,11 @@ class AppSidebar extends StatelessWidget {
     );
   }
 
-  /// ② 파트 목록입니다. 디자인/파티클 같은 큰 갈래로 레퍼런스를 나눠 봅니다.
+  /// ② 폴더 목록입니다. 이 프로젝트의 레퍼런스 묶음으로 나눠 봅니다.
   ///
-  /// 맨 위의 "전체 레퍼런스"는 파트를 안 가리는 상태입니다. 파트가 여럿일 때
+  /// 맨 위의 "전체 레퍼런스"는 폴더를 안 가리는 상태입니다. 폴더가 여럿일 때
   /// 전부 훑어보려면 이게 필요합니다.
-  Widget _buildPartList(AppPalette dark) {
+  Widget _buildFolderList(AppPalette dark) {
     return Container(
       padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
@@ -195,7 +202,7 @@ class AppSidebar extends StatelessWidget {
         border: Border.all(color: dark.border),
       ),
 
-      // 파트가 많아지면 사이드바 밖으로 넘칩니다. 스크롤되게 둡니다.
+      // 폴더가 많아지면 사이드바 밖으로 넘칩니다. 스크롤되게 둡니다.
       child: ListView(
         padding: EdgeInsets.zero,
         children: <Widget>[
@@ -203,17 +210,17 @@ class AppSidebar extends StatelessWidget {
             dark,
             icon: Icons.photo_library_outlined,
             label: '전체 레퍼런스',
-            isSelected: selectedPartId == null,
-            onTap: () => onSelectPart(null),
+            isSelected: selectedFolderId == null,
+            onTap: () => onSelectFolder(null),
           ),
 
-          for (final TaxonomyItem part in parts)
+          for (final TaxonomyItem folder in folders)
             _buildNavItem(
               dark,
               icon: Icons.folder_copy_outlined,
-              label: part.name,
-              isSelected: selectedPartId == part.id,
-              onTap: () => onSelectPart(part.id),
+              label: folder.name,
+              isSelected: selectedFolderId == folder.id,
+              onTap: () => onSelectFolder(folder.id),
             ),
         ],
       ),
@@ -232,7 +239,7 @@ class AppSidebar extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
-          // 휴지통은 파트 목록(②)이 아니라 여기 둡니다. 파트는 "레퍼런스를
+          // 휴지통은 폴더 목록(②)이 아니라 여기 둡니다. 폴더는 "레퍼런스를
           // 어떻게 나눠 볼까"인데, 휴지통은 설정처럼 가끔 들르는 도구라
           // 성격이 다릅니다.
           _buildNavItem(
