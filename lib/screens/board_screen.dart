@@ -29,13 +29,18 @@
 // 쓰게 되고, 안 누르고 나갔다가 배치를 통째로 잃습니다.
 
 import 'package:flutter/material.dart';
+import 'package:super_drag_and_drop/super_drag_and_drop.dart';
 
 import '../models/board.dart';
+import '../models/taxonomy_item.dart' show defaultPartId;
 import '../repositories/board_repository.dart';
 import '../repositories/reference_repository.dart';
 import '../services/board_window_sync.dart';
+import '../services/image_source.dart';
 import '../services/image_storage.dart';
+import '../services/reference_importer.dart';
 import '../services/reference_lookup.dart';
+import '../services/youtube_info_source.dart';
 import '../utils/board_layout.dart';
 import '../widgets/board_canvas.dart';
 import '../widgets/board_selection_bar.dart';
@@ -57,6 +62,8 @@ class BoardScreen extends StatefulWidget {
     required this.boardRepository,
     required this.referenceRepository,
     required this.imageStorage,
+    required this.imageSource,
+    required this.youtubeInfoSource,
     this.canPopOut = true,
   });
 
@@ -71,6 +78,16 @@ class BoardScreen extends StatefulWidget {
 
   /// 이미지 파일 경로를 알려주는 도구입니다.
   final ImageStorage imageStorage;
+
+  /// 주소나 클립보드에서 이미지를 가져오는 도구입니다.
+  ///
+  /// 탐색기·브라우저에서 파일을 이 판 위로 직접 끌어다 놓았을 때
+  /// ReferenceImporter를 만드는 데 씁니다. (home_screen.dart와 같은 도구를
+  /// 그대로 받습니다)
+  final ImageSource imageSource;
+
+  /// 유튜브에서 제목과 썸네일을 가져오는 도구입니다. 위와 같은 이유로 받습니다.
+  final YoutubeInfoSource youtubeInfoSource;
 
   /// "팝업으로 띄우기" 버튼을 보여줄지 여부입니다.
   ///
@@ -93,6 +110,17 @@ class _BoardScreenState extends State<BoardScreen> {
 
   /// 창을 항상 위로 띄우는 일을 맡습니다.
   final BoardWindowController _window = BoardWindowController();
+
+  /// 탐색기·브라우저에서 파일을 이 판 위로 끌어다 놓았을 때 들여오는 일을
+  /// 맡습니다. home_screen.dart의 `_importer`와 똑같은 도구입니다 —
+  /// 어느 경로로 들어오든 저장 방식은 하나여야 하기 때문입니다
+  /// (reference_importer.dart 위쪽 설명 참고).
+  late final ReferenceImporter _importer = ReferenceImporter(
+    repository: widget.referenceRepository,
+    imageStorage: widget.imageStorage,
+    imageSource: widget.imageSource,
+    youtubeInfoSource: widget.youtubeInfoSource,
+  );
 
   /// 카드가 보여줄 레퍼런스를 번호로 찾을 수 있게 정리해둔 것입니다.
   ///
@@ -252,6 +280,56 @@ class _BoardScreenState extends State<BoardScreen> {
     });
   }
 
+  /// 탐색기·브라우저에서 파일을 이 판 위로 직접 끌어다 놓았을 때 실행됩니다.
+  /// (BoardViewport.onExternalFilesDropped)
+  ///
+  /// home_drop_area.dart(메인 화면)와 같은 가져오기 도구를 그대로 쓰되,
+  /// 새로 만들어진 레퍼런스를 **놓은 자리에 곧바로 카드로도 배치**합니다.
+  /// 새 레퍼런스는 기본 파트로 들어갑니다 — 판 화면에는 "지금 고른 파트"라는
+  /// 개념이 없기 때문입니다(사이드바에서 파트를 고르는 것은 목록 화면 얘기).
+  Future<void> _onExternalFilesDropped(
+    PerformDropEvent event,
+    Offset canvasPosition,
+  ) async {
+    final ImportOutcome outcome = await _importer.importFromDrop(
+      event,
+      partId: defaultPartId,
+    );
+
+    if (outcome.isNothingToDo) {
+      return;
+    }
+
+    if (outcome.savedIds.isNotEmpty) {
+      await _interaction.addCardsAt(outcome.savedIds, canvasPosition);
+    }
+
+    if (!mounted) {
+      return;
+    }
+
+    _showImportResult(outcome);
+  }
+
+  /// 들여오기 결과를 화면 아래쪽에 잠깐 띄웁니다.
+  /// (home_screen.dart의 `_showImportResult`와 같은 문구 규칙입니다)
+  void _showImportResult(ImportOutcome outcome) {
+    final String message;
+
+    if (outcome.failedCount == 0) {
+      message = outcome.successMessage ?? '${outcome.savedCount}장 추가했습니다.';
+    } else if (outcome.savedCount == 0) {
+      message = outcome.errorMessage ?? '추가하지 못했습니다. 그림 파일이 맞는지 확인해주세요.';
+    } else {
+      message =
+          '${outcome.savedCount}장 추가했습니다. ${outcome.failedCount}장은 읽지 못했습니다.';
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), duration: const Duration(seconds: 5)),
+    );
+  }
+
   /// 판에 놓인 카드 전체를 사진(PNG) 한 장으로 내보냅니다.
   ///
   /// 실제로 찍고 저장하는 일은 [_export]가 합니다. 여기서는 그 결과를
@@ -319,10 +397,6 @@ class _BoardScreenState extends State<BoardScreen> {
       builder: (BuildContext context, Widget? child) {
         final List<BoardCard> cards = _interaction.cards;
 
-        if (cards.isEmpty) {
-          return _buildEmptyState();
-        }
-
         // 판에 끝이 없어서, 그릴 자리를 카드에서 구합니다.
         // 카드를 옮기면 이 자리도 따라 움직입니다.
         //
@@ -361,6 +435,12 @@ class _BoardScreenState extends State<BoardScreen> {
               // 좌표 변환(화면→판)은 BoardViewport가 이미 해서 넘겨줍니다.
               onReferenceDropped: _interaction.addCardAt,
 
+              // 탐색기·브라우저에서 파일을 직접 끌어다 놓으면 새
+              // 레퍼런스로 저장하면서 그 자리에 곧바로 카드로도 담습니다.
+              // 판이 비어 있어도(카드 0장) 받을 수 있습니다 — 이 판이
+              // 비어 있을 때도 BoardViewport 자체는 그려지기 때문입니다.
+              onExternalFilesDropped: _onExternalFilesDropped,
+
               child: BoardCanvas(
                 cards: cards,
                 canvasRect: canvasRect,
@@ -382,6 +462,15 @@ class _BoardScreenState extends State<BoardScreen> {
                 onRemoveCard: _interaction.removeCard,
               ),
             ),
+
+            // 판이 비어 있을 때의 안내입니다. **BoardViewport를 안 그리지
+            // 않고 그 위에 겹쳐 그립니다** — 그래야 빈 판에도 레퍼런스를
+            // 끌어다 놓을 수 있습니다(예전에는 카드가 0장이면
+            // BoardViewport 자체를 안 그려서, 좌표 변환 기준이 없어 이
+            // 기능을 못 받았습니다). EmptyStateMessage는 배경이 없는
+            // 투명한 안내라 겹쳐도 뒤가 비쳐 보이고, 버튼이 있는 자리
+            // 말고는 클릭도 그대로 아래(BoardViewport)로 지나갑니다.
+            if (cards.isEmpty) Positioned.fill(child: _buildEmptyState()),
 
             // 카드를 하나라도 골랐을 때만 아래쪽에 떠 있는 선택 띠입니다.
             if (_interaction.selectedCardIds.isNotEmpty)

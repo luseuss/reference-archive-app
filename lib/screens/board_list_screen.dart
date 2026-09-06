@@ -21,7 +21,9 @@ import '../models/board.dart';
 import '../repositories/board_repository.dart';
 import '../repositories/reference_repository.dart';
 import '../services/board_window_sync.dart';
+import '../services/image_source.dart';
 import '../services/image_storage.dart';
+import '../services/youtube_info_source.dart';
 import '../theme/app_palette.dart';
 import '../theme/app_text.dart';
 import '../utils/date_format.dart';
@@ -38,6 +40,8 @@ class BoardListScreen extends StatefulWidget {
     required this.boardRepository,
     required this.referenceRepository,
     required this.imageStorage,
+    required this.imageSource,
+    required this.youtubeInfoSource,
   });
 
   /// 무드보드를 읽고 쓰는 통로입니다.
@@ -48,6 +52,14 @@ class BoardListScreen extends StatefulWidget {
 
   /// 이미지 파일 경로를 알려주는 도구입니다. 판을 열 때 그대로 넘겨줍니다.
   final ImageStorage imageStorage;
+
+  /// 주소나 클립보드에서 이미지를 가져오는 도구입니다. 판을 열 때 그대로
+  /// 넘겨줍니다 — 판이 탐색기·브라우저에서 파일을 직접 받으려면 필요합니다.
+  final ImageSource imageSource;
+
+  /// 유튜브에서 제목과 썸네일을 가져오는 도구입니다. 위와 같은 이유로
+  /// 그대로 넘겨줍니다.
+  final YoutubeInfoSource youtubeInfoSource;
 
   @override
   State<BoardListScreen> createState() => _BoardListScreenState();
@@ -142,6 +154,8 @@ class _BoardListScreenState extends State<BoardListScreen> {
           boardRepository: widget.boardRepository,
           referenceRepository: widget.referenceRepository,
           imageStorage: widget.imageStorage,
+          imageSource: widget.imageSource,
+          youtubeInfoSource: widget.youtubeInfoSource,
         ),
       ),
     );

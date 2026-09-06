@@ -32,6 +32,8 @@ import '../repositories/local_board_repository.dart';
 import '../repositories/local_reference_repository.dart';
 import '../services/board_window_sync.dart';
 import '../services/local_image_storage.dart';
+import '../services/network_image_source.dart';
+import '../services/youtube_info_source.dart';
 import '../theme/app_theme.dart';
 import 'board_popup_controller.dart';
 import 'board_screen.dart';
@@ -146,6 +148,11 @@ class _BoardPopupAppState extends State<BoardPopupApp> {
               boardRepository: _boardRepository,
               referenceRepository: _referenceRepository,
               imageStorage: LocalImageStorage(),
+
+              // 팝업 창은 메인 창과 다른 엔진이라(위쪽 설명 참고) 도구를
+              // 새로 만듭니다. main.dart의 _runMainWindow()와 같은 것들입니다.
+              imageSource: NetworkImageSource(),
+              youtubeInfoSource: NetworkYoutubeInfoSource(),
               canPopOut: false,
             ),
     );

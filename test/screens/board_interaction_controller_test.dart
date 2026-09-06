@@ -118,4 +118,49 @@ void main() {
       <String>['ref-1', 'ref-1'],
     );
   });
+
+  // ── 여기서부터는 탐색기·브라우저에서 파일 여러 개를 한꺼번에 끌어다
+  // 놓았을 때 쓰는 addCardsAt입니다 ──
+
+  testWidgets('addCardsAt은 첫 장을 놓은 자리 그대로에 둔다', (
+    WidgetTester tester,
+  ) async {
+    await controller.addCardsAt(<String>['ref-1', 'ref-2'], const Offset(120, 340));
+
+    final BoardCard first = controller.cards.first;
+    expect(first.referenceId, 'ref-1');
+    expect(first.x, 120);
+    expect(first.y, 340);
+  });
+
+  testWidgets('addCardsAt은 나머지를 겹치지 않게 늘어놓는다', (
+    WidgetTester tester,
+  ) async {
+    await controller.addCardsAt(
+      <String>['ref-1', 'ref-2', 'ref-3'],
+      const Offset(120, 340),
+    );
+
+    expect(controller.cards.length, 3);
+
+    // 전부 같은 자리에 겹쳐 있으면 몇 개가 들어왔는지 알 수 없습니다.
+    final Set<Offset> positions = controller.cards
+        .map((BoardCard c) => Offset(c.x, c.y))
+        .toSet();
+    expect(positions.length, 3, reason: '카드들이 서로 겹치면 안 됩니다');
+  });
+
+  testWidgets('addCardsAt도 onSaved를 한 번 부른다', (WidgetTester tester) async {
+    await controller.addCardsAt(<String>['ref-1', 'ref-2'], const Offset(0, 0));
+    expect(savedCount, 1);
+  });
+
+  testWidgets('addCardsAt에 빈 목록을 주면 아무 일도 안 한다', (
+    WidgetTester tester,
+  ) async {
+    await controller.addCardsAt(<String>[], const Offset(0, 0));
+
+    expect(controller.cards, isEmpty);
+    expect(savedCount, 0);
+  });
 }
