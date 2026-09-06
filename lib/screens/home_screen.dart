@@ -46,6 +46,7 @@ import 'home_selection_controller.dart';
 import 'reference_detail_screen.dart';
 import 'settings_screen.dart';
 import 'taxonomy_manage_screen.dart';
+import 'trash_screen.dart';
 import 'youtube_player_screen.dart';
 
 // 여러 장 고르기(HomeSelectionController)와 호버 미리보기
@@ -676,6 +677,7 @@ class _HomeScreenState extends State<HomeScreen> {
       selectedPartId: _selectedPartId,
       onSelectPart: _selectPart,
       onOpenBoards: _openBoards,
+      onOpenTrash: _openTrash,
       onOpenSettings: _openSettings,
       onLogInOut: _showLoginNotReady,
     );
@@ -782,6 +784,36 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
   }
+
+  /// 휴지통 화면을 엽니다. 돌아오면 목록을 다시 읽습니다.
+  ///
+  /// 다시 읽는 이유: 휴지통에서 레퍼런스를 되살렸으면 목록에 다시 나타나야
+  /// 합니다. 안 읽으면 되살렸는데도 안 보여서 안 된 줄 압니다.
+  Future<void> _openTrash() async {
+    _hoverPreview.stopPreview();
+
+    // 좁은 창이면 사이드바가 서랍으로 열려 있으므로 먼저 닫습니다.
+    // 안 닫으면 휴지통 화면 위에 서랍이 겹쳐 보입니다.
+    final NavigatorState navigator = Navigator.of(context);
+    if (_scaffoldKey.currentState?.isDrawerOpen ?? false) {
+      navigator.pop();
+    }
+
+    await navigator.push<void>(
+      MaterialPageRoute<void>(
+        builder: (BuildContext context) => TrashScreen(
+          repository: widget.repository,
+          imageStorage: widget.imageStorage,
+        ),
+      ),
+    );
+
+    if (!mounted) {
+      return;
+    }
+    await _loadItems();
+  }
+
   /// 설정 화면을 엽니다.
   Future<void> _openSettings() async {
     // 좁은 창이면 사이드바가 서랍으로 열려 있으므로 먼저 닫습니다.

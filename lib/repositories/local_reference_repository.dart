@@ -263,6 +263,92 @@ class LocalReferenceRepository implements ReferenceRepository {
     );
   }
 
+  /// 지운 레퍼런스(휴지통에 있는 것)를 최근에 지운 순서로 가져옵니다.
+  ///
+  /// 핀 고정은 안 봅니다. 휴지통에서는 "무엇이 중요한가"가 아니라 "방금
+  /// 뭘 지웠나"가 궁금하기 때문에, 최근에 지운 것이 맨 위여야 합니다.
+  @override
+  Future<List<ReferenceItem>> getDeleted() async {
+    final SimpleSelectStatement<$ReferencesTable, ReferenceRow> query =
+        _db.select(_db.references)
+          ..where(($ReferencesTable t) => t.deletedAt.isNotNull())
+          ..orderBy(<OrderClauseGenerator<$ReferencesTable>>[
+            ($ReferencesTable t) =>
+                OrderingTerm(expression: t.deletedAt, mode: OrderingMode.desc),
+          ]);
+
+    final List<ReferenceRow> rows = await query.get();
+
+    final List<ReferenceItem> result = <ReferenceItem>[];
+    for (final ReferenceRow row in rows) {
+      result.add(await _toModel(row));
+    }
+    return result;
+  }
+
+  /// 지운 레퍼런스를 되살립니다. deletedAt 표시를 지웁니다.
+  ///
+  /// 분류 연결도 무드보드 카드도 따로 되살릴 것이 없습니다 — 지울 때
+  /// 아예 안 건드렸기 때문입니다(delete/deleteMany 참고).
+  @override
+  Future<void> restore(String id) async {
+    final DateTime now = DateTime.now().toUtc();
+    await (_db.update(_db.references)..where(($ReferencesTable t) => t.id.equals(id)))
+        .write(
+          ReferencesCompanion(
+            deletedAt: const Value<DateTime?>(null),
+            updatedAt: Value<DateTime>(now),
+          ),
+        );
+  }
+
+  /// 레퍼런스를 **진짜로** 지웁니다. 되돌릴 수 없습니다.
+  @override
+  Future<void> purge(String id) async {
+    await _purgeWhere(($ReferencesTable t) => t.id.equals(id));
+  }
+
+  /// 휴지통을 비웁니다. 지워둔 것 전부를 없앱니다.
+  @override
+  Future<void> purgeAll() async {
+    await _purgeWhere(($ReferencesTable t) => t.deletedAt.isNotNull());
+  }
+
+  /// [where]에 걸리는 레퍼런스를 진짜로 지웁니다. purge/purgeAll이 함께 씁니다.
+  ///
+  /// 셋을 transaction으로 묶습니다. 레퍼런스만 지워지고 분류 연결이나
+  /// 무드보드 카드가 남으면 **주인 없는 찌꺼기**가 되고, 나중에 기기 간
+  /// 동기화를 붙일 때 그것까지 다른 기기로 퍼집니다
+  /// (local_board_repository.dart의 deleteBoard와 같은 이유입니다).
+  Future<void> _purgeWhere(
+    Expression<bool> Function($ReferencesTable) where,
+  ) async {
+    await _db.transaction(() async {
+      // 어떤 레퍼런스를 지울지 먼저 확정합니다. 연결·카드를 지울 때
+      // 그 id 목록이 필요한데, 레퍼런스를 먼저 지워버리면 못 구합니다.
+      final List<ReferenceRow> rows =
+          await (_db.select(_db.references)..where(where)).get();
+      final List<String> ids =
+          rows.map((ReferenceRow row) => row.id).toList();
+
+      if (ids.isEmpty) {
+        return;
+      }
+
+      await (_db.delete(_db.boardCards)..where(
+        ($BoardCardsTable t) => t.referenceId.isIn(ids),
+      )).go();
+
+      await (_db.delete(_db.referenceTaxonomyLinks)..where(
+        ($ReferenceTaxonomyLinksTable t) => t.referenceId.isIn(ids),
+      )).go();
+
+      await (_db.delete(_db.references)..where(
+        ($ReferencesTable t) => t.id.isIn(ids),
+      )).go();
+    });
+  }
+
   /// 레퍼런스에 붙어있는 태그(또는 프로젝트)의 id 목록을 가져옵니다.
   @override
   Future<List<String>> getLinkedTaxonomyIds(String referenceId, TaxonomyKind kind) async {
