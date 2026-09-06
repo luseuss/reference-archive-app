@@ -301,6 +301,26 @@ class _BoardScreenState extends State<BoardScreen> {
     }
 
     if (outcome.savedIds.isNotEmpty) {
+      // ── 표(_lookup)부터 다시 읽어와야 합니다 ──
+      // _lookup은 _loadBoard()를 열 때 한 번만 읽어둔 표라서, 방금
+      // importFromDrop()이 새로 만든 레퍼런스는 아직 그 표에 없습니다.
+      // board_canvas.dart는 이 표에 없는 카드를 "레퍼런스가 지워진
+      // 직후"로 보고 아예 안 그립니다(SizedBox.shrink) — 그대로 두면
+      // 카드는 저장됐는데 화면엔 안 보이는 상태가 됩니다. 새 레퍼런스를
+      // addCardsAt으로 배치하기 **전에** 먼저 표를 다시 읽어옵니다.
+      final ReferenceLookup lookup = await ReferenceLookup.load(
+        repository: widget.referenceRepository,
+        imageStorage: widget.imageStorage,
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _lookup = lookup;
+      });
+
       await _interaction.addCardsAt(outcome.savedIds, canvasPosition);
     }
 
