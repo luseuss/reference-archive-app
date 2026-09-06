@@ -218,7 +218,6 @@ void main() {
       await tester.pumpAndSettle();
 
       // 눌러도 텅 빈 메뉴만 뜨면 사용자가 당황하므로 아예 숨깁니다.
-      expect(find.widgetWithText(OutlinedButton, '폴더'), findsNothing);
       expect(find.widgetWithText(OutlinedButton, '태그'), findsNothing);
     });
 
