@@ -13,10 +13,13 @@
 // board_window_controller_test.dart에서 저장/불러오기 함수
 // (loadBoardAlwaysOnTopDefault 등) 자체를 화면 없이 확인합니다.
 
+import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:reference_archive_app/data/app_database.dart';
 import 'package:reference_archive_app/screens/settings_screen.dart';
 import 'package:reference_archive_app/services/app_settings.dart';
+import 'package:reference_archive_app/services/archive_backup_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
@@ -36,5 +39,45 @@ void main() {
     expect(find.text('무드보드'), findsNothing);
     expect(find.text('항상 위로 띄우기'), findsNothing);
     expect(find.text('창 불투명도'), findsNothing);
+  });
+
+  testWidgets('backupService를 안 넘기면 데이터 관리 구역이 안 보인다', (
+    WidgetTester tester,
+  ) async {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    final AppSettings settings = AppSettings();
+    await settings.load();
+
+    await tester.pumpWidget(
+      MaterialApp(home: SettingsScreen(settings: settings)),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('데이터 관리'), findsNothing);
+  });
+
+  testWidgets('backupService를 넘기면 데이터 관리 구역이 보인다', (
+    WidgetTester tester,
+  ) async {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    final AppSettings settings = AppSettings();
+    await settings.load();
+
+    final AppDatabase db = AppDatabase.forTesting(NativeDatabase.memory());
+    addTearDown(db.close);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SettingsScreen(
+          settings: settings,
+          backupService: ArchiveBackupService(db),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('데이터 관리'), findsOneWidget);
+    expect(find.text('백업 만들기'), findsOneWidget);
+    expect(find.text('백업에서 가져오기'), findsOneWidget);
   });
 }

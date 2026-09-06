@@ -4540,3 +4540,124 @@ SharedPreferences만 건드림)와 `BoardWindowController.load()`/
 - 무드보드 판·분류 항목(폴더/태그/파트)은 휴지통에 없습니다. 레퍼런스만
   됩니다.
 - 자동 삭제(예: 30일 뒤)는 없습니다. 직접 비워야 합니다.
+
+---
+
+## PR #52 — 아카이브 백업/복원을 만든다
+
+의뢰인에게 "더 추가되어야 하는 기능"을 정리해 보고한 목록 중 휴지통
+다음으로 고른 것입니다. 앱 안에 백업 수단이 전혀 없어서 컴퓨터가
+망가지면 모아둔 것이 전부 사라지는 위험이 있었고, 노트북↔데스크톱을
+오갈 때도 CLAUDE.md가 "앱 데이터 폴더를 통째로 복사하세요"라고
+안내하는 수동적인 방법뿐이었습니다.
+
+계획은 별도 스펙 문서 없이(의뢰인이 "바로 계획 세워서 만들자"를
+선택) 채팅에서 확정한 설계를 그대로
+`docs/superpowers/plans/2026-09-06-archive-backup-restore-plan.md`에
+옮겨 썼습니다. 그 전에 핵심 전제 둘(sqlite의 `VACUUM INTO`가 실제로
+되는지, `archive` 패키지로 zip을 묶고 풀었을 때 구조가 기대대로
+나오는지)을 스파이크로 먼저 확인했습니다(코드는 버림).
+
+### 확정된 동작
+
+- 설정 화면 "데이터 관리" 구역에서 **백업 만들기**를 누르면 데이터베이스
+  +사진 전체가 zip 파일 하나로 만들어집니다(앱 설정은 안 들어감).
+- **백업에서 가져오기**로 그 zip을 고르면, 지금 아카이브에 **합쳐집니다**
+  (덮어쓰기 아님 — 기존 데이터는 그대로 있고 백업에만 있던 것만 추가).
+- 복원이 끝나면 "복원됐습니다. 앱을 다시 켜주세요" 안내와 함께
+  **지금 종료** 버튼이 뜨고, 다시 켜면 합쳐진 내용이 반영됩니다.
+
+### 왜 "합치기"가 안전한가
+
+이 프로젝트가 처음부터 지켜온 설계 원칙 1번("모든 항목은 UUID")이
+그대로 답이 됩니다. 서로 다른 컴퓨터에서 만든 두 항목의 id가 우연히
+겹칠 확률이 사실상 0이라서, **표마다 "id가 없으면 추가, 있으면
+건너뛴다"** 는 규칙 하나로 충돌 없이 합쳐집니다. 사진 파일도 이름이
+UUID라 같은 이유로 안전합니다.
+
+**다만 이름이 같은 항목을 하나로 합쳐주지는 않습니다** — 두 컴퓨터가
+각자 만든 "인물" 폴더는 id가 다르므로 합친 뒤 폴더가 두 개로
+보입니다. 의뢰인이 "합치기"를 고른 이상 생기는 자연스러운
+트레이드오프로 보고 이번 범위에서는 그대로 뒀습니다.
+
+### 어떻게 했나
+
+**`lib/services/archive_backup_service.dart`**(새 파일,
+`ArchiveBackupService`)가 전부 맡습니다.
+
+- `writeBackupZip(zipPath)` — sqlite의 `VACUUM INTO` 명령(drift의
+  `customStatement()`로 직접 호출)으로 **켜진 채로도 항상 완전하고
+  일관된 데이터베이스 복사본**을 만들고, `archive` 패키지의
+  `ZipFileEncoder`로 사진 폴더와 함께 zip으로 묶습니다.
+- `mergeBackupZipBytes(zipBytes)` — zip을 풀어 안의 sqlite 파일을
+  **별도 `AppDatabase` 연결**로 엽니다(옛날 버전으로 만든 백업이어도
+  이 앱이 이미 갖고 있는 마이그레이션이 자동으로 최신 구조로 올려줍니다).
+  표마다 읽어서 지금 데이터베이스에 `InsertMode.insertOrIgnore`로
+  `db.batch()` 한 번에 합칩니다. 넣는 순서는 `TaxonomyItems` →
+  `References` → `ReferenceTaxonomyLinks` → `Boards` → `BoardCards`
+  (부모 먼저).
+- `createBackup()`/`restoreFromBackup()` — 위 둘에 `file_picker`
+  저장/열기 대화상자를 씌운 공개 API입니다. 진짜 운영체제 대화상자를
+  열려고 해서 위젯 테스트로 못 잡는 부류입니다(이 프로젝트의 다른
+  파일 저장 기능들과 같은 사정).
+
+**`lib/screens/backup_controller.dart`**(새 파일, `BackupController`)는
+`board_export_controller.dart`와 같은 `ChangeNotifier` 패턴으로 "지금
+하는 중인지" 상태만 담습니다.
+
+**`SettingsScreen.backupService`는 선택적(nullable, 기본값
+null)입니다.** null이면 "데이터 관리" 구역 자체가 안 보입니다 —
+`ReferenceArchiveApp`/`HomeScreen`을 직접 만드는 기존 테스트가 9개나
+있어서, 필수 필드로 만들면 전부 고쳐야 했습니다. `imageStorage`/
+`youtubeInfoSource`와 같은 자리에 나란히 둔 "도구" 객체로 다뤘습니다.
+`main.dart`의 `_runMainWindow()`가 진짜 `ArchiveBackupService(database)`
+를 만들어 `ReferenceArchiveApp` → `HomeScreen` → `SettingsScreen`까지
+그대로 넘겨줍니다.
+
+**복원 후 화면을 그 자리에서 새로고침하지 않습니다.** 켜진 채로
+데이터베이스 연결을 바꿔치는 것은 위험하고, 이미 메모리에 읽어둔
+화면들(레퍼런스 목록, 사이드바 등)을 전부 다시 읽게 만드는 것보다
+앱을 통째로 다시 켜는 편이 훨씬 단순하고 확실합니다. "복원됐습니다"
+대화상자의 "지금 종료" 버튼이 `exit(0)`으로 바로 끕니다.
+
+### 새로 만든 것
+
+| 파일 | 역할 |
+|---|---|
+| `lib/services/archive_backup_service.dart` | 백업 만들기·복원(합치기)의 핵심 로직 + 파일 대화상자 |
+| `lib/screens/backup_controller.dart` | 설정 화면의 백업/복원 상태(ChangeNotifier) |
+| `test/fakes/fake_path_provider.dart` | path_provider를 흉내내는 가짜(`local_image_storage_test.dart`에서 빼서 공유) |
+
+### 나중에 이 부분을 고치려면 어디를 보면 되나
+
+| 고치고 싶은 것 | 봐야 할 곳 |
+|---|---|
+| 백업 zip에 뭘 담을지 | `archive_backup_service.dart`의 `writeBackupZip()` |
+| 합치기 규칙(어느 표를, 어떤 순서로) | 같은 파일의 `_mergeDatabaseFrom()` |
+| 사진 파일 합치기 규칙 | 같은 파일의 `_mergeImagesFrom()` |
+| 설정 화면의 데이터 관리 UI | `settings_screen.dart`의 `_buildDataManagement()` |
+| 복원 후 안내 대화상자 | `settings_screen.dart`의 `_showRestoredDialog()` |
+
+### 어떻게 테스트했나
+
+- `flutter analyze` 문제 없음, `flutter test` **633건 전부 통과**
+  (기존 624건 + 새 9건: 백업/복원 핵심 로직 7건, 설정 화면 데이터
+  관리 구역 표시 2건). 기존 테스트는 코드 수정 없이 그대로
+  통과했습니다(9개의 `ReferenceArchiveApp`/`HomeScreen` 직접 생성
+  테스트 포함 — `backupService`가 선택적 필드라서 안 고쳐도 됩니다).
+- 테스트는 진짜 파일로 여는 데이터베이스(`NativeDatabase(File(...))`)
+  를 씁니다 — `VACUUM INTO`는 실제 파일 시스템에 쓰는 명령이라 메모리
+  데이터베이스만으로는 핵심을 확인했다고 보기 어렵습니다.
+- **파일 대화상자·"복원 후 앱 다시 켜기"는 위젯 테스트로 못 잡는
+  부류입니다.** `flutter build windows` 성공 확인 후,
+  `flutter run -d windows`로 의뢰인이 직접 확인했습니다: 데이터 관리
+  구역 표시, 백업 zip 안에 sqlite+images 폴더가 들어있는지, 복원 후
+  "복원됐습니다" 안내, 지금 종료 후 다시 켰을 때 합쳐진 내용 확인.
+
+### 알려진 한계
+
+- 이름이 같은 항목을 하나로 합쳐주지는 않습니다(위 "왜 합치기가
+  안전한가" 참고).
+- 복원은 지금 열려 있는 화면에 실시간으로 반영되지 않습니다. 앱을
+  다시 켜야 합니다.
+- 백업 파일에 앱 설정(밝기 모드·이름)은 안 들어갑니다.

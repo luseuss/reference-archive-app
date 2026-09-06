@@ -14,25 +14,10 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image/image.dart' as img;
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
-import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 import 'package:reference_archive_app/services/image_resizer.dart';
 import 'package:reference_archive_app/services/local_image_storage.dart';
 
-/// path_provider 대신 임시 폴더를 알려주는 가짜입니다.
-class _FakePathProvider extends PathProviderPlatform with MockPlatformInterfaceMixin {
-  _FakePathProvider(this.rootPath);
-
-  final String rootPath;
-
-  @override
-  Future<String?> getApplicationSupportPath() async => rootPath;
-
-  @override
-  Future<String?> getApplicationDocumentsPath() async => rootPath;
-
-  @override
-  Future<String?> getTemporaryPath() async => rootPath;
-}
+import '../fakes/fake_path_provider.dart';
 
 void main() {
   // 플러그인을 흉내내려면 테스트 환경이 먼저 준비되어야 합니다.
@@ -43,7 +28,7 @@ void main() {
 
   setUp(() async {
     tempDir = await Directory.systemTemp.createTemp('ref_archive_test_');
-    PathProviderPlatform.instance = _FakePathProvider(tempDir.path);
+    PathProviderPlatform.instance = FakePathProvider(tempDir.path);
     storage = LocalImageStorage();
   });
 

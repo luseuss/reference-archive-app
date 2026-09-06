@@ -1,9 +1,10 @@
 // 앱 설정 화면입니다.
 //
-// 지금 담고 있는 것은 넷입니다.
+// 지금 담고 있는 것은 다섯입니다.
 //   - 밝은 / 어두운 모드
 //   - 사용자 이름 (로그인 시스템이 없어서 직접 적습니다)
 //   - 무드보드 창 기본값 (항상 위, 불투명도 — 데스크톱에서만 보입니다)
+//   - 데이터 관리 (아카이브 백업 만들기/불러오기)
 //   - 만든 사람과 앱 버전
 //
 // 설정을 늘릴 때는 `lib/services/app_settings.dart`에 값을 먼저 추가하고
@@ -20,12 +21,16 @@
 // 설명 참고). 무드보드 창을 열 때 BoardWindowController.load()가 이
 // 값을 읽어 그제서야 진짜로 적용합니다.
 
+import 'dart:io' show exit;
+
 import 'package:flutter/material.dart';
 
 import '../services/app_settings.dart';
+import '../services/archive_backup_service.dart';
 import '../theme/app_metrics.dart';
 import '../theme/app_palette.dart';
 import '../theme/app_text.dart';
+import 'backup_controller.dart';
 import 'board_window_controller.dart';
 
 /// 이 앱을 만든 사람입니다. 설정 화면에 보여줍니다.
@@ -40,10 +45,17 @@ const String appVersion = '1.0.0';
 
 /// 앱 설정 화면입니다.
 class SettingsScreen extends StatefulWidget {
-  const SettingsScreen({super.key, required this.settings});
+  const SettingsScreen({super.key, required this.settings, this.backupService});
 
   /// 설정을 읽고 쓰는 도구입니다.
   final AppSettings settings;
+
+  /// 아카이브 백업/복원 서비스입니다.
+  ///
+  /// null이면 "데이터 관리" 구역 자체를 안 보여줍니다. 이 값을 필수로
+  /// 만들면 이 화면을 직접 만드는 기존 테스트를 전부 고쳐야 해서
+  /// 선택적으로 뒀습니다.
+  final ArchiveBackupService? backupService;
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -56,17 +68,34 @@ class _SettingsScreenState extends State<SettingsScreen> {
   /// 무드보드 창 불투명도 기본값입니다(0.4~1.0). 아직 못 읽어왔으면 null입니다.
   double? _boardOpacity;
 
-  /// 화면이 만들어질 때 무드보드 창 기본값을 읽어옵니다.
+  /// 백업/복원 상태입니다. widget.backupService가 null이면 이것도
+  /// null입니다 — "데이터 관리" 구역 자체를 안 그리므로 쓸 일이 없습니다.
+  BackupController? _backup;
+
+  /// 화면이 만들어질 때 무드보드 창 기본값을 읽어오고, 백업 컨트롤러를
+  /// 준비합니다.
   ///
-  /// 데스크톱이 아니면 아예 안 읽습니다 — 폰·태블릿에는 이 설정 자체가
-  /// 안 보이므로 SharedPreferences를 뒤질 이유가 없습니다.
+  /// 무드보드 창 기본값은 데스크톱이 아니면 아예 안 읽습니다 — 폰·
+  /// 태블릿에는 이 설정 자체가 안 보이므로 SharedPreferences를 뒤질
+  /// 이유가 없습니다.
   @override
   void initState() {
     super.initState();
 
+    final ArchiveBackupService? backupService = widget.backupService;
+    if (backupService != null) {
+      _backup = BackupController(backupService);
+    }
+
     if (supportsAlwaysOnTopWindow) {
       _loadBoardWindowDefaults();
     }
+  }
+
+  @override
+  void dispose() {
+    _backup?.dispose();
+    super.dispose();
   }
 
   /// 저장해둔 무드보드 창 기본값(항상 위, 불투명도)을 읽어옵니다.
@@ -104,6 +133,93 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await saveBoardOpacityDefault(value);
   }
 
+  /// 백업 파일을 만듭니다.
+  Future<void> _createBackup() async {
+    final BackupController? backup = _backup;
+    if (backup == null) {
+      return;
+    }
+
+    final BackupOutcome outcome = await backup.createBackup();
+
+    if (!mounted) {
+      return;
+    }
+
+    final String? message = switch (outcome) {
+      BackupOutcome.saved => '백업 파일을 만들었습니다.',
+      BackupOutcome.cancelled => null,
+      BackupOutcome.failed => '백업을 만들지 못했습니다.',
+    };
+
+    if (message != null) {
+      _showMessage(message);
+    }
+  }
+
+  /// 백업 파일을 골라 지금 아카이브에 합칩니다.
+  Future<void> _restoreFromBackup() async {
+    final BackupController? backup = _backup;
+    if (backup == null) {
+      return;
+    }
+
+    final RestoreOutcome outcome = await backup.restoreFromBackup();
+
+    if (!mounted) {
+      return;
+    }
+
+    switch (outcome) {
+      case RestoreOutcome.restored:
+        await _showRestoredDialog();
+      case RestoreOutcome.cancelled:
+        break;
+      case RestoreOutcome.invalidFile:
+        _showMessage('올바른 백업 파일이 아닙니다.');
+      case RestoreOutcome.failed:
+        _showMessage('복원하지 못했습니다.');
+    }
+  }
+
+  /// 복원이 끝났다고 알리고, 앱을 다시 켜달라고 안내합니다.
+  ///
+  /// ── 왜 화면을 그냥 새로고침하지 않나 ──
+  /// 지금 켜진 화면들(레퍼런스 목록, 사이드바의 파트 목록 등)은 전부
+  /// 메모리에 읽어둔 값을 보여주고 있습니다. 방금 데이터베이스에 새로
+  /// 합쳐진 내용을 전부 반영하려면 앱 전체를 다시 켜는 것이 가장
+  /// 확실하고 단순합니다.
+  Future<void> _showRestoredDialog() async {
+    await showDialog<void>(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('복원됐습니다'),
+          content: const Text(
+            '백업 내용이 지금 아카이브에 합쳐졌습니다.\n앱을 다시 켜야 화면에 반영됩니다.',
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('나중에'),
+            ),
+            FilledButton(
+              onPressed: () => exit(0),
+              child: const Text('지금 종료'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  /// 화면 아래에 잠깐 뜨는 안내입니다.
+  void _showMessage(String message) {
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
+  }
+
   /// 화면의 생김새를 만들어 돌려줍니다.
   @override
   Widget build(BuildContext context) {
@@ -135,6 +251,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 const SizedBox(height: 28),
                 _buildSectionLabel('무드보드', palette),
                 _buildBoardWindowDefaults(palette),
+              ],
+
+              // widget.backupService가 없으면(null) 이 구역 자체를 안
+              // 그립니다 — main.dart에서 아직 안 넘겨준 경우이거나,
+              // 이 화면을 테스트가 직접 만든 경우입니다.
+              if (_backup != null) ...<Widget>[
+                const SizedBox(height: 28),
+                _buildSectionLabel('데이터 관리', palette),
+                _buildDataManagement(palette),
               ],
 
               const SizedBox(height: 28),
@@ -337,6 +462,60 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  /// 백업 만들기/불러오기 버튼입니다.
+  Widget _buildDataManagement(AppPalette palette) {
+    final BackupController backup = _backup!;
+
+    // ListenableBuilder = 컨트롤러가 바뀌면(작업 중 여부) 이 안만
+    // 다시 그려주는 위젯입니다. 눌린 동안 버튼을 다시 못 누르게 막는 데 씁니다.
+    return ListenableBuilder(
+      listenable: backup,
+      builder: (BuildContext context, Widget? child) {
+        return _buildPanel(
+          palette,
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  '데이터베이스와 사진을 zip 파일 하나로 백업하거나, '
+                  '백업 파일을 지금 아카이브에 합칠 수 있습니다. '
+                  '앱 설정(밝기 모드·이름)은 백업에 안 들어갑니다.',
+                  style: AppText.cardMemo.copyWith(color: palette.textDim),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: <Widget>[
+                    FilledButton.tonalIcon(
+                      onPressed: backup.isWorking ? null : _createBackup,
+                      icon: const Icon(Icons.archive_outlined),
+                      label: const Text('백업 만들기'),
+                    ),
+                    const SizedBox(width: 12),
+                    OutlinedButton.icon(
+                      onPressed: backup.isWorking ? null : _restoreFromBackup,
+                      icon: const Icon(Icons.unarchive_outlined),
+                      label: const Text('백업에서 가져오기'),
+                    ),
+                    if (backup.isWorking) ...<Widget>[
+                      const SizedBox(width: 12),
+                      const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    ],
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 
