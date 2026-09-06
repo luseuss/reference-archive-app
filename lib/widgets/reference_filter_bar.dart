@@ -61,10 +61,6 @@ class ReferenceFilterBar extends StatelessWidget {
         return query.tagId;
       case TaxonomyKind.project:
         return query.projectId;
-
-      // 파트는 이 줄에서 다루지 않습니다. 사이드바에서 고릅니다.
-      case TaxonomyKind.part:
-        return null;
     }
   }
 
@@ -87,10 +83,6 @@ class ReferenceFilterBar extends StatelessWidget {
         onQueryChanged(query.copyWith(tagId: id));
       case TaxonomyKind.project:
         onQueryChanged(query.copyWith(projectId: id));
-
-      // 파트는 이 줄에서 안 바꿉니다. 사이드바가 맡습니다.
-      case TaxonomyKind.part:
-        break;
     }
   }
 
@@ -290,9 +282,10 @@ class ReferenceFilterBar extends StatelessWidget {
 
 /// 이 줄에서 고를 수 있는 분류 종류들입니다.
 ///
-/// **파트만 빠져 있습니다.** 파트는 디자인/파티클 같은 가장 큰 갈래라
-/// 왼쪽 사이드바에서 고릅니다. 여기에도 두면 같은 것을 두 군데서 고르게 되어
-/// "어느 쪽이 진짜지?" 하게 됩니다.
+/// **폴더만 빠져 있습니다.** 폴더는 왼쪽 사이드바에서 고르는 "지금 보고
+/// 있는 자리"입니다(2026-09-06까지는 파트가 이 역할이었습니다 — 파트를
+/// 없애면서 폴더가 그 자리를 이어받았습니다). 여기에도 두면 같은 것을
+/// 두 군데서 고르게 되어 "어느 쪽이 진짜지?" 하게 됩니다.
 final List<TaxonomyKind> filterableTaxonomyKinds = TaxonomyKind.values
-    .where((TaxonomyKind kind) => kind != TaxonomyKind.part)
+    .where((TaxonomyKind kind) => kind != TaxonomyKind.folder)
     .toList();
