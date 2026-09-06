@@ -173,6 +173,12 @@ class Boards extends Table {
   /// 지운 시각 (UTC). 비어 있으면 살아있는 항목입니다.
   DateTimeColumn get deletedAt => dateTime().nullable()();
 
+  /// 이 무드보드가 속한 폴더(프로젝트)의 번호입니다. 안 정했으면 비어
+  /// 있습니다(schemaVersion 5). "이 프로젝트 폴더의 레퍼런스 중에서
+  /// 골라 만든 무드보드"라는 뜻으로 씁니다 — 태그처럼 전체 공용이
+  /// 아니라, 무드보드 하나가 폴더 하나에만 속합니다.
+  TextColumn get folderId => text().nullable()();
+
   @override
   Set<Column> get primaryKey => <Column>{id};
 }

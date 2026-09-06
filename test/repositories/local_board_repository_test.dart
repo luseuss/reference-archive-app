@@ -146,6 +146,69 @@ void main() {
     });
   });
 
+  group('폴더(프로젝트) 연결', () {
+    test('처음 만든 판은 폴더를 안 정한 상태다', () async {
+      final Board board = makeBoard('겨울 무드');
+      await repository.saveBoard(board);
+
+      final Board? loaded = await repository.getBoardById(board.id);
+      expect(loaded!.folderId, isNull);
+    });
+
+    test('폴더를 정해서 저장하면 다시 읽어도 그대로다', () async {
+      final Board board = makeBoard('겨울 무드');
+      await repository.saveBoard(board);
+
+      await repository.saveBoard(board.copyWith(folderId: 'folder-1'));
+
+      final Board? loaded = await repository.getBoardById(board.id);
+      expect(loaded!.folderId, 'folder-1');
+    });
+
+    test('clearFolder로 뺀 뒤 저장하면 다시 비어있다', () async {
+      // ── 이게 이 그룹의 핵심입니다 ──
+      // saveBoard의 companion에 Value로 감싸지 않으면, drift가 "이 칸은
+      // 안 건드린다"로 해석해서 null로 되돌리는 게 조용히 실패합니다.
+      final Board board = makeBoard('겨울 무드');
+      await repository.saveBoard(board.copyWith(folderId: 'folder-1'));
+
+      final Board withFolder = (await repository.getBoardById(board.id))!;
+      await repository.saveBoard(withFolder.clearFolder());
+
+      final Board? loaded = await repository.getBoardById(board.id);
+      expect(loaded!.folderId, isNull);
+    });
+
+    test('폴더를 다른 폴더로 바꿔 저장할 수 있다', () async {
+      final Board board = makeBoard('겨울 무드');
+      await repository.saveBoard(board.copyWith(folderId: 'folder-1'));
+
+      final Board withFolder = (await repository.getBoardById(board.id))!;
+      await repository.saveBoard(withFolder.copyWith(folderId: 'folder-2'));
+
+      final Board? loaded = await repository.getBoardById(board.id);
+      expect(loaded!.folderId, 'folder-2');
+    });
+
+    test('폴더가 서로 다른 판들이 목록에서 안 섞인다', () async {
+      final Board a = makeBoard('겨울 무드');
+      final Board b = makeBoard('여름 무드');
+      await repository.saveBoard(a.copyWith(folderId: 'folder-1'));
+      await repository.saveBoard(b.copyWith(folderId: 'folder-2'));
+
+      final List<Board> boards = await repository.getAllBoards();
+
+      expect(
+        boards.firstWhere((Board board) => board.id == a.id).folderId,
+        'folder-1',
+      );
+      expect(
+        boards.firstWhere((Board board) => board.id == b.id).folderId,
+        'folder-2',
+      );
+    });
+  });
+
   group('판 위의 카드', () {
     late Board board;
 

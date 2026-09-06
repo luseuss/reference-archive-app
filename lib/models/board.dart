@@ -22,6 +22,7 @@ class Board {
     required this.name,
     required this.createdAt,
     required this.updatedAt,
+    this.folderId,
   });
 
   /// 고유 번호(UUID v4)
@@ -36,14 +37,38 @@ class Board {
   /// 마지막으로 고친 시각 (UTC)
   final DateTime updatedAt;
 
+  /// 이 무드보드가 속한 폴더(프로젝트)의 번호입니다. 안 정했으면
+  /// null입니다.
+  ///
+  /// "이 프로젝트 폴더의 레퍼런스 중에서 골라 만든 무드보드"라는
+  /// 뜻으로 씁니다. 태그처럼 전체 공용이 아니라, 무드보드 하나가
+  /// 폴더 하나에만 속합니다(schemaVersion 5).
+  final String? folderId;
+
   /// 몇 가지만 바꾼 사본을 만들어 돌려줍니다.
   /// 왜 이런 방식인지는 reference_item.dart의 copyWith 설명을 보세요.
-  Board copyWith({String? name, DateTime? updatedAt}) {
+  ///
+  /// 주의: 폴더에서 빼내고 싶을 때(null로 만들기)는 이 함수로는 안
+  /// 됩니다. 인자를 안 넘긴 것과 null을 넘긴 것을 구분할 수 없기
+  /// 때문입니다. 그럴 때는 clearFolder를 쓰세요.
+  Board copyWith({String? name, DateTime? updatedAt, String? folderId}) {
     return Board(
       id: id,
       name: name ?? this.name,
       createdAt: createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
+      folderId: folderId ?? this.folderId,
+    );
+  }
+
+  /// 폴더에서 빼낸(= 정한 적 없는 상태로 되돌린) 사본을 만들어 돌려줍니다.
+  Board clearFolder() {
+    return Board(
+      id: id,
+      name: name,
+      createdAt: createdAt,
+      updatedAt: updatedAt,
+      folderId: null,
     );
   }
 }
