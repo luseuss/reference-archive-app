@@ -26,6 +26,7 @@ import '../repositories/board_repository.dart';
 import '../repositories/reference_repository.dart';
 import '../repositories/taxonomy_repository.dart';
 import '../services/app_settings.dart';
+import '../services/archive_backup_service.dart';
 import '../services/reference_importer.dart';
 import '../services/image_source.dart';
 import '../services/image_storage.dart';
@@ -70,6 +71,7 @@ class HomeScreen extends StatefulWidget {
     required this.imageSource,
     required this.youtubeInfoSource,
     required this.settings,
+    this.backupService,
   });
 
   /// 레퍼런스를 읽고 쓰는 통로입니다.
@@ -94,6 +96,12 @@ class HomeScreen extends StatefulWidget {
 
   /// 앱 설정입니다. 사이드바의 사용자 이름과 설정 화면에 씁니다.
   final AppSettings settings;
+
+  /// 아카이브 백업/복원 서비스입니다. 설정 화면에 그대로 넘겨줍니다.
+  ///
+  /// null이면 설정 화면의 "데이터 관리" 구역이 안 보입니다 — 이 화면을
+  /// 직접 만드는 기존 테스트가 여럿이라 선택적으로 뒀습니다.
+  final ArchiveBackupService? backupService;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -825,8 +833,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
     await navigator.push<void>(
       MaterialPageRoute<void>(
-        builder: (BuildContext context) =>
-            SettingsScreen(settings: widget.settings),
+        builder: (BuildContext context) => SettingsScreen(
+          settings: widget.settings,
+          backupService: widget.backupService,
+        ),
       ),
     );
   }

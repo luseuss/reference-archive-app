@@ -33,6 +33,7 @@ import 'repositories/taxonomy_repository.dart';
 import 'screens/board_popup_app.dart';
 import 'screens/board_popup_controller.dart';
 import 'screens/home_screen.dart';
+import 'services/archive_backup_service.dart';
 import 'services/board_window_sync.dart';
 import 'services/image_source.dart';
 import 'services/image_storage.dart';
@@ -98,6 +99,7 @@ Future<void> _runMainWindow() async {
       imageSource: NetworkImageSource(),
       settings: settings,
       youtubeInfoSource: NetworkYoutubeInfoSource(),
+      backupService: ArchiveBackupService(database),
     ),
   );
 }
@@ -138,6 +140,7 @@ class ReferenceArchiveApp extends StatelessWidget {
     required this.imageSource,
     required this.youtubeInfoSource,
     required this.settings,
+    this.backupService,
   });
 
   /// 레퍼런스를 읽고 쓰는 통로입니다.
@@ -164,6 +167,9 @@ class ReferenceArchiveApp extends StatelessWidget {
 
   /// 앱 설정입니다. 사이드바의 사용자 이름과 설정 화면에 씁니다.
   final AppSettings settings;
+
+  /// 아카이브 백업/복원 서비스입니다. HomeScreen에 그대로 넘겨줍니다.
+  final ArchiveBackupService? backupService;
 
   /// 앱의 화면 구조를 만들어 돌려줍니다.
   /// Flutter는 화면을 새로 그려야 할 때마다 이 build() 함수를 다시 호출합니다.
@@ -211,6 +217,7 @@ class ReferenceArchiveApp extends StatelessWidget {
             imageSource: imageSource,
             youtubeInfoSource: youtubeInfoSource,
             settings: settings,
+            backupService: backupService,
           ),
         );
       },
