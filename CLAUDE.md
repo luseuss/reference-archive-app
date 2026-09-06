@@ -1145,6 +1145,84 @@ Flutter의 기본 `Draggable`/`DragTarget`(한 창 안에서만 동작)으로는
   확인 없이 말하지 마세요** — 이번처럼 짐작이 틀리면 진짜 문제(버그)와
   헷갈립니다.
 
+### 단계 밖 작업: 아카이브 백업/복원 ✅ 완료 (별도 PR — "archive-backup-restore")
+
+의뢰인에게 "더 추가되어야 하는 기능"을 정리해 보고한 목록 중 휴지통
+다음으로 고른 것입니다. 앱 안에 백업 수단이 전혀 없어서, 컴퓨터가
+망가지면 모아둔 것이 전부 사라지는 위험이 있었고, 노트북↔데스크톱을
+오갈 때도 CLAUDE.md가 "앱 데이터 폴더를 통째로 복사하세요"라고
+안내하는 수동적인 방법뿐이었습니다. 계획은 별도 스펙 문서 없이
+채팅에서 확정한 설계를 그대로
+`docs/superpowers/plans/2026-09-06-archive-backup-restore-plan.md`에
+옮겨 썼습니다.
+
+**확정된 동작 (의뢰인이 직접 켜서 확인함, 2026-09-06):**
+
+- 설정 화면 "데이터 관리" 구역에서 **백업 만들기**를 누르면 데이터베이스
+  +사진 전체가 zip 파일 하나로 만들어집니다(앱 설정은 안 들어감).
+- **백업에서 가져오기**로 그 zip을 고르면, 지금 아카이브에 **합쳐집니다**
+  (덮어쓰기 아님 — 기존 데이터는 그대로 있고 백업에만 있던 것만 추가).
+- 복원이 끝나면 "복원됐습니다. 앱을 다시 켜주세요" 안내와 함께
+  **지금 종료** 버튼이 뜨고, 다시 켜면 합쳐진 내용이 반영됩니다.
+
+**왜 "합치기"가 안전한가:** 이 프로젝트가 처음부터 지켜온 설계 원칙
+1번("모든 항목은 UUID")이 그대로 답이 됩니다. 서로 다른 컴퓨터에서
+만든 두 항목의 id가 우연히 겹칠 확률이 사실상 0이라서, **표마다
+"id가 없으면 추가, 있으면 건너뛴다"** 는 규칙 하나로 충돌 없이
+합쳐집니다. 사진 파일도 이름이 UUID라 같은 이유로 안전합니다.
+**다만 이름이 같은 항목을 하나로 합쳐주지는 않습니다** — 두 컴퓨터가
+각자 만든 "인물" 폴더는 id가 다르므로 합친 뒤 폴더가 두 개로
+보입니다. 의뢰인이 "합치기"를 고른 이상 생기는 자연스러운
+트레이드오프로 보고 이번 범위에서는 그대로 뒀습니다.
+
+**어떻게 되어 있나 (나중에 고칠 때 볼 곳):**
+
+- **`lib/services/archive_backup_service.dart`**(새 파일,
+  `ArchiveBackupService`)가 전부 맡습니다.
+  - `writeBackupZip(zipPath)` — sqlite의 `VACUUM INTO` 명령(drift의
+    `customStatement()`로 직접 호출)으로 **켜진 채로도 항상 완전하고
+    일관된 데이터베이스 복사본**을 만들고, `archive` 패키지의
+    `ZipFileEncoder`로 사진 폴더와 함께 zip으로 묶습니다.
+  - `mergeBackupZipBytes(zipBytes)` — zip을 풀어 안의 sqlite 파일을
+    **별도 `AppDatabase` 연결**로 엽니다(옛날 버전으로 만든 백업이어도
+    이 앱이 이미 갖고 있는 마이그레이션이 자동으로 최신 구조로
+    올려줍니다). 표마다 읽어서 지금 데이터베이스에
+    `InsertMode.insertOrIgnore`로 `db.batch()` 한 번에 합칩니다. 넣는
+    순서는 `TaxonomyItems` → `References` → `ReferenceTaxonomyLinks`
+    → `Boards` → `BoardCards`(부모 먼저).
+  - `createBackup()`/`restoreFromBackup()` — 위 둘에 `file_picker`
+    저장/열기 대화상자를 씌운 공개 API입니다.
+- **`lib/screens/backup_controller.dart`**(새 파일,
+  `BackupController`) — `board_export_controller.dart`와 같은
+  `ChangeNotifier` 패턴으로 "지금 하는 중인지" 상태만 담습니다.
+- **`SettingsScreen.backupService`는 선택적(nullable, 기본값
+  null)입니다.** null이면 "데이터 관리" 구역 자체가 안 보입니다 —
+  `ReferenceArchiveApp`/`HomeScreen`을 직접 만드는 기존 테스트가 9개나
+  있어서, 필수 필드로 만들면 전부 고쳐야 했습니다. `imageStorage`/
+  `youtubeInfoSource`와 같은 자리에 나란히 둔 "도구" 객체입니다.
+  `main.dart`의 `_runMainWindow()`가 진짜
+  `ArchiveBackupService(database)`를 만들어 `ReferenceArchiveApp` →
+  `HomeScreen` → `SettingsScreen`까지 그대로 넘겨줍니다.
+- **핵심 전제 둘(`VACUUM INTO`가 실제로 되는지, `archive` 패키지로
+  묶고 푼 구조가 기대대로 나오는지)은 계획을 쓰기 전에 스파이크로
+  먼저 확인했습니다**(코드는 버림) — 이 프로젝트가 새 패키지·새 SQL
+  기능을 쓸 때 늘 지키는 "설치된 소스·실제 동작을 직접 확인" 원칙과
+  같습니다.
+- **테스트는 진짜 파일로 여는 데이터베이스**(`NativeDatabase(File(...))`)
+  **를 씁니다.** `VACUUM INTO`는 실제 파일 시스템에 쓰는 명령이라
+  메모리 데이터베이스만으로는 핵심을 확인했다고 보기 어렵습니다.
+  `path_provider`를 흉내내는 가짜(`FakePathProvider`)를
+  `local_image_storage_test.dart`에서 `test/fakes/`로 빼서 이 테스트와
+  함께 씁니다 — **사진 폴더를 다루는 새 테스트를 만들 때는 이 가짜를
+  재사용하세요.**
+- **복원 후 화면을 그 자리에서 새로고침하지 않습니다.** 켜진 채로
+  데이터베이스 연결을 바꿔치는 것은 위험하고, 이미 메모리에 읽어둔
+  화면들(레퍼런스 목록, 사이드바 등)을 전부 다시 읽게 만드는 것보다
+  **앱을 통째로 다시 켜는 편이 훨씬 단순하고 확실합니다.**
+- **저장 구조는 안 바뀌었습니다. 마이그레이션 없음.**
+- **백업 파일에 앱 설정(밝기 모드·이름)은 안 들어갑니다.** 설정은
+  컴퓨터마다 따로 두는 것이 자연스럽다고 판단했습니다.
+
 ### 밀린 정리거리
 
 기능을 붙이다 보면 파일이 커집니다. 지금 알고 있는 것:
