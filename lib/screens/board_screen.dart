@@ -34,7 +34,6 @@ import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:super_drag_and_drop/super_drag_and_drop.dart';
 
 import '../models/board.dart';
-import '../models/taxonomy_item.dart' show defaultPartId;
 import '../repositories/board_repository.dart';
 import '../repositories/reference_repository.dart';
 import '../services/board_window_sync.dart';
@@ -303,15 +302,16 @@ class _BoardScreenState extends State<BoardScreen> {
   ///
   /// home_drop_area.dart(메인 화면)와 같은 가져오기 도구를 그대로 쓰되,
   /// 새로 만들어진 레퍼런스를 **놓은 자리에 곧바로 카드로도 배치**합니다.
-  /// 새 레퍼런스는 기본 파트로 들어갑니다 — 판 화면에는 "지금 고른 파트"라는
-  /// 개념이 없기 때문입니다(사이드바에서 파트를 고르는 것은 목록 화면 얘기).
+  /// 새 레퍼런스는 **이 판이 연결된 폴더**로 들어갑니다(연결 안 됐으면
+  /// 폴더 없음) — "이 프로젝트 폴더용 무드보드에 사진을 끌어다 놓으면
+  /// 그 프로젝트 폴더에 알아서 들어간다"는 자연스러운 규칙입니다.
   Future<void> _onExternalFilesDropped(
     PerformDropEvent event,
     Offset canvasPosition,
   ) async {
     final ImportOutcome outcome = await _importer.importFromDrop(
       event,
-      partId: defaultPartId,
+      folderId: widget.board.folderId,
     );
 
     if (outcome.isNothingToDo) {
@@ -344,7 +344,7 @@ class _BoardScreenState extends State<BoardScreen> {
   /// 보기로 되돌리므로 어디에 놓이든 바로 눈에 들어옵니다.
   Future<void> _onPasteFromClipboard() async {
     final ImportOutcome outcome = await _importer.importFromClipboard(
-      partId: defaultPartId,
+      folderId: widget.board.folderId,
     );
 
     if (outcome.isNothingToDo) {
