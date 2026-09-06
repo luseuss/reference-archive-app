@@ -5397,7 +5397,7 @@ addColumn을 추가할 때는, 그 표를 처음 만든 createTable 단계보다
 
 - `flutter analyze` 문제 없음 (0 issues).
 - `flutter test` **681건 전부 통과** (신규 `migration_v5_to_v6_test.dart`
-  6건 포함). 파트 개념을 지우며 없앤 테스트도 있고, 위 "그 밖에"에
+  7건 포함). 파트 개념을 지우며 없앤 테스트도 있고, 위 "그 밖에"에
   적은 계획 밖 다섯 개 테스트 파일도 함께 고쳐서 통과시켰습니다.
 - `grep -rn "partId\|TaxonomyKind\.part\|defaultPartId\|defaultPartName" lib test`로
   다시 확인 — 남은 것은 전부 주석·마이그레이션 코드·과거 상태를

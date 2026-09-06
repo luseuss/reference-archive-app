@@ -175,8 +175,9 @@ class AppDatabase extends _$AppDatabase {
   Future<void> _upgradeToVersion2(Migrator m) async {
     await customStatement('ALTER TABLE "references" ADD COLUMN part_id TEXT');
 
-    // `insertOrIgnore`인 이유: 만약 이미 같은 id의 기본 파트가 있다면
-    // (이론상 없어야 하지만) 덮어쓰지 않고 그대로 둡니다.
+    // `insertOrIgnore`인 이유: 사용자가 기본 파트의 이름을 바꿔뒀을
+    // 수 있습니다. 덮어쓰면 앱을 켤 때마다 이름이 '기본'으로
+    // 되돌아갑니다.
     final DateTime now = DateTime.now().toUtc();
     await into(taxonomyItems).insert(
       TaxonomyItemsCompanion.insert(
@@ -282,7 +283,7 @@ class AppDatabase extends _$AppDatabase {
   /// 버전 5 → 6. 파트(Part) 개념을 완전히 없앱니다.
   ///
   /// 두 가지를 합니다.
-  ///   1. References.partId 칼럼을 지웁니다.
+  ///   1. References의 part_id 칼럼을 지웁니다.
   ///   2. taxonomy_items에서 kind='part'인 행(기본 파트 포함)을 지웁니다.
   ///
   /// ── 소프트 삭제가 아니라 진짜로 지우는 이유 ──
@@ -293,9 +294,10 @@ class AppDatabase extends _$AppDatabase {
   /// 영원히 안 보이는 죽은 행만 쌓입니다.
   ///
   /// ── dropColumn이 SQLite 3.35.0을 요구합니다 ──
-  /// 이 프로젝트가 쓰는 sqlite3_flutter_libs는 훨씬 최신 SQLite를
-  /// 번들하므로 문제없이 될 것으로 보입니다. Task 10의 마이그레이션
-  /// 테스트가 실제로 되는지 확인합니다.
+  /// 이 프로젝트가 쓰는 sqlite3_flutter_libs가 번들한 SQLite는 3.53.4로,
+  /// 실제 파일 기반 데이터베이스에 대해 직접 확인했습니다(패키지 문서만
+  /// 믿지 않고 돌려보는 이 프로젝트의 평소 방식). 문제없이 됩니다 —
+  /// `test/data/migration_v5_to_v6_test.dart`가 이걸 계속 지킵니다.
   Future<void> _upgradeToVersion6(Migrator m) async {
     // dropColumn은 칼럼을 Column 객체가 아니라 **SQL 이름(문자열)**으로
     // 받습니다. tables.dart에서 partId 정의 자체를 지웠으므로

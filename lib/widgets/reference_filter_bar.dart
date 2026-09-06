@@ -103,8 +103,8 @@ class ReferenceFilterBar extends StatelessWidget {
             children: <Widget>[
               _buildSortMenu(context),
               _buildFavoritesToggle(),
-              // 파트는 빼고 나머지 넷만 여기에 둡니다.
-              // 파트는 왼쪽 사이드바에서 고르는 더 큰 갈래입니다.
+              // 폴더는 빼고 나머지 셋만 여기에 둡니다.
+              // 폴더는 왼쪽 사이드바에서 고르는 자리입니다.
               ...filterableTaxonomyKinds.map(_buildTaxonomyFilter),
 
               // 폴더를 고른 상태에서만 보입니다. "이 폴더(프로젝트)의
