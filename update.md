@@ -5294,3 +5294,116 @@ addColumn을 추가할 때는, 그 표를 처음 만든 createTable 단계보다
   경우를 확인해야 한다는 교훈이 남았습니다.
 - 실제 오래 써온 데이터베이스 파일로 마이그레이션이 매끄러운지는
   `flutter run -d windows`로 의뢰인이 직접 확인해야 합니다.
+
+## PR #60 — 파트(Part)를 없애고 사이드바를 폴더로 바꾼다
+
+**무엇을**: 왼쪽 사이드바의 "파트" 목록 자리를 "폴더" 목록으로 바꾸고,
+파트라는 분류 체계 자체를 앱에서 완전히 지웠습니다.
+
+**왜**: 의뢰인이 분류 관리 화면에서 폴더를 만들었는데 메인 화면
+어디에도 안 보인다고 보고했습니다. 확인해보니 버그가 아니라 "폴더는
+사이드바가 아니라 위쪽 필터줄에 있다"는 것 자체를 몰랐던 것이었고,
+실제로 코드를 보니 폴더와 파트가 이미 비슷한 역할(레퍼런스를 큰
+갈래로 나누기)을 서로 다른 자리에서 하고 있었습니다. 사이드바 파트
+아이콘부터가 이미 폴더 모양이라 사용자가 구분할 이유가 없었습니다.
+
+### 확정된 동작
+
+- `References.folderId` 칼럼 하나가 "폴더 소속"과 "사이드바에서 지금
+  보고 있는 자리" 역할을 둘 다 맡게 됐습니다.
+- 사이드바(`app_sidebar.dart`)가 폴더 목록을 보여줍니다. 폴더를 고르면
+  그 폴더로 좁혀 보이고, 그 상태로 새 레퍼런스를 넣으면 자동으로
+  그 폴더에 들어갑니다(예전 파트와 같은 규칙).
+- 목록 위 필터줄의 "폴더" 드롭다운은 없어졌습니다(사이드바로 이사).
+- 무드보드에 파일을 끌어다 놓거나 붙여넣으면, 그 판이 폴더에
+  연결돼 있으면(PR #59) 그 폴더로, 아니면 폴더 없음(미분류)으로
+  들어갑니다.
+- 분류 관리 화면 탭이 5개에서 4개로 줄었습니다. "기본 파트는 지울 수
+  없다"는 보호 로직도 없어졌습니다 — 폴더는 지워도 다른 분류와 똑같이
+  그냥 "폴더 없음"이 됩니다.
+
+### 저장 구조 v6 — References.partId 칼럼 삭제
+
+`References.partId` 칼럼을 `Migrator.dropColumn`으로 지우고,
+`taxonomy_items`에서 `kind='part'` 행을 전부 지웁니다(소프트 삭제
+아님 — 개념 자체가 없어졌으므로). 마이그레이션 조건은 PR #59의
+`from >= 3 && from < 5` 같은 특수 조건 없이 그냥 `if (from < 6)`으로
+뒀습니다 — v6은 "이미 있는 칼럼을 지우는" 것이라 `createTable`이
+현재 시점 정의를 쓰는 문제(칼럼을 새로 만들 때만 생기는 문제)가
+없습니다.
+
+**계획과 실제 구현이 두 군데 달라졌습니다(둘 다 리뷰에서 문제없다고
+확인):**
+
+1. `Migrator.dropColumn`은 drift가 만든 Column 객체가 아니라 **SQL
+   칼럼 이름 문자열**(`'part_id'`)을 받는 방식이었습니다. 계획
+   문서는 Column 객체를 넘기는 것으로 적었는데, 실제 함수 서명이
+   달랐습니다.
+2. `_upgradeToVersion2`(v1→v2, 파트를 처음 만들던 옛날 단계)는
+   원래 손대지 않으려 했지만, 그 코드가 `defaultPartId`/
+   `defaultPartName` 상수와 `references.partId` 칼럼 getter를
+   참조하고 있었습니다. 파트 개념을 모델에서 지우면서 이 심볼들
+   자체가 Dart 코드에서 사라졌기 때문에, 이 옛날 단계를 **원시
+   SQL**로 다시 써야 했습니다. 그때 당시의 값을 그대로 상수
+   (`_legacyDefaultPartId`/`_legacyDefaultPartName`)로 하드코딩해서,
+   결과로 나오는 데이터베이스 상태는 예전과 한 바이트도 다르지
+   않습니다. **`_upgradeToVersion4`에 대해 CLAUDE.md가 이미 경고해온
+   "지금의 schema가 옛날 마이그레이션 단계로 새어 들어온다"는 함정이
+   똑같이 다시 나타난 것**입니다 — 개념 하나를 완전히 지울 때는 그
+   개념을 참조하는 옛날 마이그레이션 코드가 있는지 항상 의심하세요.
+
+`Migrator.dropColumn`이 실제로 되는지도 이번에 실제 sqlite3 3.53.4
+데이터베이스로 직접 확인했습니다(drift가 요구하는 최소 버전 3.35.0보다
+훨씬 위입니다) — 패키지 문서만 믿지 않고 실제로 돌려보는 이 프로젝트의
+평소 방식 그대로입니다.
+
+### 그 밖에
+
+- `ReferenceQuery.folderId`가 예전 `partId`의 역할을 이어받았습니다.
+  `hasAnyFilter`에서 안 세고, `clearAll()`("조건 지우기")로도 안
+  풀립니다.
+- `ReferenceImporter`의 공개 메서드 전부가 `required String partId`
+  대신 `String? folderId`(선택적)를 받습니다. 폴더는 파트와 달리
+  없어도(null) 정상 상태이기 때문입니다.
+- `app_sidebar.dart`가 `parts`/`selectedPartId`/`onSelectPart` 대신
+  `folders`/`selectedFolderId`/`onSelectFolder`를 받습니다.
+  `home_screen.dart`의 `_selectFolder`/`_folderIdForNewItems`가 이걸
+  잇습니다.
+- **개념 하나를 없앨 때는 그 이름으로 grep만 해서는 영향받는 테스트를
+  다 못 찾습니다.** 계획 단계의 파일 목록 조사(grep 기반)가 폴더가
+  위쪽 필터줄에서 사이드바로 옮겨간 것과 `ReferenceQuery.hasAnyFilter`/
+  `clearAll()`이 이제 folderId를 "지울 수 있는 조건"으로 안 세는 것의
+  파급 효과까지는 못 잡아서, 계획에 없던 테스트 파일 다섯 개
+  (`reference_search_test.dart`, `home_card_content_test.dart`,
+  `home_folder_boards_test.dart` 두 곳, `home_search_test.dart`)도
+  함께 고쳐야 했습니다. 전부 "파트"라는 이름을 언급한 적 없이, 파트가
+  있던 자리(위쪽 필터줄)나 예전 쿼리 동작만 가정하고 있었습니다.
+  **다음에 분류 개념을 없애거나 옮길 때는, 이름뿐 아니라 "그게 있던
+  자리"와 "그게 바꾸던 동작"까지 따라가며 영향받는 테스트를
+  찾으세요.**
+- 카테고리·태그·프로젝트 분류 체계 자체는 손대지 않았습니다.
+
+### 나중에 이 부분을 고치려면 어디를 보면 되나
+
+| 고치고 싶은 것 | 봐야 할 곳 |
+|---|---|
+| 사이드바 폴더 목록의 생김새 | `lib/widgets/app_sidebar.dart`의 `_buildFolderList` |
+| 새 레퍼런스가 어느 폴더로 자동 배정되는지 | `lib/screens/home_screen.dart`의 `_folderIdForNewItems` |
+| 무드보드 드롭 시 폴더 배정 규칙 | `lib/screens/board_screen.dart`의 `_onExternalFilesDropped`/`_onPasteFromClipboard` |
+| "조건 지우기"를 눌러도 폴더가 안 풀리는 이유 | `lib/models/reference_query.dart`의 `clearAll()`/`hasAnyFilter` |
+| 마이그레이션 세부 사항 | `lib/data/app_database.dart`의 `_upgradeToVersion6` |
+
+### 어떻게 테스트했나
+
+- `flutter analyze` 문제 없음 (0 issues).
+- `flutter test` **681건 전부 통과** (신규 `migration_v5_to_v6_test.dart`
+  6건 포함). 파트 개념을 지우며 없앤 테스트도 있고, 위 "그 밖에"에
+  적은 계획 밖 다섯 개 테스트 파일도 함께 고쳐서 통과시켰습니다.
+- `grep -rn "partId\|TaxonomyKind\.part\|defaultPartId\|defaultPartName" lib test`로
+  다시 확인 — 남은 것은 전부 주석·마이그레이션 코드·과거 상태를
+  검증하는 테스트뿐이고, 실제로 동작하는 코드 경로에는 없습니다.
+- 실제 앱은 `flutter run -d windows`로 의뢰인이 직접 사이드바 폴더
+  목록·자동 배정·무드보드 지름길 버튼·분류 관리 탭 개수를 확인해야
+  합니다.
+
+**한계**: 폴더 중첩(하위 폴더)은 없습니다. 계속 평평한 목록입니다.
