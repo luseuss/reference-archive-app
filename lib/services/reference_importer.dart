@@ -44,6 +44,7 @@ class ImportOutcome {
     this.failedCount = 0,
     this.errorMessage,
     this.successMessage,
+    this.savedIds = const <String>[],
   });
 
   /// 아무것도 하지 않고 끝난 경우입니다. (사용자가 파일 고르기를 취소한 경우 등)
@@ -51,7 +52,8 @@ class ImportOutcome {
     : savedCount = 0,
       failedCount = 0,
       errorMessage = null,
-      successMessage = null;
+      successMessage = null,
+      savedIds = const <String>[];
 
   /// 저장에 성공한 개수입니다.
   final int savedCount;
@@ -69,6 +71,14 @@ class ImportOutcome {
   ///
   /// 유튜브는 "1장 추가했습니다"가 어색해서 따로 문구를 넘깁니다.
   final String? successMessage;
+
+  /// 이번에 새로 만들어진 레퍼런스들의 번호입니다.
+  ///
+  /// ── 왜 필요한가 (무드보드에 바로 놓기) ──
+  /// 목록 화면은 "몇 개 저장됐는지"만 알면 되지만, 무드보드 화면은 방금
+  /// 만들어진 레퍼런스를 **놓은 자리에 카드로 배치**해야 해서 번호까지
+  /// 알아야 합니다. 실패한 항목의 번호는 안 들어있습니다.
+  final List<String> savedIds;
 
   /// 사용자에게 알릴 것이 아무것도 없는 경우인지 여부입니다.
   bool get isNothingToDo => savedCount == 0 && failedCount == 0;
@@ -118,19 +128,23 @@ class ReferenceImporter {
       return const ImportOutcome.nothingToDo();
     }
 
-    int savedCount = 0;
     int failedCount = 0;
+    final List<String> savedIds = <String>[];
 
     for (final PlatformFile file in picked.files) {
-      final bool ok = await _saveOneFile(file, partId);
-      if (ok) {
-        savedCount++;
+      final String? savedId = await _saveOneFile(file, partId);
+      if (savedId != null) {
+        savedIds.add(savedId);
       } else {
         failedCount++;
       }
     }
 
-    return ImportOutcome(savedCount: savedCount, failedCount: failedCount);
+    return ImportOutcome(
+      savedCount: savedIds.length,
+      failedCount: failedCount,
+      savedIds: savedIds,
+    );
   }
 
   /// 창에 끌어다 놓은 것들을 들여옵니다.
@@ -142,9 +156,9 @@ class ReferenceImporter {
     PerformDropEvent event, {
     required String partId,
   }) async {
-    int savedCount = 0;
     int failedCount = 0;
     String? lastError;
+    final List<String> savedIds = <String>[];
 
     for (final DropItem item in event.session.items) {
       final DataReader? reader = item.dataReader;
@@ -158,9 +172,9 @@ class ReferenceImporter {
       // (자세한 이유는 DroppedItemReader.youtubeVideoIdOf() 설명 참고)
       final String? videoId = await _droppedItemReader.youtubeVideoIdOf(reader);
       if (videoId != null) {
-        final bool savedVideo = await saveYoutube(videoId, partId: partId);
-        if (savedVideo) {
-          savedCount++;
+        final String? savedId = await saveYoutube(videoId, partId: partId);
+        if (savedId != null) {
+          savedIds.add(savedId);
         } else {
           failedCount++;
           lastError = '유튜브 영상을 추가하지 못했습니다.';
@@ -176,13 +190,13 @@ class ReferenceImporter {
         continue;
       }
 
-      final bool ok = await _saveImageBytes(
+      final String? savedId = await _saveImageBytes(
         fetched.bytes!,
         partId: partId,
         title: fetched.suggestedTitle,
       );
-      if (ok) {
-        savedCount++;
+      if (savedId != null) {
+        savedIds.add(savedId);
       } else {
         failedCount++;
         // 가져오기는 됐는데 그림이 아닌 경우입니다.
@@ -195,9 +209,10 @@ class ReferenceImporter {
     }
 
     return ImportOutcome(
-      savedCount: savedCount,
+      savedCount: savedIds.length,
       failedCount: failedCount,
       errorMessage: lastError,
+      savedIds: savedIds,
     );
   }
 
@@ -248,16 +263,17 @@ class ReferenceImporter {
       );
     }
 
-    final bool ok = await _saveImageBytes(
+    final String? savedId = await _saveImageBytes(
       fetched.bytes!,
       partId: partId,
       title: fetched.suggestedTitle,
     );
 
     return ImportOutcome(
-      savedCount: ok ? 1 : 0,
-      failedCount: ok ? 0 : 1,
-      errorMessage: ok ? null : '이미지를 저장하지 못했습니다.',
+      savedCount: savedId != null ? 1 : 0,
+      failedCount: savedId != null ? 0 : 1,
+      errorMessage: savedId != null ? null : '이미지를 저장하지 못했습니다.',
+      savedIds: savedId != null ? <String>[savedId] : const <String>[],
     );
   }
 
@@ -266,13 +282,14 @@ class ReferenceImporter {
     String videoId, {
     required String partId,
   }) async {
-    final bool ok = await saveYoutube(videoId, partId: partId);
+    final String? savedId = await saveYoutube(videoId, partId: partId);
 
     return ImportOutcome(
-      savedCount: ok ? 1 : 0,
-      failedCount: ok ? 0 : 1,
-      errorMessage: ok ? null : '유튜브 영상을 추가하지 못했습니다.',
+      savedCount: savedId != null ? 1 : 0,
+      failedCount: savedId != null ? 0 : 1,
+      errorMessage: savedId != null ? null : '유튜브 영상을 추가하지 못했습니다.',
       successMessage: '유튜브 영상을 추가했습니다.',
+      savedIds: savedId != null ? <String>[savedId] : const <String>[],
     );
   }
 
@@ -300,8 +317,8 @@ class ReferenceImporter {
   /// 제목이나 썸네일을 못 가져와도 **저장은 합니다.** 영상 번호만 있으면
   /// 나중에 재생할 수 있고, 제목은 편집 화면에서 직접 적을 수 있습니다.
   ///
-  /// 성공하면 true, 실패하면 false를 돌려줍니다.
-  Future<bool> saveYoutube(String videoId, {required String partId}) async {
+  /// 성공하면 새로 만든 레퍼런스의 번호, 실패하면 null을 돌려줍니다.
+  Future<String?> saveYoutube(String videoId, {required String partId}) async {
     try {
       final YoutubeVideoInfo info = await youtubeInfoSource.fetch(videoId);
 
@@ -312,10 +329,11 @@ class ReferenceImporter {
         savedFileName = await imageStorage.saveImage(thumbnail);
       }
 
+      final String id = newId();
       final DateTime now = DateTime.now().toUtc();
       await repository.save(
         ReferenceItem(
-          id: newId(),
+          id: id,
           type: ReferenceType.youtube,
           title: info.title,
           fileName: savedFileName,
@@ -328,17 +346,19 @@ class ReferenceImporter {
           updatedAt: now,
         ),
       );
-      return true;
+      return id;
     } catch (error) {
       debugPrint('유튜브 저장 실패: $error');
-      return false;
+      return null;
     }
   }
 
   // ── 아래는 이 파일 안에서만 쓰는 도우미들입니다 ──
 
   /// 고른 파일 하나를 줄여서 저장하고 레퍼런스로 등록합니다.
-  Future<bool> _saveOneFile(PlatformFile file, String partId) async {
+  ///
+  /// 성공하면 새로 만든 레퍼런스의 번호, 실패하면 null을 돌려줍니다.
+  Future<String?> _saveOneFile(PlatformFile file, String partId) async {
     final String originalName = file.name;
     try {
       // withData: true로 골랐으므로 bytes에 내용이 들어있습니다.
@@ -348,7 +368,7 @@ class ReferenceImporter {
       if (bytes == null) {
         final String? path = file.path;
         if (path == null) {
-          return false;
+          return null;
         }
         bytes = await File(path).readAsBytes();
       }
@@ -362,7 +382,7 @@ class ReferenceImporter {
       // 파일 하나가 실패해도 나머지는 계속 처리되도록 여기서 잡습니다.
       // 사진 10장 중 1장이 깨졌다고 9장까지 못 넣으면 곤란합니다.
       debugPrint('이미지 저장 실패 ($originalName): $error');
-      return false;
+      return null;
     }
   }
 
@@ -371,7 +391,9 @@ class ReferenceImporter {
   /// **파일 고르기·끌어다 놓기·붙여넣기가 전부 이 함수로 모입니다.**
   /// 가져오는 경로는 셋이지만 저장하는 방식은 하나여야, 어느 쪽으로 넣든
   /// 똑같이 리사이즈되고 똑같이 기록됩니다.
-  Future<bool> _saveImageBytes(
+  ///
+  /// 성공하면 새로 만든 레퍼런스의 번호, 실패하면 null을 돌려줍니다.
+  Future<String?> _saveImageBytes(
     Uint8List bytes, {
     required String partId,
     String? title,
@@ -381,13 +403,14 @@ class ReferenceImporter {
 
       // 그림 파일이 아니거나 깨진 파일이면 null이 돌아옵니다.
       if (savedFileName == null) {
-        return false;
+        return null;
       }
 
+      final String id = newId();
       final DateTime now = DateTime.now().toUtc();
       await repository.save(
         ReferenceItem(
-          id: newId(),
+          id: id,
           type: ReferenceType.image,
           // 제목을 못 뽑아낸 경우(클립보드 등)에는 빈 제목으로 둡니다.
           // 목록에서는 "(제목 없음)"으로 보이고 편집 화면에서 고칠 수 있습니다.
@@ -404,10 +427,10 @@ class ReferenceImporter {
           updatedAt: now,
         ),
       );
-      return true;
+      return id;
     } catch (error) {
       debugPrint('이미지 저장 실패: $error');
-      return false;
+      return null;
     }
   }
 

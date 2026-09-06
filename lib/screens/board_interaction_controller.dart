@@ -241,6 +241,50 @@ class BoardInteractionController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// 레퍼런스 여러 개를 [basePosition](판 좌표)을 기준으로 늘어놓아
+  /// 판에 담고 저장합니다.
+  ///
+  /// addCardAt()과 다른 점: addCardAt()은 한 장을 사용자가 고른 자리에
+  /// 그대로 놓지만, 이건 **외부에서 파일 여러 개를 한꺼번에 끌어다
+  /// 놓았을 때** 씁니다(board_screen.dart가 부릅니다). 전부 같은 자리에
+  /// 겹쳐 놓으면 몇 개가 들어왔는지 알 수 없어서, addCards()가
+  /// initialCardPosition()으로 왼쪽 위(0, 0)부터 늘어놓는 규칙을
+  /// **놓은 자리를 새 원점 삼아** 그대로 옮겨 씁니다. 그래서 첫 장은
+  /// 놓은 자리 그대로, 나머지는 오른쪽·아래로 이어집니다.
+  Future<void> addCardsAt(List<String> referenceIds, Offset basePosition) async {
+    if (referenceIds.isEmpty) {
+      return;
+    }
+
+    final DateTime now = DateTime.now().toUtc();
+    final int topZ = topZOrderOf(_cards);
+    final Offset origin = initialCardPosition(0);
+
+    final List<BoardCard> newCards = <BoardCard>[];
+    for (int i = 0; i < referenceIds.length; i++) {
+      final Offset relative = initialCardPosition(i) - origin;
+
+      newCards.add(
+        BoardCard(
+          id: newId(),
+          boardId: boardId,
+          referenceId: referenceIds[i],
+          x: basePosition.dx + relative.dx,
+          y: basePosition.dy + relative.dy,
+          zOrder: topZ + 1 + i,
+          createdAt: now,
+          updatedAt: now,
+        ),
+      );
+    }
+
+    await boardRepository.addCards(newCards);
+    onSaved?.call();
+
+    _cards = <BoardCard>[..._cards, ...newCards];
+    notifyListeners();
+  }
+
   /// 카드를 판에서 내립니다.
   ///
   /// **레퍼런스를 지우는 것이 아닙니다.** 판에서만 내려가고 목록에는 그대로 남습니다.

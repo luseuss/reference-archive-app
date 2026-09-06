@@ -20,7 +20,9 @@ import 'package:reference_archive_app/utils/id_generator.dart';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../fakes/fake_image_source.dart';
 import '../fakes/fake_image_storage.dart';
+import '../fakes/fake_youtube_info_source.dart';
 
 void main() {
   late AppDatabase db;
@@ -56,6 +58,8 @@ void main() {
           boardRepository: boardRepository,
           referenceRepository: referenceRepository,
           imageStorage: FakeImageStorage(),
+          imageSource: FakeImageSource(),
+          youtubeInfoSource: FakeYoutubeInfoSource(),
         ),
       ),
     );

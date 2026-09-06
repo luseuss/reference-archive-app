@@ -1268,6 +1268,83 @@ Flutter의 기본 `Draggable`/`DragTarget`(한 창 안에서만 동작)으로는
   `local_image_storage_test.dart`의 path_provider 사정과 같은
   종류의 함정입니다.
 
+### 단계 밖 작업: 무드보드에도 바로 레퍼런스를 받아서 넣기 (별도 PR — "board-external-drop-and-empty-board-drop")
+
+의뢰인 요청: "폰은 완전히 완성 되면 넘기고 지금은 무드보드에도 바로
+레퍼런스를 받아서 넣을수 있게 만들어 봦" — 모바일 실기기 검증은
+미루고, 무드보드가 레퍼런스를 직접 받아서 담을 수 있게 만들어달라는
+것입니다. "바로 받아서 넣는다"가 두 갈래로 읽혀 물어봤고, 의뢰인이
+**"둘 다"**라고 답했습니다.
+
+**확정된 범위:**
+
+1. **탐색기·브라우저에서 열려 있는 무드보드 창으로 파일을 직접
+   끌어다 놓기** — 메인 화면의 `home_drop_area.dart`가 이미 하는 일과
+   같은 일을, 무드보드 창에서도 하게 만드는 것입니다. 새 레퍼런스로
+   저장되면서 **놓은 자리에 곧바로 카드로도 배치**됩니다.
+2. **빈 판(카드 0장)도 드래그를 받습니다.** PR #49("레퍼런스를
+   무드보드로 끌어다 배치하기")가 "판이 비어 있으면 `BoardViewport`
+   자체를 안 그려서 좌표 변환 기준이 없다"며 일부러 빼뒀던 제약을
+   없앴습니다. 이제 카드가 없어도 `BoardViewport`가 항상 그려지고,
+   그 위에 "판이 비어 있습니다" 안내가 겹쳐 보일 뿐입니다.
+
+**어떻게 되어 있나 (나중에 고칠 때 볼 곳):**
+
+- **`reference_importer.dart`의 `ImportOutcome`에 `savedIds`가
+  늘었습니다.** 예전에는 "몇 개 저장됐다"는 개수만 돌려줘서, 들여오기가
+  끝난 뒤 **어느 레퍼런스가 새로 생겼는지** 알 방법이 없었습니다.
+  무드보드는 그 번호를 알아야 카드로 배치할 수 있어서
+  `saveYoutube()`/`_saveImageBytes()`/`_saveOneFile()`을 전부
+  `Future<bool>`에서 `Future<String?>`(성공하면 새 레퍼런스 번호,
+  실패하면 null)로 바꿨습니다. 이 도구를 쓰는 곳(`home_screen.dart`)은
+  기존처럼 `ImportOutcome`만 보므로 안 고쳐도 됩니다.
+- **`board_viewport.dart`에 `onExternalFilesDropped` 콜백이
+  늘었습니다.** `onReferenceDropped`(PR #49, 판 안 레퍼런스 끌어다
+  놓기)와 짝을 이루지만 성격이 다릅니다.
+  - `onReferenceDropped`는 **다른 창(메인 ↔ 팝업) 사이의 드래그**라
+    `supportsBoardPopupWindow`(데스크톱 전용)로 가립니다.
+  - `onExternalFilesDropped`는 **그냥 OS가 주는 파일 드롭**이라 팝업
+    여부와 상관없이 켤 수 있습니다.
+
+  `DropRegion`의 `formats`도 둘을 합쳐서 받습니다 — 우리가 보내는
+  내부 페이로드(`Formats.plainText`)와 `dropped_item_reader.dart`의
+  `dropRegionFormats`(이미지·주소 형식)를 함께 받고, `onPerformDrop`
+  안에서 **내부 레퍼런스 드래그인지 먼저 확인**해서 아니면(접두사가
+  안 맞으면) 자연스럽게 외부 파일 경로로 넘어갑니다. `BoardViewport`는
+  여전히 "판이 뭔지 모릅니다" — 두 콜백 다 판·레퍼런스 개념 없이
+  판 좌표와 raw 값(레퍼런스 번호, 드롭 이벤트)만 위로 넘깁니다.
+- **`board_screen.dart`가 새 의존성 둘(`imageSource`,
+  `youtubeInfoSource`)을 받습니다.** 판 화면 안에서 `ReferenceImporter`를
+  직접 만들어 쓰려면 필요합니다(`home_screen.dart`가 만드는 것과 같은
+  도구를 그대로 받습니다). 호출부 셋(`board_list_screen.dart`,
+  `board_popup_app.dart`, 그리고 그 둘을 부르는 `home_screen.dart`)을
+  전부 고쳤습니다. **팝업 창(`board_popup_app.dart`)은 메인 창과 다른
+  엔진이라 도구를 새로 만듭니다** — `main.dart`의 `_runMainWindow()`와
+  같은 `NetworkImageSource()`/`NetworkYoutubeInfoSource()`를 씁니다.
+- **새로 들어온 레퍼런스는 기본 파트(`defaultPartId`)로 들어갑니다.**
+  판 화면에는 "지금 고른 파트"라는 개념이 없습니다(그건 목록 화면
+  사이드바 얘기입니다).
+- **`board_interaction_controller.dart`에 `addCardsAt()`이
+  늘었습니다.** 기존 `addCardAt()`은 한 장을 사용자가 고른 자리에
+  그대로 놓지만, 외부 드롭은 **한 번에 여러 파일**이 들어올 수 있어서
+  전부 같은 자리에 겹쳐 놓으면 몇 개가 들어왔는지 알 수 없습니다.
+  `addCards()`가 `initialCardPosition()`으로 왼쪽 위(0, 0)부터 늘어놓는
+  규칙을 **놓은 자리를 새 원점 삼아** 그대로 옮겨 썼습니다 — 첫 장은
+  놓은 자리 그대로, 나머지는 오른쪽·아래로 이어집니다.
+- **`board_screen.dart`의 `_buildBody()`가 더 이상 카드 0장일 때
+  `BoardViewport`를 통째로 안 그리지 않습니다.** 대신 항상 그리고,
+  그 위에 `Positioned.fill`로 "판이 비어 있습니다" 안내
+  (`EmptyStateMessage`)를 겹칩니다. `EmptyStateMessage`는 배경이 없는
+  투명한 안내라 겹쳐도 뒤가 비쳐 보이고, 버튼이 있는 자리 말고는
+  클릭도 그대로 아래(`BoardViewport`)로 지나갑니다. `boardContentBounds`/
+  `boardCanvasRect`(`board_layout.dart`)가 카드 0장일 때도 이미
+  빈 네모/기본 크기를 돌려주도록 되어 있어서 이 화면 쪽만 고치면
+  됐습니다 — 저장 구조·계산 함수는 안 바뀌었습니다.
+- **저장 구조는 안 바뀌었습니다. 마이그레이션 없음.**
+- **붙여넣기(Ctrl+V)로 판에 바로 넣는 것은 이번엔 뺐습니다.** 요청은
+  드래그였고, 붙여넣기까지 넣으면 범위가 커집니다. 필요해지면 별도
+  작업입니다.
+
 ### 밀린 정리거리
 
 기능을 붙이다 보면 파일이 커집니다. 지금 알고 있는 것:

@@ -788,6 +788,8 @@ class _HomeScreenState extends State<HomeScreen> {
           boardRepository: widget.boardRepository,
           referenceRepository: widget.repository,
           imageStorage: widget.imageStorage,
+          imageSource: widget.imageSource,
+          youtubeInfoSource: widget.youtubeInfoSource,
         ),
       ),
     );

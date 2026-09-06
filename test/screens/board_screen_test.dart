@@ -28,7 +28,9 @@ import 'package:reference_archive_app/widgets/board_guides.dart';
 import 'package:reference_archive_app/widgets/board_selection_bar.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../fakes/fake_image_source.dart';
 import '../fakes/fake_image_storage.dart';
+import '../fakes/fake_youtube_info_source.dart';
 
 void main() {
   late AppDatabase db;
@@ -78,6 +80,8 @@ void main() {
           boardRepository: boardRepository,
           referenceRepository: referenceRepository,
           imageStorage: FakeImageStorage(),
+          imageSource: FakeImageSource(),
+          youtubeInfoSource: FakeYoutubeInfoSource(),
         ),
       ),
     );
@@ -165,6 +169,18 @@ void main() {
   testWidgets('판이 비어 있으면 안내가 보인다', (WidgetTester tester) async {
     await openBoard(tester);
 
+    expect(find.text('판이 비어 있습니다'), findsOneWidget);
+  });
+
+  testWidgets('판이 비어 있어도 BoardViewport는 그려진다 (외부 파일을 받으려면 필요)', (
+    WidgetTester tester,
+  ) async {
+    // 예전에는 카드가 0장이면 BoardViewport 자체를 안 그려서, 탐색기·
+    // 브라우저에서 파일을 끌어다 놓을 좌표 변환 기준(배율·이동값)이
+    // 없었습니다. 이제는 안내와 함께 겹쳐 그립니다.
+    await openBoard(tester);
+
+    expect(find.byType(BoardViewport), findsOneWidget);
     expect(find.text('판이 비어 있습니다'), findsOneWidget);
   });
 

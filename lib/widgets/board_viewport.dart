@@ -47,12 +47,16 @@
 // 깔려 있어서, 카드 위에서 시작한 끌기는 카드가, 빈 곳에서 시작한 끌기는 판이
 // 가져갑니다. 겨룰 일 없이 "누구를 눌렀는가"로 갈립니다.
 
+import 'dart:async';
+
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:super_clipboard/super_clipboard.dart' show DataReader;
 import 'package:super_drag_and_drop/super_drag_and_drop.dart';
 
 import '../services/board_window_sync.dart';
+import '../services/dropped_item_reader.dart' show dropRegionFormats;
 import '../theme/app_metrics.dart';
 import '../theme/app_palette.dart';
 import '../utils/board_view.dart';
@@ -73,6 +77,7 @@ class BoardViewport extends StatefulWidget {
     required this.onEmptyTap,
     required this.child,
     this.onReferenceDropped,
+    this.onExternalFilesDropped,
     this.initialScale,
     this.initialOffset,
     this.onViewChanged,
@@ -146,6 +151,20 @@ class BoardViewport extends StatefulWidget {
   /// 선택적으로 뒀습니다.
   final void Function(String referenceId, Offset canvasPosition)?
   onReferenceDropped;
+
+  /// 탐색기·브라우저에서 파일을 이 판 위로 직접 끌어다 놓았을 때
+  /// 알려줍니다. [event]는 놓인 것을 그대로 넘깁니다(안에 이미지
+  /// 여러 개가 들어있을 수 있습니다 — 무엇을 읽어내고 어떻게 저장할지는
+  /// 이 파일이 몰라도 되는 일이라 그대로 넘깁니다). [canvasPosition]은
+  /// 놓은 자리를 **판 좌표**로 바꾼 값입니다.
+  ///
+  /// null이면 이 종류의 드롭을 아예 안 받습니다. [onReferenceDropped]와
+  /// 달리 `supportsBoardPopupWindow`(데스크톱 전용)로 가리지 않습니다 —
+  /// 판 안 레퍼런스 끌어다 놓기는 서로 다른 창(엔진) 사이의 일이라 그
+  /// 제약이 있지만, 이건 그냥 OS가 주는 파일 드롭이라 팝업 여부와
+  /// 상관없습니다.
+  final Future<void> Function(PerformDropEvent event, Offset canvasPosition)?
+  onExternalFilesDropped;
 
   /// 이 판을 열 때 처음부터 쓸 배율입니다. null이면 평소처럼 "카드
   /// 전부 보기"로 시작합니다.
@@ -318,6 +337,32 @@ class _BoardViewportState extends State<BoardViewport> {
       widget.onEmptyTap(shiftHeld: HardwareKeyboard.instance.isShiftPressed);
     }
     _emptyPointer.downAt = null;
+  }
+
+  /// 떨어진 항목에서 글자값을 읽어 돌려줍니다. 못 읽으면 null입니다.
+  ///
+  /// getValue()가 결과를 콜백으로 주기 때문에 Completer로 감싸 await할
+  /// 수 있게 바꿉니다. (dropped_item_reader.dart의 `_readValue`와 같은
+  /// 이유·같은 모양입니다 — 그 파일은 여러 형식을 다루지만 여기는
+  /// plainText 하나만 보면 되어 따로 작은 것을 뒀습니다)
+  Future<String?> _readPlainText(DataReader reader) {
+    final Completer<String?> completer = Completer<String?>();
+
+    reader.getValue<String>(
+      Formats.plainText,
+      (String? value) {
+        if (!completer.isCompleted) {
+          completer.complete(value);
+        }
+      },
+      onError: (Object error) {
+        if (!completer.isCompleted) {
+          completer.complete(null);
+        }
+      },
+    );
+
+    return completer.future;
   }
 
   /// 화면 좌표를 판 좌표로 바꿉니다. 확대·이동의 반대 방향 계산입니다.
@@ -623,23 +668,39 @@ class _BoardViewportState extends State<BoardViewport> {
           ),
         );
 
-        // 레퍼런스를 무드보드로 끌어다 놓는 기능이 없는 플랫폼(모바일·
-        // 태블릿)이거나, 이 화면이 그 기능을 안 쓰겠다고 하면(콜백이
-        // null이면) DropRegion으로 감싸지 않고 그대로 돌려줍니다.
-        // super_drag_and_drop이 이미 제 역할을 하는 곳(home_drop_area.dart)
-        // 밖에서까지 켜둘 필요가 없습니다.
-        if (!supportsBoardPopupWindow || widget.onReferenceDropped == null) {
+        // 두 가지 드롭을 받을 수 있습니다. 판이 뭔지 모른다는 원칙은
+        // 그대로라, "레퍼런스 번호를 받았다"/"파일을 받았다"만 위로
+        // 넘기고 실제로 무엇을 할지는 board_screen.dart가 정합니다.
+        //
+        //   레퍼런스 끌어다 놓기 — 다른 창(메인 ↔ 팝업)에서 카드를 끄는
+        //     것이라 `supportsBoardPopupWindow`(데스크톱 전용)로 가립니다.
+        //   외부 파일 끌어다 놓기 — 그냥 OS가 주는 드롭이라 팝업 여부와
+        //     상관없습니다.
+        //
+        // 둘 다 안 쓰겠다고 하면(콜백이 전부 null이면) DropRegion으로
+        // 감싸지 않고 그대로 돌려줍니다. super_drag_and_drop이 이미 제
+        // 역할을 하는 곳(home_drop_area.dart) 밖에서까지 켜둘 필요가
+        // 없습니다.
+        final bool acceptsReferenceDrag =
+            supportsBoardPopupWindow && widget.onReferenceDropped != null;
+        final bool acceptsExternalDrop = widget.onExternalFilesDropped != null;
+
+        if (!acceptsReferenceDrag && !acceptsExternalDrop) {
           return content;
         }
 
         return DropRegion(
-          // 우리가 보내는 것(Formats.plainText에 접두사 붙인 문자열)만
-          // 받습니다. 접두사가 없는 값(다른 곳에서 온 텍스트)은
-          // onPerformDrop에서 조용히 무시합니다.
-          formats: const <DataFormat<Object>>[Formats.plainText],
+          // 우리가 보내는 내부 페이로드(Formats.plainText에 접두사 붙인
+          // 문자열)와, 탐색기·브라우저가 주는 형식(dropped_item_reader.dart의
+          // dropRegionFormats)을 함께 받습니다. 접두사가 없는 글자나
+          // 알아보지 못하는 것은 onPerformDrop에서 조용히 무시합니다.
+          formats: <DataFormat<Object>>[
+            if (acceptsReferenceDrag) Formats.plainText,
+            if (acceptsExternalDrop) ...dropRegionFormats,
+          ],
 
           // 끌고 지나가는 동안 "놓을 수 있다"고 알려줍니다. 진짜 우리
-          // 페이로드인지는 onPerformDrop에서 접두사로 가립니다 —
+          // 페이로드인지는 onPerformDrop에서 가립니다 —
           // home_drop_area.dart와 같은 수준의 단순함입니다.
           onDropOver: (DropOverEvent event) => DropOperation.copy,
 
@@ -653,23 +714,31 @@ class _BoardViewportState extends State<BoardViewport> {
           onPerformDrop: (PerformDropEvent event) async {
             setState(() => _isDropHighlighted = false);
 
-            final DropItem item = event.session.items.first;
-            item.dataReader?.getValue<String>(Formats.plainText, (
-              String? value,
-            ) {
-              final String? referenceId = tryDecodeReferenceDragPayload(
-                value,
-              );
-              if (referenceId == null) {
-                return;
-              }
+            final Offset canvasPoint = _toCanvasPoint(
+              event.position.local,
+              viewport,
+            );
 
-              final Offset canvasPoint = _toCanvasPoint(
-                event.position.local,
-                viewport,
-              );
-              widget.onReferenceDropped?.call(referenceId, canvasPoint);
-            });
+            // 내부 레퍼런스 드래그인지 먼저 봅니다. 우리가 보낸 것이
+            // 아니면(접두사가 안 맞으면) null이 돌아와서 아래 외부 파일
+            // 경로로 자연스럽게 넘어갑니다.
+            if (acceptsReferenceDrag) {
+              final DataReader? reader = event.session.items.first.dataReader;
+              if (reader != null && reader.canProvide(Formats.plainText)) {
+                final String? value = await _readPlainText(reader);
+                final String? referenceId = tryDecodeReferenceDragPayload(
+                  value,
+                );
+                if (referenceId != null) {
+                  widget.onReferenceDropped?.call(referenceId, canvasPoint);
+                  return;
+                }
+              }
+            }
+
+            if (acceptsExternalDrop) {
+              await widget.onExternalFilesDropped?.call(event, canvasPoint);
+            }
           },
 
           child: Stack(

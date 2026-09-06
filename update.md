@@ -4732,3 +4732,89 @@ null)입니다.** null이면 "데이터 관리" 구역 자체가 안 보입니�
 - `flutter run -d windows`로 의뢰인이 직접 확인: 판을 옮기고
   확대·축소한 뒤 닫았다 다시 열어서 그 자리 그대로인지, "카드 전부
   보기"를 누른 뒤 다시 열었을 때 전부 보기로 시작하는지 확인.
+
+---
+
+## PR #54 — 무드보드에도 바로 레퍼런스를 받아서 넣기
+
+의뢰인 요청: "폰은 완전히 완성 되면 넘기고 지금은 무드보드에도 바로
+레퍼런스를 받아서 넣을수 있게 만들어 봦". 모바일 실기기 검증을 미루고
+대신 무드보드가 레퍼런스를 직접 받게 만들어달라는 것이었습니다. 무엇을
+"받는다"는 것인지 물어보니(둘 다일 수 있어서) 의뢰인이 **"둘 다"**를
+골랐습니다.
+
+### 확정된 동작
+
+1. 탐색기·브라우저에서 파일을 **열려 있는 무드보드 창**으로 직접
+   끌어다 놓으면, 새 레퍼런스로 저장되면서 놓은 자리에 곧바로 카드로도
+   배치됩니다.
+2. **빈 판(카드 0장)에도** 두 종류의 드래그가 다 됩니다 — 방금 만든
+   외부 파일 드래그도, PR #49의 판 안 레퍼런스 드래그도.
+
+### 왜 필요했나 (빈 판이 드래그를 못 받던 이유)
+
+PR #49는 "판이 비어 있으면 `BoardViewport` 자체를 안 그린다"는 이유로
+빈 판을 일부러 뺐습니다. 좌표 변환(화면 ↔ 판)을 `BoardViewport`가
+맡는데, 그 위젯이 아예 없으면 기준이 없어서였습니다. 이번에 그 위젯을
+**카드가 없어도 항상 그리고**, 안내는 그 위에 겹치는 방식으로 바꿔서
+해결했습니다. `boardContentBounds`/`boardCanvasRect`(카드 0장이면 빈
+네모/기본 크기를 돌려주는 계산)는 이미 그 경우를 다루도록 되어 있어서
+`board_screen.dart`의 `_buildBody()`만 고치면 됐습니다.
+
+### 어떻게 했나
+
+- **`reference_importer.dart`의 `ImportOutcome`에 `savedIds`를
+  추가했습니다.** 예전에는 "몇 개 저장됐다"는 개수뿐이라, 방금 만들어진
+  레퍼런스가 **어느 것인지** 알 수 없었습니다. 무드보드는 그 번호로
+  카드를 배치해야 해서, `saveYoutube()`/`_saveImageBytes()`/
+  `_saveOneFile()`을 `Future<bool>`에서 `Future<String?>`(성공하면
+  새 레퍼런스 번호)로 바꿨습니다. 기존에 이 값을 쓰던 곳(테스트
+  하나)은 반환값을 버리고 있어서 안 깨졌습니다.
+- **`board_viewport.dart`에 `onExternalFilesDropped` 콜백을
+  추가했습니다.** PR #49의 `onReferenceDropped`(다른 창 사이의 레퍼런스
+  드래그, `supportsBoardPopupWindow`로 가림)와 짝을 이루지만, 이건 그냥
+  OS가 주는 파일 드롭이라 팝업 여부와 상관없이 켭니다. `DropRegion`의
+  `formats`를 두 콜백에 맞게 합치고, `onPerformDrop` 안에서 내부
+  레퍼런스 드래그인지 먼저 확인해 아니면 외부 파일 경로로 넘어갑니다.
+  이 파일은 여전히 "판이 뭔지 모릅니다" — 판 좌표와 raw 값만 위로
+  넘깁니다.
+- **`board_screen.dart`가 `imageSource`/`youtubeInfoSource`를 새로
+  받습니다.** 판 화면 안에서 `ReferenceImporter`를 직접 만들어 쓰려면
+  필요합니다. 호출부(`board_list_screen.dart` → `home_screen.dart`,
+  `board_popup_app.dart`)를 함께 고쳤습니다. **팝업 창은 메인 창과 다른
+  엔진이라** `main.dart`와 같은 `NetworkImageSource()`/
+  `NetworkYoutubeInfoSource()`를 새로 만들어 씁니다. 새 레퍼런스는
+  기본 파트(`defaultPartId`)로 들어갑니다 — 판 화면에는 "지금 고른
+  파트"라는 개념이 없습니다.
+- **`board_interaction_controller.dart`에 `addCardsAt()`을
+  추가했습니다.** 기존 `addCardAt()`은 한 장을 정확한 자리에 놓지만,
+  외부 드롭은 한 번에 여러 파일이 올 수 있어 겹치면 안 됩니다.
+  `addCards()`가 왼쪽 위부터 늘어놓는 규칙(`initialCardPosition()`)을
+  **놓은 자리를 새 원점 삼아** 그대로 옮겨 썼습니다.
+- **저장 구조는 안 바뀌었습니다. 마이그레이션 없음.**
+
+### 일부러 빼둔 것
+
+붙여넣기(Ctrl+V)로 판에 바로 넣는 것은 이번엔 빼뒀습니다. 요청은
+드래그였고, 붙여넣기까지 넣으면 범위가 커집니다. 필요해지면 별도
+작업입니다.
+
+### 나중에 이 부분을 고치려면 어디를 보면 되나
+
+| 고치고 싶은 것 | 봐야 할 곳 |
+|---|---|
+| 들여오기가 새 레퍼런스 번호를 돌려주는지 | `reference_importer.dart`의 `ImportOutcome.savedIds` |
+| 판 위 드롭을 어떻게 가리는지(내부 vs 외부) | `board_viewport.dart`의 `onPerformDrop` |
+| 외부 드롭이 들어왔을 때 실제로 가져오고 배치하는 곳 | `board_screen.dart`의 `_onExternalFilesDropped` |
+| 여러 장을 겹치지 않게 늘어놓는 규칙 | `board_interaction_controller.dart`의 `addCardsAt()` |
+| 빈 판에서도 BoardViewport가 그려지는 곳 | `board_screen.dart`의 `_buildBody()` |
+
+### 어떻게 테스트했나
+
+- `flutter analyze` 문제 없음, `flutter test` **652건 전부 통과**
+  (기존 643건 + 새 9건: `addCardsAt` 5건, `ImportOutcome.savedIds` 4건).
+- 탐색기에서 파일을 무드보드 창으로 직접 끌어다 놓는 것, 빈 판에서의
+  드래그(외부 파일·판 안 레퍼런스 둘 다)는 자동화 테스트로 확인할 수
+  없는 부류입니다(PR #49와 같은 사정 — `super_drag_and_drop`이 네이티브
+  드래그를 흉내낼 방법이 위젯 테스트 안에 없습니다). `flutter run -d
+  windows`로 의뢰인이 직접 확인해야 합니다.
