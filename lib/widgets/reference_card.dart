@@ -206,6 +206,34 @@ class ReferenceCard extends StatelessWidget {
         return dragItem;
       },
       allowedOperations: () => <DropOperation>[DropOperation.copy],
+
+      // 끌 때 커서를 따라다닐 그림을 따로 정해둡니다.
+      //
+      // ── 왜 기본값(카드 자체)을 못 쓰나 ──
+      // 유튜브 카드는 마우스를 올리면(호버 미리보기) 0.2초 뒤 작은
+      // 웹뷰가 썸네일 위에 뜹니다(home_hover_preview_controller.dart).
+      // super_drag_and_drop은 끌기를 시작할 때 카드 위젯을 그대로
+      // 캡처해서 그림으로 씁니다(super_native_extensions의
+      // widget_snapshotter가 RenderRepaintBoundary.toImageSync를
+      // 부릅니다). 그런데 그 안에 살아있는 웹뷰(네이티브 화면)가 껴
+      // 있으면 이 캡처가 조용히 실패해서 **끌기 자체가 시작되지
+      // 않습니다.** (유튜브 레퍼런스만 무드보드로 못 끌어다 놓던
+      // 실제 버그의 원인이었습니다)
+      //
+      // 그래서 미리보기가 꺼진 순수한 썸네일만 다시 만들어 캡처용으로
+      // 넘깁니다. 어차피 화면에 보이는 카드가 아니라 끄는 동안 잠깐
+      // 커서 옆에 따라다니는 그림일 뿐이라, 고르기 체크박스나 재생
+      // 버튼의 눌림은 필요 없어 빈 동작을 넘깁니다.
+      dragBuilder: (BuildContext context, Widget child) {
+        return ReferenceCardThumbnail(
+          item: item,
+          imagePath: imagePath,
+          isSelectionMode: false,
+          isSelected: false,
+          onSelectToggle: () {},
+          onPlay: () {},
+        );
+      },
       child: DraggableWidget(child: card),
     );
   }
