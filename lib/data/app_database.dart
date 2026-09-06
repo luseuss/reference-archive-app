@@ -58,8 +58,9 @@ class AppDatabase extends _$AppDatabase {
   ///   2 — References에 partId 추가 (파트 기능). PR #16
   ///   3 — Boards, BoardCards 표 추가 (무드보드). PR #17
   ///   4 — References.memo를 순수 텍스트에서 Delta(JSON)로. 5단계 1번
+  ///   5 — Boards에 folderId 추가 (무드보드를 폴더/프로젝트에 연결)
   @override
-  int get schemaVersion => 4;
+  int get schemaVersion => 5;
 
   /// 데이터베이스를 처음 만들 때, 그리고 구조가 바뀌었을 때 무엇을 할지 정합니다.
   @override
@@ -95,6 +96,18 @@ class AppDatabase extends _$AppDatabase {
         // 사용자는 위 단계를 먼저 거친 뒤 여기까지 이어서 실행됩니다.
         if (from < 4) {
           await _upgradeToVersion4();
+        }
+
+        // ── 여기만 `from < 5`가 아니라 `from >= 3 && from < 5`입니다 ──
+        // `createTable`(바로 위 _upgradeToVersion3)은 **지금 이 시점의
+        // tables.dart**로 표를 만듭니다. v1이나 v2에서 건너뛰어 올라오는
+        // 사용자는 방금 _upgradeToVersion3에서 이미 folderId가 포함된
+        // boards 표를 새로 만들었으므로, 여기서 또 addColumn을 하면
+        // "칼럼이 이미 있다"는 오류가 납니다. boards 표가 **이번
+        // 업데이트 전부터 실제로 있던**(버전 3 또는 4) 사용자만 이
+        // 칸을 추가해야 합니다.
+        if (from >= 3 && from < 5) {
+          await _upgradeToVersion5(m);
         }
       },
 
@@ -199,6 +212,16 @@ class AppDatabase extends _$AppDatabase {
         <Object?>[delta, id],
       );
     }
+  }
+
+  /// 버전 4 → 5. 무드보드를 폴더(프로젝트)에 연결하는 칸을 추가합니다.
+  ///
+  /// nullable 칸을 addColumn으로 더하기만 하면 됩니다. 기존 무드보드는
+  /// 전부 "아직 폴더를 안 정한" 상태(null)로 시작합니다 — 억지로
+  /// 아무 폴더나 골라줄 방법이 없으므로, 사용자가 나중에
+  /// 무드보드 목록 화면의 "폴더 정하기"로 직접 정하게 둡니다.
+  Future<void> _upgradeToVersion5(Migrator m) async {
+    await m.addColumn(boards, boards.folderId);
   }
 
   /// 기본 파트를 만듭니다. 이미 있으면 아무 일도 하지 않습니다.

@@ -60,6 +60,12 @@ class LocalBoardRepository implements BoardRepository {
             name: board.name,
             createdAt: board.createdAt,
             updatedAt: now,
+
+            // Value로 명시적으로 감싸야 null도 그대로 저장됩니다.
+            // 그냥 board.folderId만 넘기면(감싸지 않으면) "이 칸은
+            // 안 건드린다"는 뜻이 되어, 폴더에서 빼낸 것(null로 바꾼 것)이
+            // 저장되지 않습니다.
+            folderId: Value<String?>(board.folderId),
           ),
         );
   }
@@ -212,6 +218,7 @@ class LocalBoardRepository implements BoardRepository {
       name: row.name,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
+      folderId: row.folderId,
     );
   }
 

@@ -21,6 +21,7 @@ class ReferenceFilterBar extends StatelessWidget {
     required this.onQueryChanged,
     required this.onToggleSelectionMode,
     required this.onOpenTaxonomyManage,
+    this.onOpenFolderBoards,
   });
 
   /// 지금 걸려 있는 조건입니다.
@@ -39,6 +40,15 @@ class ReferenceFilterBar extends StatelessWidget {
 
   /// "분류 관리"를 눌렀을 때 실행할 동작입니다.
   final VoidCallback onOpenTaxonomyManage;
+
+  /// "무드보드" 버튼을 눌렀을 때 실행할 동작입니다. [folderId]는 지금
+  /// 걸려 있는 폴더 필터입니다.
+  ///
+  /// 폴더 필터가 걸려 있을 때만(query.folderId가 있을 때만) 버튼
+  /// 자체가 보입니다 — 폴더는 "이 프로젝트의 레퍼런스 묶음"이고,
+  /// 무드보드는 그 폴더 하나에 연결되는 것이라(CLAUDE.md 참고),
+  /// 폴더를 고르지 않은 채로는 "어느 폴더의 무드보드"인지가 없습니다.
+  final void Function(String folderId)? onOpenFolderBoards;
 
   /// 해당 종류에서 지금 골라진 항목의 id를 돌려줍니다.
   String? _selectedIdFor(TaxonomyKind kind) {
@@ -104,6 +114,12 @@ class ReferenceFilterBar extends StatelessWidget {
               // 파트는 빼고 나머지 넷만 여기에 둡니다.
               // 파트는 왼쪽 사이드바에서 고르는 더 큰 갈래입니다.
               ...filterableTaxonomyKinds.map(_buildTaxonomyFilter),
+
+              // 폴더를 고른 상태에서만 보입니다. "이 폴더(프로젝트)의
+              // 무드보드"로 바로 넘어가는 지름길입니다.
+              if (query.folderId != null && onOpenFolderBoards != null)
+                _buildFolderBoardsButton(query.folderId!),
+
               if (query.hasAnyFilter) _buildClearButton(),
 
               // 목록에 대한 동작들입니다. 조건과 성격이 달라서 오른쪽 끝에 둡니다.
@@ -229,6 +245,15 @@ class ReferenceFilterBar extends StatelessWidget {
           label: Text(label),
         );
       },
+    );
+  }
+
+  /// "이 폴더의 무드보드"로 바로 넘어가는 버튼입니다.
+  Widget _buildFolderBoardsButton(String folderId) {
+    return OutlinedButton.icon(
+      onPressed: () => onOpenFolderBoards!(folderId),
+      icon: const Icon(Icons.dashboard_customize_outlined, size: 18),
+      label: const Text('무드보드'),
     );
   }
 

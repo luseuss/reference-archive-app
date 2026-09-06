@@ -869,6 +869,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ? null
                 : _toggleSelectionMode,
             onOpenTaxonomyManage: _openTaxonomyManage,
+            onOpenFolderBoards: _openFolderBoards,
           ),
 
           // ⑥ 레퍼런스 격자
@@ -903,6 +904,52 @@ class _HomeScreenState extends State<HomeScreen> {
           imageStorage: widget.imageStorage,
           imageSource: widget.imageSource,
           youtubeInfoSource: widget.youtubeInfoSource,
+          taxonomyRepository: widget.taxonomyRepository,
+        ),
+      ),
+    );
+  }
+
+  /// "이 폴더(프로젝트)의 무드보드"로 넘어갑니다.
+  /// (ReferenceFilterBar.onOpenFolderBoards)
+  ///
+  /// _openBoards()와 거의 같지만, 목록을 이 폴더 것만 보이게
+  /// 좁혀줍니다(BoardListScreen.filterFolderId). 새로 만드는 무드보드도
+  /// 이 폴더로 자동 연결됩니다.
+  Future<void> _openFolderBoards(String folderId) async {
+    _hoverPreview.stopPreview();
+
+    final NavigatorState navigator = Navigator.of(context);
+    if (_scaffoldKey.currentState?.isDrawerOpen ?? false) {
+      navigator.pop();
+    }
+
+    final List<TaxonomyItem> folders =
+        _taxonomyOptions[TaxonomyKind.folder] ?? <TaxonomyItem>[];
+    final String folderName = folders
+        .firstWhere(
+          (TaxonomyItem item) => item.id == folderId,
+          orElse: () => TaxonomyItem(
+            id: folderId,
+            kind: TaxonomyKind.folder,
+            name: '폴더',
+            createdAt: DateTime.now().toUtc(),
+            updatedAt: DateTime.now().toUtc(),
+          ),
+        )
+        .name;
+
+    await navigator.push<void>(
+      MaterialPageRoute<void>(
+        builder: (BuildContext context) => BoardListScreen(
+          boardRepository: widget.boardRepository,
+          referenceRepository: widget.repository,
+          imageStorage: widget.imageStorage,
+          imageSource: widget.imageSource,
+          youtubeInfoSource: widget.youtubeInfoSource,
+          taxonomyRepository: widget.taxonomyRepository,
+          filterFolderId: folderId,
+          folderName: folderName,
         ),
       ),
     );

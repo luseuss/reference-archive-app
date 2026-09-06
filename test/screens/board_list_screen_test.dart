@@ -12,8 +12,10 @@ import 'package:reference_archive_app/data/app_database.dart';
 import 'package:reference_archive_app/models/board.dart';
 import 'package:reference_archive_app/models/enums.dart';
 import 'package:reference_archive_app/models/reference_item.dart';
+import 'package:reference_archive_app/models/taxonomy_item.dart';
 import 'package:reference_archive_app/repositories/local_board_repository.dart';
 import 'package:reference_archive_app/repositories/local_reference_repository.dart';
+import 'package:reference_archive_app/repositories/local_taxonomy_repository.dart';
 import 'package:reference_archive_app/screens/board_list_screen.dart';
 import 'package:reference_archive_app/screens/board_screen.dart';
 import 'package:reference_archive_app/utils/id_generator.dart';
@@ -28,6 +30,7 @@ void main() {
   late AppDatabase db;
   late LocalBoardRepository boardRepository;
   late LocalReferenceRepository referenceRepository;
+  late LocalTaxonomyRepository taxonomyRepository;
 
   setUp(() {
     // 테스트 환경에서는 판을 탭하면(비팝업 플랫폼 경로) BoardScreen이
@@ -39,6 +42,7 @@ void main() {
     db = AppDatabase.forTesting(NativeDatabase.memory());
     boardRepository = LocalBoardRepository(db);
     referenceRepository = LocalReferenceRepository(db);
+    taxonomyRepository = LocalTaxonomyRepository(db);
   });
 
   tearDown(() async {
@@ -46,7 +50,14 @@ void main() {
   });
 
   /// 목록 화면을 띄우고 다 그려질 때까지 기다립니다.
-  Future<void> openList(WidgetTester tester) async {
+  ///
+  /// [filterFolderId]/[folderName]을 주면 그 폴더로 좁혀 보는 화면을
+  /// 엽니다(home_screen.dart에서 "이 폴더의 무드보드"로 들어온 경우).
+  Future<void> openList(
+    WidgetTester tester, {
+    String? filterFolderId,
+    String? folderName,
+  }) async {
     tester.view.physicalSize = const Size(1000, 1000);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.resetPhysicalSize);
@@ -60,6 +71,9 @@ void main() {
           imageStorage: FakeImageStorage(),
           imageSource: FakeImageSource(),
           youtubeInfoSource: FakeYoutubeInfoSource(),
+          taxonomyRepository: taxonomyRepository,
+          filterFolderId: filterFolderId,
+          folderName: folderName,
         ),
       ),
     );
@@ -67,16 +81,33 @@ void main() {
   }
 
   /// 무드보드를 하나 저장하고 돌려줍니다.
-  Future<Board> saveBoard(String name) async {
+  Future<Board> saveBoard(String name, {String? folderId}) async {
     final DateTime now = DateTime.now().toUtc();
     final Board board = Board(
       id: newId(),
       name: name,
       createdAt: now,
       updatedAt: now,
+      folderId: folderId,
     );
     await boardRepository.saveBoard(board);
     return board;
+  }
+
+  /// 폴더 하나를 저장하고 그 번호를 돌려줍니다.
+  Future<String> saveFolder(String name) async {
+    final DateTime now = DateTime.now().toUtc();
+    final String id = newId();
+    await taxonomyRepository.save(
+      TaxonomyItem(
+        id: id,
+        kind: TaxonomyKind.folder,
+        name: name,
+        createdAt: now,
+        updatedAt: now,
+      ),
+    );
+    return id;
   }
 
   /// 판에 카드를 [count]장 올립니다.
@@ -273,5 +304,123 @@ void main() {
 
     expect(find.text('겨울 무드'), findsOneWidget);
     expect((await boardRepository.getAllBoards()).length, 1);
+  });
+
+  // ── 여기서부터는 무드보드를 폴더(프로젝트)에 연결하는 기능입니다 ──
+
+  group('폴더(프로젝트) 연결', () {
+    testWidgets('전체 목록에서는 폴더 이름(또는 미분류)이 함께 보인다', (
+      WidgetTester tester,
+    ) async {
+      final String folderId = await saveFolder('겨울 프로젝트');
+      await saveBoard('겨울 무드', folderId: folderId);
+      await saveBoard('여름 무드');
+
+      await openList(tester);
+
+      expect(find.textContaining('겨울 프로젝트'), findsOneWidget);
+      expect(find.textContaining('미분류'), findsOneWidget);
+    });
+
+    testWidgets('폴더로 좁혀 열면 그 폴더 것만 보인다', (WidgetTester tester) async {
+      final String folderIdA = await saveFolder('겨울 프로젝트');
+      final String folderIdB = await saveFolder('여름 프로젝트');
+      await saveBoard('겨울 무드', folderId: folderIdA);
+      await saveBoard('여름 무드', folderId: folderIdB);
+      await saveBoard('미분류 무드');
+
+      await openList(tester, filterFolderId: folderIdA, folderName: '겨울 프로젝트');
+
+      expect(find.text('겨울 무드'), findsOneWidget);
+      expect(find.text('여름 무드'), findsNothing);
+      expect(find.text('미분류 무드'), findsNothing);
+
+      // 이미 한 폴더로 좁혀 보고 있어서 폴더 이름을 또 안 보여줍니다.
+      expect(find.textContaining('겨울 프로젝트의 무드보드'), findsOneWidget);
+    });
+
+    testWidgets('폴더로 좁힌 채 새로 만들면 그 폴더로 자동 연결된다', (
+      WidgetTester tester,
+    ) async {
+      final String folderId = await saveFolder('겨울 프로젝트');
+
+      await openList(tester, filterFolderId: folderId, folderName: '겨울 프로젝트');
+
+      await tester.tap(find.text('새 무드보드'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), '새 판');
+      await tester.tap(find.text('만들기'));
+      await tester.pumpAndSettle();
+
+      final List<Board> boards = await boardRepository.getAllBoards();
+      expect(boards.single.folderId, folderId);
+    });
+
+    testWidgets('폴더로 좁혔는데 그 폴더 무드보드가 없으면 안내가 다르다', (
+      WidgetTester tester,
+    ) async {
+      final String folderId = await saveFolder('겨울 프로젝트');
+      await saveBoard('다른 폴더 무드'); // 미분류라 안 보여야 합니다.
+
+      await openList(tester, filterFolderId: folderId, folderName: '겨울 프로젝트');
+
+      expect(find.textContaining('겨울 프로젝트'), findsWidgets);
+      expect(find.text('다른 폴더 무드'), findsNothing);
+    });
+
+    testWidgets('"폴더 정하기"로 폴더를 새로 정할 수 있다', (WidgetTester tester) async {
+      final String folderId = await saveFolder('겨울 프로젝트');
+      final Board board = await saveBoard('무드보드');
+
+      await openList(tester);
+
+      await tester.tap(find.byIcon(Icons.more_vert));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('폴더 정하기'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('겨울 프로젝트'));
+      await tester.pumpAndSettle();
+
+      final Board? updated = await boardRepository.getBoardById(board.id);
+      expect(updated!.folderId, folderId);
+      expect(find.textContaining('겨울 프로젝트'), findsOneWidget);
+    });
+
+    testWidgets('"폴더 정하기"에서 "없음"을 고르면 폴더에서 빠진다', (
+      WidgetTester tester,
+    ) async {
+      final String folderId = await saveFolder('겨울 프로젝트');
+      final Board board = await saveBoard('무드보드', folderId: folderId);
+
+      await openList(tester);
+
+      await tester.tap(find.byIcon(Icons.more_vert));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('폴더 정하기'));
+      await tester.pumpAndSettle();
+
+      // "없음"에 해당하는 항목을 고릅니다(allowNone: true인 대화상자).
+      await tester.tap(find.textContaining('없음'));
+      await tester.pumpAndSettle();
+
+      final Board? updated = await boardRepository.getBoardById(board.id);
+      expect(updated!.folderId, isNull);
+    });
+
+    testWidgets('폴더가 하나도 없으면 "폴더 정하기"를 눌러도 안내만 뜬다', (
+      WidgetTester tester,
+    ) async {
+      await saveBoard('무드보드');
+
+      await openList(tester);
+
+      await tester.tap(find.byIcon(Icons.more_vert));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('폴더 정하기'));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('폴더를 만들어주세요'), findsOneWidget);
+    });
   });
 }

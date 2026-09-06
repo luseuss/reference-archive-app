@@ -18,8 +18,11 @@
 import 'package:flutter/material.dart';
 
 import '../models/board.dart';
+import '../models/enums.dart';
+import '../models/taxonomy_item.dart';
 import '../repositories/board_repository.dart';
 import '../repositories/reference_repository.dart';
+import '../repositories/taxonomy_repository.dart';
 import '../services/board_window_sync.dart';
 import '../services/image_source.dart';
 import '../services/image_storage.dart';
@@ -30,6 +33,7 @@ import '../utils/date_format.dart';
 import '../utils/id_generator.dart';
 import '../widgets/board_name_dialog.dart';
 import '../widgets/empty_state_message.dart';
+import '../widgets/pick_taxonomy_dialog.dart';
 import 'board_popup_controller.dart';
 import 'board_screen.dart';
 
@@ -42,6 +46,9 @@ class BoardListScreen extends StatefulWidget {
     required this.imageStorage,
     required this.imageSource,
     required this.youtubeInfoSource,
+    required this.taxonomyRepository,
+    this.filterFolderId,
+    this.folderName,
   });
 
   /// 무드보드를 읽고 쓰는 통로입니다.
@@ -61,6 +68,23 @@ class BoardListScreen extends StatefulWidget {
   /// 그대로 넘겨줍니다.
   final YoutubeInfoSource youtubeInfoSource;
 
+  /// 폴더 목록을 읽는 통로입니다. "폴더 정하기" 메뉴에서 고를 폴더
+  /// 목록을 여기서 읽어옵니다.
+  final TaxonomyRepository taxonomyRepository;
+
+  /// 이 번호가 있으면 그 폴더의 무드보드만 보여줍니다. null이면(기본값)
+  /// 전체 무드보드를 보여줍니다.
+  ///
+  /// home_screen.dart가 폴더를 고른 채로 "무드보드" 버튼을 누르면
+  /// 넘겨줍니다(ReferenceFilterBar.onOpenFolderBoards). 이 화면
+  /// 자체는 그 번호가 진짜 폴더인지 확인하지 않습니다 — 목록에서
+  /// 걸러 보여주는 조건일 뿐입니다.
+  final String? filterFolderId;
+
+  /// [filterFolderId]로 좁혀 보여줄 때, 화면 제목에 쓸 그 폴더의
+  /// 이름입니다. filterFolderId가 없으면 안 씁니다.
+  final String? folderName;
+
   @override
   State<BoardListScreen> createState() => _BoardListScreenState();
 }
@@ -72,6 +96,9 @@ class _BoardListScreenState extends State<BoardListScreen> {
   /// 판 번호 → 그 판에 올라간 카드 장수
   Map<String, int> _cardCounts = <String, int>{};
 
+  /// 고를 수 있는 폴더 목록입니다. "폴더 정하기" 메뉴에 씁니다.
+  List<TaxonomyItem> _folders = <TaxonomyItem>[];
+
   /// 아직 목록을 읽어오는 중인지 여부입니다.
   bool _isLoading = true;
 
@@ -82,11 +109,14 @@ class _BoardListScreenState extends State<BoardListScreen> {
     _loadBoards();
   }
 
-  /// 무드보드 목록과 카드 장수를 읽어옵니다.
+  /// 무드보드 목록·카드 장수·폴더 목록을 읽어옵니다.
   Future<void> _loadBoards() async {
     final List<Board> boards = await widget.boardRepository.getAllBoards();
     final Map<String, int> counts = await widget.boardRepository
         .countCardsByBoard();
+    final List<TaxonomyItem> folders = await widget.taxonomyRepository.getAll(
+      TaxonomyKind.folder,
+    );
 
     // 읽어오는 사이에 사용자가 화면을 떠났을 수 있습니다.
     if (!mounted) {
@@ -96,8 +126,23 @@ class _BoardListScreenState extends State<BoardListScreen> {
     setState(() {
       _boards = boards;
       _cardCounts = counts;
+      _folders = folders;
       _isLoading = false;
     });
+  }
+
+  /// 폴더 번호로 폴더 이름을 찾습니다. 못 찾으면(지워졌거나 안
+  /// 정했으면) null입니다.
+  String? _folderNameOf(String? folderId) {
+    if (folderId == null) {
+      return null;
+    }
+    for (final TaxonomyItem folder in _folders) {
+      if (folder.id == folderId) {
+        return folder.name;
+      }
+    }
+    return null;
   }
 
   /// 새 무드보드를 만듭니다. 만들고 나면 **바로 그 판을 엽니다.**
@@ -121,6 +166,11 @@ class _BoardListScreenState extends State<BoardListScreen> {
       name: name,
       createdAt: now,
       updatedAt: now,
+
+      // 폴더로 좁혀 보는 중이면(filterFolderId), 새로 만드는 무드보드도
+      // 그 폴더로 자동 연결됩니다 — "이 프로젝트의 무드보드"로 들어와서
+      // 만든 것이니 당연히 그 프로젝트 것이어야 합니다.
+      folderId: widget.filterFolderId,
     );
     await widget.boardRepository.saveBoard(board);
 
@@ -187,6 +237,46 @@ class _BoardListScreenState extends State<BoardListScreen> {
     await _loadBoards();
   }
 
+  /// 무드보드가 속할 폴더(프로젝트)를 정하거나 바꿉니다.
+  ///
+  /// "이 프로젝트 폴더의 레퍼런스 중에서 골라 만든 무드보드"로
+  /// 묶어두려는 것입니다(CLAUDE.md 참고). 폴더가 하나도 없으면 무엇을
+  /// 하면 되는지 알려줍니다.
+  Future<void> _setBoardFolder(Board board) async {
+    if (_folders.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('먼저 메인 화면에서 폴더를 만들어주세요.')),
+      );
+      return;
+    }
+
+    final PickedTaxonomy? picked = await showPickTaxonomyDialog(
+      context: context,
+      kind: TaxonomyKind.folder,
+      items: _folders,
+      title: '"${board.name}"이(가) 속할 폴더',
+
+      // "없음"을 고르면 폴더에서 빼냅니다 — 처음부터 폴더 없이 만든
+      // 무드보드도 있을 수 있어서, 되돌릴 방법이 있어야 합니다.
+      allowNone: true,
+    );
+
+    // 대화상자를 그냥 닫았으면 아무것도 하지 않습니다.
+    if (picked == null || !mounted) {
+      return;
+    }
+
+    final Board updated = picked.item == null
+        ? board.clearFolder()
+        : board.copyWith(folderId: picked.item!.id);
+    await widget.boardRepository.saveBoard(updated);
+
+    if (!mounted) {
+      return;
+    }
+    await _loadBoards();
+  }
+
   /// 무드보드를 지웁니다. 지우기 전에 확인을 받습니다.
   Future<void> _deleteBoard(Board board) async {
     final bool confirmed = await _confirmDelete(board);
@@ -243,7 +333,11 @@ class _BoardListScreenState extends State<BoardListScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('무드보드')),
+      appBar: AppBar(
+        title: Text(
+          widget.folderName == null ? '무드보드' : '${widget.folderName}의 무드보드',
+        ),
+      ),
 
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _createBoard,
@@ -255,13 +349,26 @@ class _BoardListScreenState extends State<BoardListScreen> {
     );
   }
 
+  /// 지금 보여줘야 할 무드보드 목록입니다.
+  ///
+  /// filterFolderId가 있으면 그 폴더 것만 남깁니다 — home_screen.dart에서
+  /// "이 폴더의 무드보드"로 들어온 경우입니다.
+  List<Board> get _visibleBoards {
+    final String? folderId = widget.filterFolderId;
+    if (folderId == null) {
+      return _boards;
+    }
+    return _boards.where((Board board) => board.folderId == folderId).toList();
+  }
+
   /// 화면 가운데 내용을 만듭니다. 상황에 따라 셋 중 하나입니다.
   Widget _buildBody() {
     if (_isLoading) {
       return const Center(child: CircularProgressIndicator());
     }
 
-    if (_boards.isEmpty) {
+    final List<Board> boards = _visibleBoards;
+    if (boards.isEmpty) {
       return _buildEmptyState();
     }
 
@@ -269,9 +376,9 @@ class _BoardListScreenState extends State<BoardListScreen> {
       // 아래쪽 여백을 크게 준 이유: 안 그러면 마지막 줄이
       // 오른쪽 아래 떠 있는 버튼에 가려집니다.
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
-      itemCount: _boards.length,
+      itemCount: boards.length,
       itemBuilder: (BuildContext context, int index) {
-        return _buildBoardTile(_boards[index]);
+        return _buildBoardTile(boards[index]);
       },
     );
   }
@@ -280,9 +387,12 @@ class _BoardListScreenState extends State<BoardListScreen> {
   Widget _buildEmptyState() {
     // 버튼을 안 붙인 이유: 오른쪽 아래에 "새 무드보드" 버튼이 이미 떠 있습니다.
     // 같은 버튼이 두 개 보이면 어느 쪽을 눌러야 하나 잠깐 멈칫하게 됩니다.
-    return const EmptyStateMessage(
+    final String? folderName = widget.folderName;
+    return EmptyStateMessage(
       icon: Icons.dashboard_customize_outlined,
-      title: '아직 만든 무드보드가 없습니다',
+      title: folderName == null
+          ? '아직 만든 무드보드가 없습니다'
+          : '"$folderName"에 연결된 무드보드가 없습니다',
       body: '무드보드는 레퍼런스를 원하는 자리에 늘어놓고\n분위기를 잡아보는 판입니다.',
     );
   }
@@ -292,6 +402,12 @@ class _BoardListScreenState extends State<BoardListScreen> {
     final AppPalette palette = AppPalette.of(context);
     final int count = _cardCounts[board.id] ?? 0;
 
+    // 이미 한 폴더로 좁혀 보는 중이면(filterFolderId) 모든 줄이 같은
+    // 폴더라 또 적어줄 필요가 없습니다. 전체 목록에서만 보여줍니다.
+    final String folderText = widget.filterFolderId != null
+        ? ''
+        : ' · ${_folderNameOf(board.folderId) ?? '미분류'}';
+
     return Card(
       margin: const EdgeInsets.only(bottom: 10),
       child: ListTile(
@@ -299,18 +415,21 @@ class _BoardListScreenState extends State<BoardListScreen> {
         leading: const Icon(Icons.dashboard_outlined),
         title: Text(board.name),
         subtitle: Text(
-          '카드 $count장 · ${formatCardDate(board.updatedAt)} 수정',
+          '카드 $count장 · ${formatCardDate(board.updatedAt)} 수정$folderText',
           style: AppText.meta.copyWith(color: palette.textDim),
         ),
 
-        // 이름 바꾸기와 지우기는 자주 쓰지 않아서 메뉴 안에 넣습니다.
-        // 줄마다 버튼을 두 개씩 늘어놓으면 정작 중요한 "열기"가 묻힙니다.
-        // 팝업으로 여는 것도 이제 별도 버튼이 아니라 onTap 자체이므로
-        // (위 _openBoard 설명 참고), 여기 남는 것은 이 메뉴뿐입니다.
+        // 이름 바꾸기·폴더 정하기·지우기는 자주 쓰지 않아서 메뉴 안에
+        // 넣습니다. 줄마다 버튼을 여러 개 늘어놓으면 정작 중요한
+        // "열기"가 묻힙니다. 팝업으로 여는 것도 이제 별도 버튼이
+        // 아니라 onTap 자체이므로(위 _openBoard 설명 참고), 여기
+        // 남는 것은 이 메뉴뿐입니다.
         trailing: PopupMenuButton<String>(
           onSelected: (String value) {
             if (value == 'rename') {
               _renameBoard(board);
+            } else if (value == 'folder') {
+              _setBoardFolder(board);
             } else if (value == 'delete') {
               _deleteBoard(board);
             }
@@ -318,6 +437,7 @@ class _BoardListScreenState extends State<BoardListScreen> {
           itemBuilder: (BuildContext context) {
             return const <PopupMenuEntry<String>>[
               PopupMenuItem<String>(value: 'rename', child: Text('이름 바꾸기')),
+              PopupMenuItem<String>(value: 'folder', child: Text('폴더 정하기')),
               PopupMenuItem<String>(value: 'delete', child: Text('지우기')),
             ];
           },

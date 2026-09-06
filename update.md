@@ -5210,3 +5210,87 @@ PR #54)가 이 상수를 그대로 가져다 쓰고 있어서 **한 곳만 고�
 - 실제 키보드 입력(Ctrl+V/Ctrl+Z/Delete가 정말 눌리는 손맛, 무드보드
   붙여넣기가 화면에 바로 나타나는지)은 `flutter run -d windows`로
   의뢰인이 직접 확인해야 합니다.
+
+---
+
+## PR #59 — 무드보드를 폴더(프로젝트)에 연결한다
+
+의뢰인이 손그림으로 구조를 보여주며 요청했습니다. 대화로 좁혀보니
+실제 의도는 이렇습니다.
+
+- **폴더 = 프로젝트 하나의 레퍼런스 묶음** (이미 있던 개념, 안 바뀜).
+- **태그는 그대로 전체 공용.** 폴더에 종속되지도, 무드보드와 직접
+  연결되지도 않습니다. "이 레퍼런스가 배경인지 캐릭터인지" 같은
+  역할 구분 용도로, 폴더 안에서 걸러보는 데만 씁니다.
+- **새로 생긴 것: 무드보드가 폴더 하나에 연결됩니다** — "이 프로젝트
+  폴더의 레퍼런스 중에서 골라 만든 무드보드"라는 뜻입니다.
+
+### 확정된 동작
+
+- 무드보드 목록의 각 줄에 소속 폴더 이름(없으면 "미분류")이 보입니다.
+- "..." 메뉴에 "폴더 정하기"가 늘어서, 언제든 무드보드를 폴더에 넣거나
+  뺄 수 있습니다.
+- 메인 화면에서 폴더를 고르면 필터 줄에 "무드보드" 버튼이 나타나고,
+  누르면 그 폴더로 좁혀진 무드보드 목록 화면이 열립니다.
+- 그 화면에서 새로 만드는 무드보드는 그 폴더로 자동 연결됩니다.
+
+### 저장 구조 v5 — Boards에 folderId 추가
+
+`Boards`에 `folderId`(nullable) 칼럼을 addColumn으로 추가했습니다.
+기존 무드보드는 전부 비어있는 채로 시작합니다.
+
+**마이그레이션에서 실제로 버그를 하나 잡았습니다 — 여러 버전
+건너뛰기.** v2→v3 마이그레이션의 `m.createTable(boards)`는 "그
+시절의" 표 모양이 아니라 **지금 이 순간의 tables.dart**로 표를
+만듭니다. 그래서 v1이나 v2에서 곧장 v5로 건너뛰는 사용자는 v3 단계에서
+이미 `folderId`가 포함된 boards 표를 받았는데, 그 뒤 v5 단계가 또
+`addColumn`을 하려다 "칼럼이 이미 있다"는 오류로 앱이 아예 안 켜졌습니다.
+
+`onUpgrade`의 v5 조건을 `from < 5`가 아니라 **`from >= 3 && from <
+5`**로 고쳐서 해결했습니다 — boards 표가 이번 업데이트 전부터 실제로
+있던(버전 3·4) 사용자만 이 칸을 추가해야 합니다.
+`test/data/migration_v4_to_v5_test.dart`의 "v1에서 v5로 한 번에
+건너뛰어도" 테스트가 정확히 이 버그를 잡습니다. **다음에 기존 표에
+addColumn을 추가할 때는, 그 표를 처음 만든 createTable 단계보다 옛날
+버전에서 곧장 건너뛰는 경우를 꼭 테스트하세요.**
+
+### 그 밖에
+
+- `lib/models/board.dart`에 `folderId`와 `clearFolder()`가 늘었습니다.
+  `copyWith`로는 null로 못 만듭니다(인자를 안 넘긴 것과 구분이 안 됨)
+  — `reference_item.dart`의 `clearFolder`와 같은 패턴입니다.
+- `local_board_repository.dart`의 `saveBoard()`가 `folderId`를
+  `Value<String?>`로 명시적으로 감싸 넘깁니다. 그냥 값만 넘기면
+  drift가 "이 칸은 안 건드린다"로 해석해서, 폴더에서 뺀 것이 저장
+  안 되는 채로 조용히 무시됩니다.
+- `board_list_screen.dart`에 `filterFolderId`/`folderName`(둘 다
+  선택적)이 늘었습니다. 없으면(기본값) 예전과 똑같이 전체 목록입니다.
+- `reference_filter_bar.dart`에 `onOpenFolderBoards` 콜백이 늘었습니다.
+  폴더 필터가 걸려 있을 때만 "무드보드" 버튼이 보입니다.
+- `home_screen.dart`의 `_openFolderBoards(folderId)`가 폴더 이름을
+  찾아 `BoardListScreen`을 필터링된 채로 엽니다.
+- 태그·카테고리·프로젝트 분류 체계 자체는 손대지 않았습니다.
+
+### 나중에 이 부분을 고치려면 어디를 보면 되나
+
+| 고치고 싶은 것 | 봐야 할 곳 |
+|---|---|
+| 무드보드-폴더 연결 데이터 | `lib/models/board.dart`의 `folderId`/`clearFolder` |
+| 저장할 때 null이 반영 안 되는 문제 | `local_board_repository.dart`의 `saveBoard()` |
+| 목록을 폴더로 좁히는 로직 | `board_list_screen.dart`의 `_visibleBoards`/`filterFolderId` |
+| "폴더 정하기" 메뉴 | `board_list_screen.dart`의 `_setBoardFolder` |
+| 메인 화면 "무드보드" 버튼 | `reference_filter_bar.dart`의 `onOpenFolderBoards` |
+| 그 버튼이 화면을 여는 곳 | `home_screen.dart`의 `_openFolderBoards` |
+
+### 어떻게 테스트했나
+
+- `flutter analyze` 문제 없음.
+- `flutter test` **694건 전부 통과** (기존 673 + 신규 21건 —
+  `migration_v4_to_v5_test.dart`(새 파일) 6건, `local_board_repository_test.dart`에
+  폴더 연결 5건, `board_list_screen_test.dart`에 폴더 관련 7건,
+  `home_folder_boards_test.dart`(새 파일) 3건).
+- 마이그레이션 테스트가 "여러 버전 건너뛰기" 버그를 실제로 잡았습니다
+  (위 설명 참고) — 이번처럼 기존 표에 칼럼을 추가할 때는 항상 그
+  경우를 확인해야 한다는 교훈이 남았습니다.
+- 실제 오래 써온 데이터베이스 파일로 마이그레이션이 매끄러운지는
+  `flutter run -d windows`로 의뢰인이 직접 확인해야 합니다.

@@ -1720,6 +1720,17 @@ class $BoardsTable extends Boards with TableInfo<$BoardsTable, BoardRow> {
     type: DriftSqlType.dateTime,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _folderIdMeta = const VerificationMeta(
+    'folderId',
+  );
+  @override
+  late final GeneratedColumn<String> folderId = GeneratedColumn<String>(
+    'folder_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -1727,6 +1738,7 @@ class $BoardsTable extends Boards with TableInfo<$BoardsTable, BoardRow> {
     createdAt,
     updatedAt,
     deletedAt,
+    folderId,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -1775,6 +1787,12 @@ class $BoardsTable extends Boards with TableInfo<$BoardsTable, BoardRow> {
         deletedAt.isAcceptableOrUnknown(data['deleted_at']!, _deletedAtMeta),
       );
     }
+    if (data.containsKey('folder_id')) {
+      context.handle(
+        _folderIdMeta,
+        folderId.isAcceptableOrUnknown(data['folder_id']!, _folderIdMeta),
+      );
+    }
     return context;
   }
 
@@ -1804,6 +1822,10 @@ class $BoardsTable extends Boards with TableInfo<$BoardsTable, BoardRow> {
         DriftSqlType.dateTime,
         data['${effectivePrefix}deleted_at'],
       ),
+      folderId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}folder_id'],
+      ),
     );
   }
 
@@ -1828,12 +1850,19 @@ class BoardRow extends DataClass implements Insertable<BoardRow> {
 
   /// 지운 시각 (UTC). 비어 있으면 살아있는 항목입니다.
   final DateTime? deletedAt;
+
+  /// 이 무드보드가 속한 폴더(프로젝트)의 번호입니다. 안 정했으면 비어
+  /// 있습니다(schemaVersion 5). "이 프로젝트 폴더의 레퍼런스 중에서
+  /// 골라 만든 무드보드"라는 뜻으로 씁니다 — 태그처럼 전체 공용이
+  /// 아니라, 무드보드 하나가 폴더 하나에만 속합니다.
+  final String? folderId;
   const BoardRow({
     required this.id,
     required this.name,
     required this.createdAt,
     required this.updatedAt,
     this.deletedAt,
+    this.folderId,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -1844,6 +1873,9 @@ class BoardRow extends DataClass implements Insertable<BoardRow> {
     map['updated_at'] = Variable<DateTime>(updatedAt);
     if (!nullToAbsent || deletedAt != null) {
       map['deleted_at'] = Variable<DateTime>(deletedAt);
+    }
+    if (!nullToAbsent || folderId != null) {
+      map['folder_id'] = Variable<String>(folderId);
     }
     return map;
   }
@@ -1857,6 +1889,9 @@ class BoardRow extends DataClass implements Insertable<BoardRow> {
       deletedAt: deletedAt == null && nullToAbsent
           ? const Value.absent()
           : Value(deletedAt),
+      folderId: folderId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(folderId),
     );
   }
 
@@ -1871,6 +1906,7 @@ class BoardRow extends DataClass implements Insertable<BoardRow> {
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
       deletedAt: serializer.fromJson<DateTime?>(json['deletedAt']),
+      folderId: serializer.fromJson<String?>(json['folderId']),
     );
   }
   @override
@@ -1882,6 +1918,7 @@ class BoardRow extends DataClass implements Insertable<BoardRow> {
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
       'deletedAt': serializer.toJson<DateTime?>(deletedAt),
+      'folderId': serializer.toJson<String?>(folderId),
     };
   }
 
@@ -1891,12 +1928,14 @@ class BoardRow extends DataClass implements Insertable<BoardRow> {
     DateTime? createdAt,
     DateTime? updatedAt,
     Value<DateTime?> deletedAt = const Value.absent(),
+    Value<String?> folderId = const Value.absent(),
   }) => BoardRow(
     id: id ?? this.id,
     name: name ?? this.name,
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
     deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
+    folderId: folderId.present ? folderId.value : this.folderId,
   );
   BoardRow copyWithCompanion(BoardsCompanion data) {
     return BoardRow(
@@ -1905,6 +1944,7 @@ class BoardRow extends DataClass implements Insertable<BoardRow> {
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
       deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
+      folderId: data.folderId.present ? data.folderId.value : this.folderId,
     );
   }
 
@@ -1915,13 +1955,15 @@ class BoardRow extends DataClass implements Insertable<BoardRow> {
           ..write('name: $name, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
-          ..write('deletedAt: $deletedAt')
+          ..write('deletedAt: $deletedAt, ')
+          ..write('folderId: $folderId')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(id, name, createdAt, updatedAt, deletedAt);
+  int get hashCode =>
+      Object.hash(id, name, createdAt, updatedAt, deletedAt, folderId);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -1930,7 +1972,8 @@ class BoardRow extends DataClass implements Insertable<BoardRow> {
           other.name == this.name &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt &&
-          other.deletedAt == this.deletedAt);
+          other.deletedAt == this.deletedAt &&
+          other.folderId == this.folderId);
 }
 
 class BoardsCompanion extends UpdateCompanion<BoardRow> {
@@ -1939,6 +1982,7 @@ class BoardsCompanion extends UpdateCompanion<BoardRow> {
   final Value<DateTime> createdAt;
   final Value<DateTime> updatedAt;
   final Value<DateTime?> deletedAt;
+  final Value<String?> folderId;
   final Value<int> rowid;
   const BoardsCompanion({
     this.id = const Value.absent(),
@@ -1946,6 +1990,7 @@ class BoardsCompanion extends UpdateCompanion<BoardRow> {
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.deletedAt = const Value.absent(),
+    this.folderId = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   BoardsCompanion.insert({
@@ -1954,6 +1999,7 @@ class BoardsCompanion extends UpdateCompanion<BoardRow> {
     required DateTime createdAt,
     required DateTime updatedAt,
     this.deletedAt = const Value.absent(),
+    this.folderId = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        name = Value(name),
@@ -1965,6 +2011,7 @@ class BoardsCompanion extends UpdateCompanion<BoardRow> {
     Expression<DateTime>? createdAt,
     Expression<DateTime>? updatedAt,
     Expression<DateTime>? deletedAt,
+    Expression<String>? folderId,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -1973,6 +2020,7 @@ class BoardsCompanion extends UpdateCompanion<BoardRow> {
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (deletedAt != null) 'deleted_at': deletedAt,
+      if (folderId != null) 'folder_id': folderId,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -1983,6 +2031,7 @@ class BoardsCompanion extends UpdateCompanion<BoardRow> {
     Value<DateTime>? createdAt,
     Value<DateTime>? updatedAt,
     Value<DateTime?>? deletedAt,
+    Value<String?>? folderId,
     Value<int>? rowid,
   }) {
     return BoardsCompanion(
@@ -1991,6 +2040,7 @@ class BoardsCompanion extends UpdateCompanion<BoardRow> {
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       deletedAt: deletedAt ?? this.deletedAt,
+      folderId: folderId ?? this.folderId,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -2013,6 +2063,9 @@ class BoardsCompanion extends UpdateCompanion<BoardRow> {
     if (deletedAt.present) {
       map['deleted_at'] = Variable<DateTime>(deletedAt.value);
     }
+    if (folderId.present) {
+      map['folder_id'] = Variable<String>(folderId.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -2027,6 +2080,7 @@ class BoardsCompanion extends UpdateCompanion<BoardRow> {
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('deletedAt: $deletedAt, ')
+          ..write('folderId: $folderId, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -3556,6 +3610,7 @@ typedef $$BoardsTableCreateCompanionBuilder = BoardsCompanion Function({
   required DateTime createdAt,
   required DateTime updatedAt,
   Value<DateTime?> deletedAt,
+  Value<String?> folderId,
   Value<int> rowid,
 });
 typedef $$BoardsTableUpdateCompanionBuilder = BoardsCompanion Function({
@@ -3564,6 +3619,7 @@ typedef $$BoardsTableUpdateCompanionBuilder = BoardsCompanion Function({
   Value<DateTime> createdAt,
   Value<DateTime> updatedAt,
   Value<DateTime?> deletedAt,
+  Value<String?> folderId,
   Value<int> rowid,
 });
 
@@ -3598,6 +3654,11 @@ class $$BoardsTableFilterComposer
 
   ColumnFilters<DateTime> get deletedAt => $composableBuilder(
     column: $table.deletedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get folderId => $composableBuilder(
+    column: $table.folderId,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -3635,6 +3696,11 @@ class $$BoardsTableOrderingComposer
     column: $table.deletedAt,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get folderId => $composableBuilder(
+    column: $table.folderId,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$BoardsTableAnnotationComposer
@@ -3660,6 +3726,9 @@ class $$BoardsTableAnnotationComposer
 
   GeneratedColumn<DateTime> get deletedAt =>
       $composableBuilder(column: $table.deletedAt, builder: (column) => column);
+
+  GeneratedColumn<String> get folderId =>
+      $composableBuilder(column: $table.folderId, builder: (column) => column);
 }
 
 class $$BoardsTableTableManager
@@ -3695,6 +3764,7 @@ class $$BoardsTableTableManager
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
                 Value<DateTime?> deletedAt = const Value.absent(),
+                Value<String?> folderId = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => BoardsCompanion(
                 id: id,
@@ -3702,6 +3772,7 @@ class $$BoardsTableTableManager
                 createdAt: createdAt,
                 updatedAt: updatedAt,
                 deletedAt: deletedAt,
+                folderId: folderId,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -3711,6 +3782,7 @@ class $$BoardsTableTableManager
                 required DateTime createdAt,
                 required DateTime updatedAt,
                 Value<DateTime?> deletedAt = const Value.absent(),
+                Value<String?> folderId = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => BoardsCompanion.insert(
                 id: id,
@@ -3718,6 +3790,7 @@ class $$BoardsTableTableManager
                 createdAt: createdAt,
                 updatedAt: updatedAt,
                 deletedAt: deletedAt,
+                folderId: folderId,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
