@@ -26,6 +26,7 @@ import 'package:reference_archive_app/widgets/board_viewport.dart';
 import 'package:reference_archive_app/widgets/board_card_view.dart';
 import 'package:reference_archive_app/widgets/board_guides.dart';
 import 'package:reference_archive_app/widgets/board_selection_bar.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../fakes/fake_image_storage.dart';
 
@@ -36,6 +37,12 @@ void main() {
   late Board board;
 
   setUp(() async {
+    // board_screen.dart가 판을 열 때마다 마지막으로 보던 확대·자리를
+    // SharedPreferences에서 읽어옵니다(board_view_state_storage.dart).
+    // 가짜 값을 안 심어두면 진짜 플러그인 통로를 기다리다 테스트가
+    // 멈춥니다(local_image_storage_test.dart 설명과 같은 사정).
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+
     db = AppDatabase.forTesting(NativeDatabase.memory());
     boardRepository = LocalBoardRepository(db);
     referenceRepository = LocalReferenceRepository(db);

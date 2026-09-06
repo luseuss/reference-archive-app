@@ -40,6 +40,7 @@ import '../utils/board_layout.dart';
 import '../widgets/board_canvas.dart';
 import '../widgets/board_selection_bar.dart';
 import '../widgets/board_toolbar_actions.dart';
+import '../widgets/board_view_state_storage.dart';
 import '../widgets/board_viewport.dart';
 import '../widgets/empty_state_message.dart';
 import '../widgets/pick_references_dialog.dart';
@@ -98,6 +99,10 @@ class _BoardScreenState extends State<BoardScreen> {
   /// 카드에는 번호만 들어있어서, 제목과 그림을 보여주려면 짝을 지어야 합니다.
   /// (services/reference_lookup.dart 설명 참고)
   ReferenceLookup _lookup = const ReferenceLookup.empty();
+
+  /// 이 판을 마지막으로 보던 확대·자리입니다. 저장된 적이 없으면 null이고,
+  /// 그때는 BoardViewport가 평소처럼 "카드 전부 보기"로 시작합니다.
+  BoardViewState? _viewState;
 
   /// 보던 화면을 "카드 전부 보기"로 되돌리라고 알리는 숫자입니다.
   ///
@@ -158,7 +163,8 @@ class _BoardScreenState extends State<BoardScreen> {
     super.dispose();
   }
 
-  /// 판에 놓인 카드와, 그 카드들이 보여줄 레퍼런스를 읽어옵니다.
+  /// 판에 놓인 카드와, 그 카드들이 보여줄 레퍼런스, 마지막으로 보던
+  /// 확대·자리를 읽어옵니다.
   Future<void> _loadBoard() async {
     final List<BoardCard> cards = await widget.boardRepository.getCards(
       widget.board.id,
@@ -167,6 +173,10 @@ class _BoardScreenState extends State<BoardScreen> {
     final ReferenceLookup lookup = await ReferenceLookup.load(
       repository: widget.referenceRepository,
       imageStorage: widget.imageStorage,
+    );
+
+    final BoardViewState? viewState = await loadBoardViewState(
+      widget.board.id,
     );
 
     // 읽어오는 사이에 사용자가 화면을 떠났을 수 있습니다.
@@ -178,8 +188,21 @@ class _BoardScreenState extends State<BoardScreen> {
 
     setState(() {
       _lookup = lookup;
+      _viewState = viewState;
       _isLoading = false;
     });
+  }
+
+  /// 판을 옮기거나 확대·축소했을 때 그 상태를 저장합니다.
+  /// (BoardViewport.onViewChanged)
+  Future<void> _saveViewState(double scale, Offset offset) {
+    return saveBoardViewState(widget.board.id, scale, offset);
+  }
+
+  /// "카드 전부 보기"(⛶)를 누르면 저장해둔 보기 상태를 지웁니다.
+  /// (BoardViewport.onViewReset)
+  Future<void> _clearViewState() {
+    return clearBoardViewState(widget.board.id);
   }
 
   /// 상대 창(메인 ↔ 팝업)에서 이 판이 바뀌었다는 신호를 받으면
@@ -318,6 +341,15 @@ class _BoardScreenState extends State<BoardScreen> {
               canvasRect: canvasRect,
               contentBounds: boardContentBounds(cards),
               viewResetCount: _viewResetCount,
+
+              // 지난번에 보던 자리를 기억해뒀다가 다시 보여줍니다. 저장된
+              // 적이 없으면 둘 다 null이라 평소처럼 "카드 전부 보기"로
+              // 시작합니다.
+              initialScale: _viewState?.scale,
+              initialOffset: _viewState?.offset,
+              onViewChanged: _saveViewState,
+              onViewReset: _clearViewState,
+
               onMarqueeBegin: ({required bool additive}) =>
                   _interaction.beginMarquee(additive: additive),
               onMarqueeUpdate: _interaction.updateMarquee,
