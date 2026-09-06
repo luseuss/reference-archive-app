@@ -1,8 +1,8 @@
-// 레퍼런스 편집 화면의 분류 항목(파트·폴더·카테고리·태그·프로젝트)
+// 레퍼런스 편집 화면의 분류 항목(폴더·카테고리·태그·프로젝트)
 // 고르는 칸들을 나란히 늘어놓는 곳입니다.
 //
 // reference_detail_screen.dart에서 뺐습니다(CLAUDE.md "밀린 정리거리"
-// 참고). 다섯 칸이 전부 reference_taxonomy_edit_controller.dart의
+// 참고). 네 칸이 전부 reference_taxonomy_edit_controller.dart의
 // ReferenceTaxonomyEditController를 그대로 받아쓰는 반복된 모양이라,
 // 그 반복 자체를 한 위젯으로 묶었습니다.
 
@@ -15,7 +15,7 @@ import '../screens/reference_taxonomy_edit_controller.dart';
 import 'taxonomy_multi_field.dart';
 import 'taxonomy_single_field.dart';
 
-/// 파트·폴더·카테고리·태그·프로젝트를 고르는 칸 다섯 개를 세로로
+/// 폴더·카테고리·태그·프로젝트를 고르는 칸 네 개를 세로로
 /// 늘어놓습니다.
 class ReferenceDetailTaxonomyFields extends StatelessWidget {
   const ReferenceDetailTaxonomyFields({
@@ -35,19 +35,6 @@ class ReferenceDetailTaxonomyFields extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        // 파트를 맨 위에 둡니다. 폴더·카테고리보다 큰 갈래라서
-        // 위에서 아래로 좁혀지는 순서가 자연스럽습니다.
-        TaxonomySingleField(
-          kind: TaxonomyKind.part,
-          options: controller.options[TaxonomyKind.part] ?? <TaxonomyItem>[],
-          selectedId: controller.partId,
-          repository: repository,
-          onChanged: controller.setPart,
-          onCreated: (TaxonomyItem created) =>
-              controller.handleCreated(repository, TaxonomyKind.part, created),
-        ),
-        const SizedBox(height: 16),
-
         TaxonomySingleField(
           kind: TaxonomyKind.folder,
           options: controller.options[TaxonomyKind.folder] ?? <TaxonomyItem>[],

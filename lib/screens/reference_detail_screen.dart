@@ -105,7 +105,7 @@ class _ReferenceDetailScreenState extends State<ReferenceDetailScreen> {
   /// onChanged가 부를 때마다 갱신됩니다. 저장을 누를 때만 실제로 씁니다.
   String? _memoJson;
 
-  /// 파트·폴더·카테고리·태그·프로젝트를 고르는 부분의 상태와 동작을
+  /// 폴더·카테고리·태그·프로젝트를 고르는 부분의 상태와 동작을
   /// 담고 있습니다. (reference_taxonomy_edit_controller.dart 참고)
   final ReferenceTaxonomyEditController _taxonomyEdit =
       ReferenceTaxonomyEditController();
@@ -240,7 +240,6 @@ class _ReferenceDetailScreenState extends State<ReferenceDetailScreen> {
       memo: memoIsEmpty ? null : memoJson,
       folderId: _taxonomyEdit.folderId,
       categoryId: _taxonomyEdit.categoryId,
-      partId: _taxonomyEdit.partId,
       tagIds: _taxonomyEdit.tagIds,
       projectIds: _taxonomyEdit.projectIds,
       isFavorite: _isFavorite,
