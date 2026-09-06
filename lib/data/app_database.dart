@@ -18,8 +18,6 @@ import 'package:path_provider/path_provider.dart';
 // 생성된 코드에 그대로 들어가므로, 여기서 가져오지 않으면 "그런 이름 없다"는
 // 오류가 납니다. 지우면 앱이 안 켜집니다.
 import '../models/board.dart';
-import '../models/enums.dart';
-import '../models/taxonomy_item.dart';
 import 'tables.dart';
 
 // 코드 생성기가 만들어주는 파일입니다. 빨간 줄이 떠도 build_runner를 돌리면 사라집니다.
@@ -59,17 +57,18 @@ class AppDatabase extends _$AppDatabase {
   ///   3 — Boards, BoardCards 표 추가 (무드보드). PR #17
   ///   4 — References.memo를 순수 텍스트에서 Delta(JSON)로. 5단계 1번
   ///   5 — Boards에 folderId 추가 (무드보드를 폴더/프로젝트에 연결)
+  ///   6 — 파트(Part) 개념을 없앰. References.partId 칼럼 삭제,
+  ///       taxonomy_items의 kind='part' 행 삭제
   @override
-  int get schemaVersion => 5;
+  int get schemaVersion => 6;
 
   /// 데이터베이스를 처음 만들 때, 그리고 구조가 바뀌었을 때 무엇을 할지 정합니다.
   @override
   MigrationStrategy get migration {
     return MigrationStrategy(
-      // 앱을 처음 설치했을 때: 정의된 표를 전부 만들고 기본 파트를 하나 넣습니다.
+      // 앱을 처음 설치했을 때: 정의된 표를 전부 만듭니다.
       onCreate: (Migrator m) async {
         await m.createAll();
-        await _createDefaultPart();
       },
 
       // 앱을 업데이트해서 schemaVersion이 올라갔을 때 할 일입니다.
@@ -109,6 +108,17 @@ class AppDatabase extends _$AppDatabase {
         if (from >= 3 && from < 5) {
           await _upgradeToVersion5(m);
         }
+
+        // v6은 반대로 "이미 있는 칼럼을 지우는" 마이그레이션이라 PR #59의
+        // v5처럼 특수한 부등호 조건이 필요 없습니다. createTable이 현재
+        // 시점의 tables.dart를 쓰는 문제는 "칼럼을 새로 만들 때"만
+        // 생기는데, 여기서는 어차피 안 만들기 때문입니다. v1이든 v5든
+        // partId가 있었던 사람이든(v1은 애초에 없었지만 v2 단계에서
+        // 이미 추가되고 채워진 뒤라 v6 시점에는 모두가 갖고 있습니다)
+        // 그냥 지우면 됩니다.
+        if (from < 6) {
+          await _upgradeToVersion6(m);
+        }
       },
 
       // 데이터베이스를 열 때마다 실행됩니다.
@@ -120,25 +130,70 @@ class AppDatabase extends _$AppDatabase {
     );
   }
 
+  /// v1 → v2에서 만들던 "기본 파트"의 고유 번호와 이름입니다.
+  ///
+  /// 예전에는 `lib/models/taxonomy_item.dart`의 `defaultPartId`/
+  /// `defaultPartName` 상수였습니다. schemaVersion 6에서 파트 개념을
+  /// 모델에서까지 완전히 지우면서(Task 1~8) 그 상수들도 함께
+  /// 지워졌습니다. `_upgradeToVersion2`는 **그 시절 실제로 썼던 값
+  /// 그대로**를 다시 만들어야 하는 역사적 단계라, 지금 앱 어디에도
+  /// 이 값을 아는 곳이 없어야 함에도 이 마이그레이션만은 값을 알아야
+  /// 합니다. 그래서 모델로 되살리지 않고 이 파일 안에 고정값으로
+  /// 남겨뒀습니다.
+  static const String _legacyDefaultPartId =
+      '00000000-0000-4000-8000-000000000001';
+  static const String _legacyDefaultPartName = '기본';
+
   /// 버전 1 → 2. 파트 기능을 위한 준비입니다.
   ///
   /// 세 가지를 순서대로 합니다.
-  ///   1. References에 partId 칸을 추가합니다.
+  ///   1. References에 part_id 칸을 추가합니다.
   ///   2. 기본 파트를 만듭니다.
   ///   3. **이미 있던 레퍼런스를 전부 기본 파트에 넣습니다.**
   ///
   /// 3번을 빼먹으면 업데이트한 사용자의 레퍼런스가 **어느 파트에도 안 속해서
   /// 사이드바에서 아무 파트를 골라도 안 보이게** 됩니다. 데이터가 사라진 것처럼
   /// 보이는데 실제로는 멀쩡히 있어서, 원인을 찾기 아주 어려운 종류의 문제입니다.
+  ///
+  /// ── (schemaVersion 6에서 덧붙임) 왜 raw SQL을 쓰는가 ──
+  /// 원래 이 메서드는 `m.addColumn(references, references.partId)`,
+  /// `ReferencesCompanion(partId: ...)`처럼 drift가 만들어주는 타입
+  /// API와 따로 뺀 `_createDefaultPart()` 도우미를 함께 썼습니다.
+  /// 그런데 schemaVersion 6에서 tables.dart의 partId 정의 자체를
+  /// 지웠기 때문에, 지금 시점의 생성 코드(`$ReferencesTable`,
+  /// `ReferencesCompanion`)에는 partId가 아예 없습니다 — Dart 코드로는
+  /// 더 이상 이 칸을 가리킬 방법이 없다는 뜻입니다. 그래서
+  /// `_upgradeToVersion4()`가 이미 쓰고 있던 것과 같은 방식(raw SQL)으로
+  /// 바꿨습니다. `_createDefaultPart()`도 이 메서드 말고는 아무도 안
+  /// 쓰게 되어 별도 메서드로 안 두고 이 안으로 그대로 옮겼습니다.
+  ///
+  /// **동작 자체는 이전과 완전히 같습니다** — v1 사용자가 이 단계를
+  /// 거치면 여전히 part_id 칸이 생기고 기본 파트가 만들어지고 기존
+  /// 레퍼런스가 거기 채워집니다. 몇 걸음 뒤(v6)에서 그걸 도로 지우므로,
+  /// 실제로 남는 결과는 "잠깐 만들었다가 없앤 것"입니다(아래
+  /// `_upgradeToVersion6` 설명 참고).
   Future<void> _upgradeToVersion2(Migrator m) async {
-    await m.addColumn(references, references.partId);
+    await customStatement('ALTER TABLE "references" ADD COLUMN part_id TEXT');
 
-    await _createDefaultPart();
+    // `insertOrIgnore`인 이유: 만약 이미 같은 id의 기본 파트가 있다면
+    // (이론상 없어야 하지만) 덮어쓰지 않고 그대로 둡니다.
+    final DateTime now = DateTime.now().toUtc();
+    await into(taxonomyItems).insert(
+      TaxonomyItemsCompanion.insert(
+        id: _legacyDefaultPartId,
+        kind: 'part',
+        name: _legacyDefaultPartName,
+        createdAt: now,
+        updatedAt: now,
+      ),
+      mode: InsertMode.insertOrIgnore,
+    );
 
-    // partId가 비어 있는 것 = 이번 업데이트 전에 넣어둔 레퍼런스입니다.
-    await (update(references)
-          ..where(($ReferencesTable t) => t.partId.isNull()))
-        .write(const ReferencesCompanion(partId: Value<String>(defaultPartId)));
+    // part_id가 비어 있는 것 = 이번 업데이트 전에 넣어둔 레퍼런스입니다.
+    await customStatement(
+      'UPDATE "references" SET part_id = ? WHERE part_id IS NULL',
+      <Object?>[_legacyDefaultPartId],
+    );
   }
 
   /// 버전 2 → 3. 무드보드를 위한 표 두 개를 만듭니다.
@@ -224,23 +279,34 @@ class AppDatabase extends _$AppDatabase {
     await m.addColumn(boards, boards.folderId);
   }
 
-  /// 기본 파트를 만듭니다. 이미 있으면 아무 일도 하지 않습니다.
+  /// 버전 5 → 6. 파트(Part) 개념을 완전히 없앱니다.
   ///
-  /// `insertOnConflictUpdate`가 아니라 `DoNothing`인 이유: 사용자가 기본 파트의
-  /// **이름을 바꿔뒀을 수 있습니다.** 덮어쓰면 앱을 켤 때마다 이름이 '기본'으로
-  /// 되돌아갑니다.
-  Future<void> _createDefaultPart() async {
-    final DateTime now = DateTime.now().toUtc();
+  /// 두 가지를 합니다.
+  ///   1. References.partId 칼럼을 지웁니다.
+  ///   2. taxonomy_items에서 kind='part'인 행(기본 파트 포함)을 지웁니다.
+  ///
+  /// ── 소프트 삭제가 아니라 진짜로 지우는 이유 ──
+  /// 다른 분류 항목(폴더 등)을 지울 때는 deletedAt만 찍습니다(원칙 5,
+  /// 소프트 삭제) — "이 기기에서 지운 건지 다른 기기에서 새로 만든
+  /// 건지" 구분해야 하기 때문입니다. 하지만 파트는 **개념 자체가
+  /// 사라지는 것**이라 이 구분이 필요 없습니다. 소프트 삭제로 남겨두면
+  /// 영원히 안 보이는 죽은 행만 쌓입니다.
+  ///
+  /// ── dropColumn이 SQLite 3.35.0을 요구합니다 ──
+  /// 이 프로젝트가 쓰는 sqlite3_flutter_libs는 훨씬 최신 SQLite를
+  /// 번들하므로 문제없이 될 것으로 보입니다. Task 10의 마이그레이션
+  /// 테스트가 실제로 되는지 확인합니다.
+  Future<void> _upgradeToVersion6(Migrator m) async {
+    // dropColumn은 칼럼을 Column 객체가 아니라 **SQL 이름(문자열)**으로
+    // 받습니다. tables.dart에서 partId 정의 자체를 지웠으므로
+    // `references.partId`처럼 Dart 코드로는 더 이상 이 칼럼을 가리킬
+    // 방법이 없습니다 — drift가 camelCase를 snake_case로 바꿔 저장하는
+    // 규칙(build.yaml 옆의 다른 칼럼들과 동일)에 따라 실제 SQL 칼럼
+    // 이름인 'part_id'를 직접 적습니다.
+    await m.dropColumn(references, 'part_id');
 
-    await into(taxonomyItems).insert(
-      TaxonomyItemsCompanion.insert(
-        id: defaultPartId,
-        kind: TaxonomyKind.part.storedName,
-        name: defaultPartName,
-        createdAt: now,
-        updatedAt: now,
-      ),
-      mode: InsertMode.insertOrIgnore,
+    await customStatement(
+      "DELETE FROM taxonomy_items WHERE kind = 'part'",
     );
   }
 }
