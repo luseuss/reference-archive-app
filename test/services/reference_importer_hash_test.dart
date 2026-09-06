@@ -13,7 +13,6 @@ import 'package:reference_archive_app/models/reference_item.dart';
 import 'package:reference_archive_app/repositories/local_reference_repository.dart';
 import 'package:reference_archive_app/services/image_hash.dart';
 import 'package:reference_archive_app/services/reference_importer.dart';
-import 'package:reference_archive_app/models/taxonomy_item.dart';
 
 import '../fakes/fake_image_source.dart';
 import '../fakes/fake_image_storage.dart';
@@ -61,7 +60,7 @@ void main() {
     imageSource.hasClipboardImage = true;
     imageSource.bytes = makeRealImageBytes();
 
-    await importer.importFromClipboard(partId: defaultPartId);
+    await importer.importFromClipboard();
 
     final List<ReferenceItem> items = await repository.getAll();
     expect(items.length, 1);
@@ -73,7 +72,7 @@ void main() {
     // Uint8List(널 불가)라서 값만 실제 이미지로 바꿔주면 됩니다.
     youtubeInfoSource.thumbnailBytes = makeRealImageBytes();
 
-    await importer.saveYoutube('dQw4w9WgXcQ', partId: defaultPartId);
+    await importer.saveYoutube('dQw4w9WgXcQ');
 
     final List<ReferenceItem> items = await repository.getAll();
     expect(items.length, 1);
@@ -87,7 +86,7 @@ void main() {
     // FakeImageStorage.saveImage는 실제로 디코드하지 않아서 그대로
     // "저장된 척"하지만, dHashFromBytes는 진짜로 디코드를 시도하다
     // 실패해서 null을 돌려줘야 합니다.
-    await importer.importFromClipboard(partId: defaultPartId);
+    await importer.importFromClipboard();
 
     final List<ReferenceItem> items = await repository.getAll();
     expect(items.length, 1);

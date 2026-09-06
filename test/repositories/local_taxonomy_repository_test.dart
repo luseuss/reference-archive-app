@@ -9,7 +9,9 @@ import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:reference_archive_app/data/app_database.dart';
 import 'package:reference_archive_app/models/enums.dart';
+import 'package:reference_archive_app/models/reference_item.dart';
 import 'package:reference_archive_app/models/taxonomy_item.dart';
+import 'package:reference_archive_app/repositories/local_reference_repository.dart';
 import 'package:reference_archive_app/repositories/local_taxonomy_repository.dart';
 import 'package:reference_archive_app/utils/id_generator.dart';
 
@@ -92,8 +94,8 @@ void main() {
     // 진짜로 지워졌다면 줄이 아예 없어야 하지만, 소프트 삭제라 남아 있어야 합니다.
     // 나중에 기기 간 동기화를 붙일 때 "지웠다"는 사실 자체가 필요하기 때문입니다.
     //
-    // 폴더만 골라서 셉니다. 데이터베이스를 새로 만들면 **기본 파트가 하나
-    // 들어있어서**(스키마 v2) 전체 줄 수를 세면 그것까지 딸려옵니다.
+    // 폴더만 골라서 셉니다. 다른 종류(카테고리 등)를 만든 적이 있다면
+    // 그것까지 딸려올 수 있어서 kind로 걸러서 셉니다.
     final List<TaxonomyItemRow> folderRows =
         await (db.select(db.taxonomyItems)..where(
               ($TaxonomyItemsTable t) =>
@@ -103,6 +105,37 @@ void main() {
 
     expect(folderRows.length, 1);
     expect(folderRows.first.deletedAt, isNotNull);
+  });
+
+  test('폴더를 지우면 그 폴더를 쓰던 레퍼런스는 폴더 없음이 된다', () async {
+    // (part_delete_test.dart의 "다른 분류는 예전 그대로다" 그룹에서 옮겨온
+    // 테스트입니다. 파트 자체는 없어졌지만, 폴더는 카테고리와 달리 연결
+    // 표가 아니라 레퍼런스 표에 직접 박힌 칼럼이라 이 동작만 따로 확인해둘
+    // 가치가 있습니다.) "폴더 없음"은 정상적인 상태이고 목록에도 그대로
+    // 보입니다.
+    final TaxonomyItem folder = makeItem(TaxonomyKind.folder, '인물');
+    await repository.save(folder);
+
+    final LocalReferenceRepository referenceRepository =
+        LocalReferenceRepository(db);
+    final DateTime now = DateTime.now().toUtc();
+    final ReferenceItem photo = ReferenceItem(
+      id: newId(),
+      type: ReferenceType.image,
+      title: '초상',
+      folderId: folder.id,
+      fileName: '${newId()}.jpg',
+      createdAt: now,
+      updatedAt: now,
+    );
+    await referenceRepository.save(photo);
+
+    await repository.delete(folder.id);
+
+    final ReferenceItem? reloaded = await referenceRepository.getById(
+      photo.id,
+    );
+    expect(reloaded!.folderId, isNull);
   });
 
   test('저장하면 updatedAt이 갱신되고 createdAt은 그대로다', () async {

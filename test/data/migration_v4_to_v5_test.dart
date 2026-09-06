@@ -21,7 +21,6 @@ import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:reference_archive_app/data/app_database.dart';
 import 'package:reference_archive_app/models/board.dart';
-import 'package:reference_archive_app/models/taxonomy_item.dart';
 import 'package:reference_archive_app/repositories/local_board_repository.dart';
 import 'package:sqlite3/sqlite3.dart';
 
@@ -134,7 +133,7 @@ void main() {
       raw.execute(
         'INSERT INTO taxonomy_items (id, kind, name, created_at, updated_at) '
         'VALUES (?, ?, ?, ?, ?)',
-        <Object>[defaultPartId, 'part', defaultPartName, now, now],
+        <Object>['old-default-part', 'part', '기본', now, now],
       );
     }
 

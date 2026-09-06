@@ -343,7 +343,12 @@ void main() {
     test('조건이 하나라도 있으면 hasAnyFilter가 true다', () {
       expect(const ReferenceQuery(searchText: '노을').hasAnyFilter, isTrue);
       expect(const ReferenceQuery(favoritesOnly: true).hasAnyFilter, isTrue);
-      expect(const ReferenceQuery(folderId: 'x').hasAnyFilter, isTrue);
+    });
+
+    test('폴더는 조건으로 치지 않는다', () {
+      // 폴더는 "거르는 조건"이 아니라 "지금 보고 있는 자리"입니다
+      // (lib/models/reference_query.dart의 hasAnyFilter 설명 참고).
+      expect(const ReferenceQuery(folderId: 'x').hasAnyFilter, isFalse);
     });
 
     test('공백만 있는 검색어는 조건으로 치지 않는다', () {

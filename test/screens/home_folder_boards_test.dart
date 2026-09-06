@@ -94,9 +94,8 @@ void main() {
     await tester.pumpWidget(makeApp());
     await tester.pumpAndSettle();
 
-    await tester.tap(find.widgetWithText(OutlinedButton, '폴더'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('겨울 프로젝트').last);
+    // 폴더는 필터 줄이 아니라 사이드바에서 고릅니다.
+    await tester.tap(find.text('겨울 프로젝트'));
     await tester.pumpAndSettle();
 
     expect(find.widgetWithText(OutlinedButton, '무드보드'), findsOneWidget);
@@ -124,9 +123,8 @@ void main() {
     await tester.pumpWidget(makeApp());
     await tester.pumpAndSettle();
 
-    await tester.tap(find.widgetWithText(OutlinedButton, '폴더'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('겨울 프로젝트').last);
+    // 폴더는 필터 줄이 아니라 사이드바에서 고릅니다.
+    await tester.tap(find.text('겨울 프로젝트'));
     await tester.pumpAndSettle();
 
     await tester.tap(find.widgetWithText(OutlinedButton, '무드보드'));
