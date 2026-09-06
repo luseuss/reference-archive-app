@@ -18,6 +18,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../models/board.dart';
+import '../models/enums.dart';
 import '../models/reference_item.dart';
 import '../utils/board_card_actions.dart' show BoardResizeCorner;
 import 'board_card_view.dart';
@@ -44,6 +45,10 @@ class BoardCanvas extends StatelessWidget {
     required this.onResizeUpdate,
     required this.onResizeEnd,
     required this.onRemoveCard,
+    this.playingCardId,
+    this.playerUrl,
+    this.onPlayPressed,
+    this.onStopPlaying,
   });
 
   /// 판에 놓인 카드들입니다. **아래에 깔린 것부터** 순서대로 들어있어야 합니다.
@@ -132,6 +137,23 @@ class BoardCanvas extends StatelessWidget {
   /// 카드를 판에서 내릴 때 알려줍니다.
   final ValueChanged<BoardCard> onRemoveCard;
 
+  /// 지금 이 판에서 그 자리에 바로 재생 중인 카드의 번호입니다. 재생 중인
+  /// 카드가 없으면 null입니다. (board_video_playback_controller.dart 참고)
+  final String? playingCardId;
+
+  /// 재생기 웹뷰가 열어야 할 주소입니다. [playingCardId]와 짝을 이룹니다.
+  final String? playerUrl;
+
+  /// 카드의 재생 버튼을 눌렀을 때 알려줍니다. [videoId]는 그 카드가
+  /// 보여주는 유튜브 영상 번호입니다.
+  ///
+  /// null이면 재생 버튼 자체를 안 보여줍니다 — 웹뷰 부품이 없는 환경에서
+  /// board_screen.dart가 이렇게 넘깁니다.
+  final void Function(BoardCard card, String videoId)? onPlayPressed;
+
+  /// 재생 중인 카드에서 "썸네일로 돌아가기"를 눌렀을 때 알려줍니다.
+  final ValueChanged<BoardCard>? onStopPlaying;
+
   /// 판 안의 생김새를 만들어 돌려줍니다.
   @override
   Widget build(BuildContext context) {
@@ -174,6 +196,12 @@ class BoardCanvas extends StatelessWidget {
     if (item == null) {
       return SizedBox.shrink(key: ValueKey<String>(card.id));
     }
+
+    final String? youtubeVideoId = item.youtubeVideoId;
+    final bool canPlayThisCard =
+        item.type == ReferenceType.youtube &&
+        youtubeVideoId != null &&
+        onPlayPressed != null;
 
     return Positioned(
       key: ValueKey<String>(card.id),
@@ -222,6 +250,14 @@ class BoardCanvas extends StatelessWidget {
             imagePath: imagePaths[card.referenceId],
             isActive: activeCardId == card.id,
             isSelected: selectedCardIds.contains(card.id),
+            isPlaying: playingCardId == card.id,
+            playerUrl: playingCardId == card.id ? playerUrl : null,
+            onPlayPressed: canPlayThisCard
+                ? () => onPlayPressed!(card, youtubeVideoId)
+                : null,
+            onStopPlaying: onStopPlaying == null
+                ? null
+                : () => onStopPlaying!(card),
             onRemove: () => onRemoveCard(card),
             onMeasured: (Size size) => onMeasured(card, size),
             onResizeStart: (Size currentSize, BoardResizeCorner corner) =>

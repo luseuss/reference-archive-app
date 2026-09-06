@@ -14,6 +14,7 @@ import 'dart:io';
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
 import '../models/reference_item.dart';
 import '../theme/app_metrics.dart';
@@ -40,6 +41,10 @@ class BoardCardView extends StatefulWidget {
     required this.onResizeEnd,
     this.isActive = false,
     this.isSelected = false,
+    this.isPlaying = false,
+    this.playerUrl,
+    this.onPlayPressed,
+    this.onStopPlaying,
   });
 
   /// 이 카드가 보여주는 레퍼런스입니다.
@@ -96,6 +101,25 @@ class BoardCardView extends StatefulWidget {
   /// **마우스를 올리지 않아도** 계속 보여야 합니다. 안 그러면 뭘 골랐는지
   /// 잊어버립니다.
   final bool isSelected;
+
+  /// 지금 이 카드가 **그 자리에서 유튜브 영상을 재생 중인지** 여부입니다.
+  ///
+  /// 유튜브 레퍼런스 카드에만 뜻이 있습니다. 판 안에서는 한 번에 하나만
+  /// 재생됩니다(board_video_playback_controller.dart 참고).
+  final bool isPlaying;
+
+  /// 재생기 웹뷰가 열어야 할 주소입니다. [isPlaying]이 참일 때만 씁니다.
+  final String? playerUrl;
+
+  /// 재생 버튼을 눌렀을 때 실행할 동작입니다. (유튜브 카드에만 보입니다)
+  ///
+  /// null이면 재생 버튼 자체를 안 보여줍니다 — 웹뷰 부품이 없는 환경
+  /// (리눅스 등)에서 board_screen.dart가 이렇게 넘깁니다.
+  final VoidCallback? onPlayPressed;
+
+  /// 재생을 멈추고 다시 썸네일로 돌아갈 때 실행할 동작입니다.
+  /// [isPlaying]이 참일 때만 보이는 버튼입니다.
+  final VoidCallback? onStopPlaying;
 
   @override
   State<BoardCardView> createState() => _BoardCardViewState();
@@ -200,6 +224,12 @@ class _BoardCardViewState extends State<BoardCardView> {
             // "높이를 알 수 없다"는 오류가 납니다. 겹치는 것들만 Positioned로 얹습니다.
             _buildImage(colors),
 
+            // 재생 버튼은 유튜브 카드에서 재생 중이 아닐 때만, 마우스를
+            // 올리지 않아도 항상 보입니다. 목록 화면의 재생 버튼과 같은
+            // 이유입니다 — "이건 영상이다"를 눈에 띄게 알려야 합니다.
+            if (widget.onPlayPressed != null && !widget.isPlaying)
+              _buildPlayButton(),
+
             // 제목·내리기·크기 조절은 마우스를 올렸을 때만 나타납니다.
             // 평소에도 떠 있으면 그림 여러 장을 늘어놓고 볼 때 눈이 어지럽습니다.
             if (isRaised) ...<Widget>[
@@ -228,6 +258,11 @@ class _BoardCardViewState extends State<BoardCardView> {
   /// 크기 조절이 **가로세로 비율을 고정한 채** 이뤄지기 때문입니다
   /// (board_screen.dart의 `_onResizeUpdate` 설명 참고).
   Widget _buildImage(ColorScheme colors) {
+    // 재생 중이면 썸네일 대신 진짜 재생기(웹뷰)를 보여줍니다.
+    if (widget.isPlaying && widget.playerUrl != null) {
+      return _buildPlayer(widget.playerUrl!);
+    }
+
     final String? path = widget.imagePath;
 
     if (path == null) {
@@ -271,6 +306,73 @@ class _BoardCardViewState extends State<BoardCardView> {
     );
   }
 
+  /// 유튜브 영상을 그 자리에서 실제로 재생하는 웹뷰입니다.
+  ///
+  /// ── 전체화면 재생 화면과 완전히 같은 방식입니다 ──
+  /// [url]은 board_video_playback_controller.dart가 LocalPlayerServer로
+  /// 띄운 내 컴퓨터 안 임시 주소입니다. 유튜브 재생기(embed)를 진짜
+  /// 주소 없이 그냥 열면 "오류 153"이 나기 때문에 꼭 필요합니다
+  /// (자세한 사정은 local_player_server.dart 맨 위 설명 참고). 이미
+  /// 검증된 방식을 그대로 재사용하는 것이라 여기서 새로 오류가 날
+  /// 걱정은 적습니다.
+  ///
+  /// **소리와 유튜브 기본 조작 버튼이 그대로 나옵니다** — 호버
+  /// 미리보기(reference_card_thumbnail.dart)와 달리 재생 버튼을 직접
+  /// 눌러서 튼 것이라, 소리 없이 조작도 못 하게 막아둘 이유가
+  /// 없습니다. 그래서 IgnorePointer로 감싸지 않습니다 — 눌러서
+  /// 일시정지·되감기·소리 조절을 할 수 있어야 합니다.
+  Widget _buildPlayer(String url) {
+    if (InAppWebViewPlatform.instance == null) {
+      // 재생 버튼을 애초에 웹뷰가 있을 때만 보여주므로 평소에는 여기
+      // 올 일이 없습니다. 그래도 혹시 몰라 자리표시자로 막아둡니다.
+      return const ColoredBox(color: Colors.black);
+    }
+
+    return InAppWebView(
+      // 다른 영상으로 바뀌면(주소가 바뀌면) 웹뷰를 새로 만들게 합니다.
+      key: ValueKey<String>(url),
+      initialUrlRequest: URLRequest(url: WebUri(url)),
+      initialSettings: InAppWebViewSettings(
+        // 재생 버튼을 눌러서 연 것이므로 바로 재생돼야 자연스럽습니다.
+        mediaPlaybackRequiresUserGesture: false,
+        javaScriptEnabled: true,
+        allowsInlineMediaPlayback: true,
+        iframeAllowFullscreen: true,
+      ),
+    );
+  }
+
+  /// 눌러서 그 자리에 바로 재생을 시작하는 버튼입니다. (유튜브 카드만)
+  ///
+  /// 목록 화면의 재생 버튼(reference_card_thumbnail.dart)과 같은
+  /// 모양입니다 — 마우스를 올리지 않아도 항상 보여서 "이건 영상이다"를
+  /// 알립니다.
+  Widget _buildPlayButton() {
+    return Positioned.fill(
+      child: Center(
+        child: Material(
+          color: Colors.transparent,
+          shape: const CircleBorder(),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: widget.onPlayPressed,
+            child: const Padding(
+              padding: EdgeInsets.all(6),
+              child: Icon(
+                Icons.play_circle_fill,
+                size: 48,
+                color: Colors.white,
+                shadows: <Shadow>[
+                  Shadow(color: Colors.black54, blurRadius: 10),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   /// 마우스를 올렸을 때 카드 아래쪽에 뜨는 제목 띠입니다.
   ///
   /// **내리기(×) 버튼도 여기에 들어있습니다.** 손잡이가 네 모서리 전부로
@@ -305,6 +407,25 @@ class _BoardCardViewState extends State<BoardCardView> {
                 style: AppText.meta.copyWith(color: Colors.white),
               ),
             ),
+
+            // 재생 중일 때만 보입니다. 눌러서 다시 썸네일로 돌아갑니다.
+            // "×"(내리기)와 헷갈리지 않도록 사진 아이콘을 씁니다 —
+            // 판에서 내리는 게 아니라 재생만 멈추는 것이라 뜻이 다릅니다.
+            if (widget.isPlaying)
+              InkWell(
+                onTap: widget.onStopPlaying,
+                borderRadius: BorderRadius.circular(4),
+                child: const Padding(
+                  padding: EdgeInsets.all(1),
+                  child: Icon(
+                    Icons.image_outlined,
+                    size: 14,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+
+            if (widget.isPlaying) const SizedBox(width: 8),
 
             // **레퍼런스를 지우는 버튼이 아닙니다.** 판에서만 내려가고
             // 목록에는 그대로 남습니다. 그래서 아이콘도 휴지통(🗑)이 아니라
