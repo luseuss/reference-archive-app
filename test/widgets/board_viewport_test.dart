@@ -45,6 +45,10 @@ void main() {
     WidgetTester tester, {
     int viewResetCount = 0,
     Rect content = testContent,
+    double? initialScale,
+    Offset? initialOffset,
+    void Function(double scale, Offset offset)? onViewChanged,
+    VoidCallback? onViewReset,
   }) async {
     tester.view.physicalSize = testViewport;
     tester.view.devicePixelRatio = 1.0;
@@ -58,6 +62,10 @@ void main() {
             canvasRect: testCanvas,
             contentBounds: content,
             viewResetCount: viewResetCount,
+            initialScale: initialScale,
+            initialOffset: initialOffset,
+            onViewChanged: onViewChanged,
+            onViewReset: onViewReset,
             // 마퀴·빈 곳 클릭은 이 파일에서 안 봅니다. 그건
             // board_screen_test.dart가 봅니다(카드가 있어야 뜻이 있는
             // 조작이라, 카드를 모르는 이 창만으로는 확인할 수 없습니다).
@@ -263,5 +271,105 @@ void main() {
     await openViewport(tester, content: Rect.zero);
 
     expect(shownScale(tester), closeTo(1.0, 0.01));
+  });
+
+  group('보던 자리를 기억해두기', () {
+    testWidgets('저장해둔 배율·자리를 넘기면 그 상태로 시작한다', (WidgetTester tester) async {
+      // fitScale(0.5)과 다른 값을 줘서, "전부 보기"가 아니라 정말
+      // 넘겨준 값으로 시작하는지 분명히 구분합니다.
+      await openViewport(
+        tester,
+        initialScale: 0.8,
+        initialOffset: const Offset(50, 30),
+      );
+
+      expect(shownScale(tester), closeTo(0.8, 0.01));
+
+      final Offset shown = shownRect(tester).topLeft;
+      final double offsetX = shown.dx - testCanvas.left * 0.8;
+      final double offsetY = shown.dy - testCanvas.top * 0.8;
+      expect(offsetX, closeTo(50, 1));
+      expect(offsetY, closeTo(30, 1));
+    });
+
+    testWidgets('판을 옮기면 onViewChanged가 지금 배율·자리로 불린다', (
+      WidgetTester tester,
+    ) async {
+      double? reportedScale;
+      Offset? reportedOffset;
+
+      await openViewport(
+        tester,
+        onViewChanged: (double scale, Offset offset) {
+          reportedScale = scale;
+          reportedOffset = offset;
+        },
+      );
+
+      await dragWithMiddleButton(
+        tester,
+        const Offset(30, 30),
+        const Offset(90, 60),
+      );
+
+      expect(reportedScale, closeTo(fitScale, 0.01));
+      // 이동값은 시작 상태(가운데 맞춤) + 끌어간 거리만큼입니다.
+      final Offset shown = shownRect(tester).topLeft;
+      final double offsetX = shown.dx - testCanvas.left * fitScale;
+      final double offsetY = shown.dy - testCanvas.top * fitScale;
+      expect(reportedOffset!.dx, closeTo(offsetX, 1));
+      expect(reportedOffset!.dy, closeTo(offsetY, 1));
+    });
+
+    testWidgets('확대·축소하면 onViewChanged가 불린다', (WidgetTester tester) async {
+      int callCount = 0;
+
+      await openViewport(
+        tester,
+        onViewChanged: (double scale, Offset offset) => callCount++,
+      );
+
+      await tester.tap(find.byTooltip('확대'));
+      await tester.pumpAndSettle();
+
+      expect(callCount, 1);
+    });
+
+    testWidgets('"카드 전부 보기"를 누르면 onViewReset이 불린다', (
+      WidgetTester tester,
+    ) async {
+      bool wasReset = false;
+
+      await openViewport(
+        tester,
+        onViewReset: () => wasReset = true,
+      );
+
+      await tester.tap(find.byTooltip('확대'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('판 전체 보기'));
+      await tester.pumpAndSettle();
+
+      expect(wasReset, isTrue);
+    });
+
+    testWidgets('빈 곳을 그냥 클릭하기만 하면 onViewChanged가 안 불린다', (
+      WidgetTester tester,
+    ) async {
+      // 판이 실제로 안 움직였는데도 저장 신호가 나가면 쓸데없는
+      // 저장이 쌓입니다.
+      int callCount = 0;
+
+      await openViewport(
+        tester,
+        onViewChanged: (double scale, Offset offset) => callCount++,
+      );
+
+      await tester.tapAt(const Offset(500, 300));
+      await tester.pumpAndSettle();
+
+      expect(callCount, 0);
+    });
   });
 }

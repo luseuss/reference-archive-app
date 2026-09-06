@@ -18,6 +18,8 @@ import 'package:reference_archive_app/screens/board_list_screen.dart';
 import 'package:reference_archive_app/screens/board_screen.dart';
 import 'package:reference_archive_app/utils/id_generator.dart';
 
+import 'package:shared_preferences/shared_preferences.dart';
+
 import '../fakes/fake_image_storage.dart';
 
 void main() {
@@ -26,6 +28,12 @@ void main() {
   late LocalReferenceRepository referenceRepository;
 
   setUp(() {
+    // 테스트 환경에서는 판을 탭하면(비팝업 플랫폼 경로) BoardScreen이
+    // 열리고, BoardScreen이 마지막으로 보던 확대·자리를
+    // SharedPreferences에서 읽으려 합니다. 가짜 값을 안 심어두면 진짜
+    // 플러그인 통로를 기다리다 테스트가 멈춥니다.
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+
     db = AppDatabase.forTesting(NativeDatabase.memory());
     boardRepository = LocalBoardRepository(db);
     referenceRepository = LocalReferenceRepository(db);

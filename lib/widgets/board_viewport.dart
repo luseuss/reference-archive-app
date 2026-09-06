@@ -73,6 +73,10 @@ class BoardViewport extends StatefulWidget {
     required this.onEmptyTap,
     required this.child,
     this.onReferenceDropped,
+    this.initialScale,
+    this.initialOffset,
+    this.onViewChanged,
+    this.onViewReset,
   });
 
   /// 카드를 그릴 자리입니다. (`boardCanvasRect`로 구합니다)
@@ -143,6 +147,31 @@ class BoardViewport extends StatefulWidget {
   final void Function(String referenceId, Offset canvasPosition)?
   onReferenceDropped;
 
+  /// 이 판을 열 때 처음부터 쓸 배율입니다. null이면 평소처럼 "카드
+  /// 전부 보기"로 시작합니다.
+  ///
+  /// 이 위젯은 "판이 뭔지" 모르므로(파일 위쪽 설명 참고), 지난번에
+  /// 보던 자리를 기억해뒀다가 다시 넣어주는 일은 board_screen.dart가
+  /// board_view_state_storage.dart로 읽어와서 여기 넘겨줍니다.
+  final double? initialScale;
+
+  /// 이 판을 열 때 처음부터 쓸 이동값입니다. [initialScale]과 항상 짝을
+  /// 이룹니다 — 배율만 있고 자리가 없으면(또는 그 반대) 뜻이 없습니다.
+  final Offset? initialOffset;
+
+  /// 판을 옮기거나(팬) 확대·축소를 마쳤을 때 지금 배율·자리를 알려줍니다.
+  ///
+  /// 화면을 확대·이동하는 도중(끄는 동안) 매 프레임 불리지 않습니다 —
+  /// 끝났을 때만 한 번 불립니다. null이면 아무에게도 안 알립니다(예:
+  /// 저장할 곳이 없는 화면).
+  final void Function(double scale, Offset offset)? onViewChanged;
+
+  /// "카드 전부 보기"(⛶)를 눌러 기본 상태로 되돌렸을 때 알려줍니다.
+  ///
+  /// 저장해뒀던 배율·자리가 있다면 이제 뜻이 없어졌으니 지우라는
+  /// 신호입니다.
+  final VoidCallback? onViewReset;
+
   @override
   State<BoardViewport> createState() => _BoardViewportState();
 }
@@ -168,6 +197,24 @@ class _BoardViewportState extends State<BoardViewport> {
   /// 레퍼런스를 이 판 위로 끌고 온 동안(아직 놓지는 않은 상태) 참입니다.
   /// 가장자리를 강조해서 "여기 놓으면 된다"를 알려주는 데만 씁니다.
   bool _isDropHighlighted = false;
+
+  /// 저장해둔 배율·자리가 있으면 그대로 시작합니다.
+  ///
+  /// [BoardViewport.initialScale]/[BoardViewport.initialOffset]이 둘 다
+  /// 있을 때만 씁니다. 하나만 있으면(정상적으로는 안 생기지만) 무시하고
+  /// 평소처럼 "카드 전부 보기"로 시작합니다 — _ensureFitted가 그 경우를
+  /// 이미 처리합니다.
+  @override
+  void initState() {
+    super.initState();
+
+    final double? scale = widget.initialScale;
+    final Offset? offset = widget.initialOffset;
+    if (scale != null && offset != null) {
+      _scale = scale;
+      _offset = offset;
+    }
+  }
 
   /// 부모가 [BoardViewport.viewResetCount]를 올리면 보던 화면을 되돌립니다.
   ///
@@ -313,14 +360,29 @@ class _BoardViewportState extends State<BoardViewport> {
     widget.onMarqueeUpdate(Rect.fromPoints(a, b));
   }
 
-  /// 빈 곳에서 손을 뗐을 때 실행됩니다. 마퀴 중이었으면 마무리합니다.
+  /// 빈 곳에서 손을 뗐을 때 실행됩니다. 마퀴 중이었으면 마무리하고,
+  /// 아니었으면(=판을 옮긴 것이면) 지금 자리를 알립니다.
   void _onEmptyDragEnd(DragEndDetails details) {
     if (!_marquee.active) {
+      _notifyViewChanged();
       return;
     }
 
     setState(_marquee.finish);
     widget.onMarqueeEnd();
+  }
+
+  /// 지금 배율·자리를 [BoardViewport.onViewChanged]로 알립니다.
+  ///
+  /// 판을 옮기거나(_onEmptyDragEnd) 확대·축소를 마쳤을 때(_zoomTo)만
+  /// 부릅니다 — 끄는 도중 매 프레임 부르면 저장 요청이 쉴 새 없이
+  /// 나갑니다.
+  void _notifyViewChanged() {
+    final double? scale = _scale;
+    final Offset? offset = _offset;
+    if (scale != null && offset != null) {
+      widget.onViewChanged?.call(scale, offset);
+    }
   }
 
   /// 배율을 [nextScale]로 바꿉니다. [focalPoint] 자리는 그대로 있게 합니다.
@@ -353,6 +415,8 @@ class _BoardViewportState extends State<BoardViewport> {
         widget.contentBounds,
       );
     });
+
+    _notifyViewChanged();
   }
 
   /// 카드 전부가 보이는 상태로 되돌립니다. (⛶ 버튼)
@@ -367,6 +431,11 @@ class _BoardViewportState extends State<BoardViewport> {
       _scale = null;
       _offset = null;
     });
+
+    // 저장해뒀던 배율·자리가 있었다면 이제 뜻이 없어졌습니다. 안 지우면
+    // 다음에 이 판을 열었을 때 방금 되돌린 "전부 보기"가 아니라 예전
+    // 자리로 다시 돌아가 버립니다.
+    widget.onViewReset?.call();
   }
 
   /// 마우스 휠을 굴렸을 때 확대·축소합니다.
