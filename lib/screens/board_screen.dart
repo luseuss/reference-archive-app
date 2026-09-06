@@ -322,6 +322,16 @@ class _BoardScreenState extends State<BoardScreen> {
       });
 
       await _interaction.addCardsAt(outcome.savedIds, canvasPosition);
+
+      // 메인 창(레퍼런스 목록)에도 새 레퍼런스가 생겼다고 알립니다.
+      // 이 판(팝업 창)의 화면은 방금 위에서 이미 새로 고쳤지만, 메인
+      // 창은 다른 엔진이라 그 사실을 전혀 모릅니다 — 알리지 않으면
+      // 데이터베이스엔 저장됐는데도 메인 화면에는 앱을 다시 켜야만
+      // 보이는 버그가 됩니다(실제로 겪었습니다). 상대 창이 없으면
+      // (팝업이 아니면) 조용히 실패합니다.
+      if (supportsBoardPopupWindow) {
+        await BoardWindowSync.notifyReferencesChanged();
+      }
     }
 
     if (!mounted) {

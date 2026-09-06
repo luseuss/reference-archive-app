@@ -27,6 +27,7 @@ import '../repositories/reference_repository.dart';
 import '../repositories/taxonomy_repository.dart';
 import '../services/app_settings.dart';
 import '../services/archive_backup_service.dart';
+import '../services/board_window_sync.dart';
 import '../services/reference_importer.dart';
 import '../services/image_source.dart';
 import '../services/image_storage.dart';
@@ -198,6 +199,16 @@ class _HomeScreenState extends State<HomeScreen> {
     _loadTaxonomyOptions();
     _loadItems();
 
+    // 무드보드(팝업 창)에서 새 레퍼런스를 만들면 이 신호를 받아 목록을
+    // 다시 읽습니다. 팝업은 다른 엔진이라 이 화면이 그 사실을 저절로
+    // 알 수 없어서, 알려주지 않으면 데이터베이스엔 저장됐는데도
+    // 앱을 다시 켜야만 화면에 보이는 버그가 됩니다(실제로 겪었습니다).
+    // 데스크톱이 아니면(팝업 자체가 없으면) 신호도 안 오므로 등록할
+    // 필요가 없습니다.
+    if (supportsBoardPopupWindow) {
+      BoardWindowSync.setReferencesChangedListener(_loadItems);
+    }
+
     // 예전에 만들어져서 아직 pHash가 없는 레퍼런스를 화면 뒤에서 조용히
     // 채웁니다. 새로 추가하는 레퍼런스는 들여오는 순간 이미 계산되므로
     // (services/reference_importer.dart) 여기서는 그 전에 만들어진
@@ -216,6 +227,9 @@ class _HomeScreenState extends State<HomeScreen> {
   /// 이미 없어진 화면을 고치려다 오류를 냅니다.
   @override
   void dispose() {
+    if (supportsBoardPopupWindow) {
+      BoardWindowSync.setReferencesChangedListener(null);
+    }
     _searchDebounce?.cancel();
     _selection.dispose();
     _hoverPreview.dispose();

@@ -47,6 +47,7 @@ class BoardWindowSync {
   static void Function(String boardId)? _onCardsChanged;
   static void Function(String boardId)? _onShowBoard;
   static void Function()? _onPopupClosed;
+  static void Function()? _onReferencesChanged;
 
   /// 이 창(엔진)에서 신호를 받을 준비를 합니다. 여러 번 불러도
   /// 안전합니다(두 번째부터는 조용히 넘어갑니다).
@@ -64,6 +65,8 @@ class BoardWindowSync {
           _onShowBoard?.call(call.arguments as String);
         case 'popupClosed':
           _onPopupClosed?.call();
+        case 'referencesChanged':
+          _onReferencesChanged?.call();
       }
       return null;
     });
@@ -98,6 +101,21 @@ class BoardWindowSync {
     _onPopupClosed = listener;
   }
 
+  /// "레퍼런스 목록이 바뀌었다"는 신호를 받을 콜백을 꽂습니다. null을
+  /// 넘기면 뺍니다.
+  ///
+  /// ── 왜 필요한가 (2026-09-07 발견한 버그) ──
+  /// 무드보드(팝업 창)에 탐색기·브라우저에서 파일을 끌어다 놓으면 새
+  /// 레퍼런스가 만들어지는데, 이건 카드 배치(`cardsChanged`)와는 다른
+  /// 신호입니다. 메인 창의 레퍼런스 목록(`home_screen.dart`)은 그
+  /// 사실을 알 길이 없어서, 데이터베이스엔 이미 저장됐는데도 메인
+  /// 화면에는 **앱을 다시 켜야만** 보였습니다. 메인 창(`home_screen.dart`)만
+  /// 이 신호를 씁니다 — 팝업 쪽은 레퍼런스 목록 화면이 없어서 받을
+  /// 일이 없습니다.
+  static void setReferencesChangedListener(void Function()? listener) {
+    _onReferencesChanged = listener;
+  }
+
   /// 상대 창에게 "이 판이 바뀌었으니 다시 읽어라"고 알립니다.
   ///
   /// 상대 창이 없으면(팝업을 안 띄웠으면) 조용히 실패합니다 — 알릴
@@ -111,6 +129,11 @@ class BoardWindowSync {
 
   /// 메인 창에게 "이 팝업 창이 방금 닫혔다"고 알립니다. (팝업 → 메인 전용)
   static Future<void> notifyPopupClosed() => _invoke('popupClosed', '');
+
+  /// 메인 창에게 "레퍼런스 목록이 바뀌었으니 다시 읽어라"고 알립니다.
+  /// (팝업 → 메인 전용 — 무드보드가 새 레퍼런스를 만들었을 때 부릅니다)
+  static Future<void> notifyReferencesChanged() =>
+      _invoke('referencesChanged', '');
 
   static Future<void> _invoke(String method, String boardId) async {
     ensureInitialized();

@@ -4969,3 +4969,58 @@ PR #54)가 이 상수를 그대로 가져다 쓰고 있어서 **한 곳만 고�
 - 드롭 자체는 자동화 테스트로 확인할 수 없는 부류라, `flutter run -d
   windows`로 의뢰인이 직접 확인해야 합니다 — 이전에 재현됐던 그
   웹 이미지를 메인 화면과 무드보드 양쪽에 끌어다 놓아 바로 들어가는지.
+
+### 함께 고친 세 번째 버그: 무드보드에서 만든 새 레퍼런스가 메인 화면에는 재시작해야 보였다
+
+위 htmlText 버그를 고쳤는데도 의뢰인이 "무드보드로 바로 넣으면 레퍼런스
+칸에 데이터가 없어서 안 받아지는 것 같다"고 다시 보고했습니다.
+살펴보니 실은 **저장은 이미 잘 되고 있었고**, 메인 창이 그 사실을 몰랐던
+것이었습니다(재시작하면 보였다는 것 자체가 "저장은 성공했다"는 증거였습니다).
+
+### 원인
+
+무드보드는 항상 팝업(별도 OS 창 = 별도 Flutter 엔진)으로 뜹니다. 팝업이
+외부 드롭으로 새 레퍼런스를 만들면 같은 sqlite 파일에는 잘 저장되지만,
+메인 창의 레퍼런스 목록(`home_screen.dart`의 `_items`)은 다른 엔진의
+메모리에 있는 값이라 그 사실을 전혀 알 방법이 없습니다. 카드 배치가
+바뀔 때 쓰는 `BoardWindowSync.notifyCardsChanged`와 똑같은 사정인데,
+"레퍼런스 목록 자체가 바뀌었다"는 신호는 그때까지 없었습니다.
+
+### 고침
+
+`board_window_sync.dart`에 `referencesChanged` 신호를 새로
+추가했습니다 — 기존 `cardsChanged`/`showBoard`/`popupClosed`와 나란한
+네 번째 신호입니다.
+
+- `board_screen.dart`의 `_onExternalFilesDropped()`가 새 레퍼런스를
+  만들 때마다 `BoardWindowSync.notifyReferencesChanged()`를 부릅니다.
+- `home_screen.dart`가 `initState()`에서
+  `BoardWindowSync.setReferencesChangedListener(_loadItems)`로 이
+  신호를 받으면 목록을 다시 읽고, `dispose()`에서 리스너를 뺍니다.
+
+`cardsChanged`를 그대로 재사용하지 않은 이유: 그 신호는 "이 판의 카드가
+바뀌었다"는 뜻이라 다른 판(팝업)이나 그 판을 안 보는 화면(메인 목록)에는
+뜻이 없습니다. 레퍼런스 목록 자체가 바뀌는 것은 판과 무관한 별개의
+사건이라 신호도 따로 둬야 앞뒤가 맞습니다.
+
+### 나중에 이 부분을 고치려면 어디를 보면 되나 (추가)
+
+| 고치고 싶은 것 | 봐야 할 곳 |
+|---|---|
+| 신호를 보내고 받는 통로 | `board_window_sync.dart`의 `referencesChanged` |
+| 무드보드가 신호를 보내는 곳 | `board_screen.dart`의 `_onExternalFilesDropped()` |
+| 메인 화면이 신호를 받아 목록을 다시 읽는 곳 | `home_screen.dart`의 `initState()`/`dispose()` |
+
+팝업(무드보드)에서 메인 창의 다른 화면에 영향을 주는 기능을 추가할
+때는, 그 데이터가 "이 판"에 관한 것인지 "레퍼런스 전체 목록"에 관한
+것인지부터 가리고, 새로운 성격의 변화라면 이 방식(새 신호 추가)을
+그대로 따르세요.
+
+### 어떻게 테스트했나 (추가)
+
+- `flutter analyze` 문제 없음, `flutter test` 652건 전부 통과(회귀 없음).
+- 창 사이 신호는 자동화 테스트로 확인할 수 없는 부류라(desktop_multi_window가
+  진짜 두 번째 창을 띄워야 합니다 — PR #48과 같은 사정), `flutter run -d
+  windows`로 의뢰인이 직접 확인해야 합니다 — 무드보드에 사진/유튜브
+  링크를 끌어다 놓은 뒤, 메인 화면(레퍼런스 목록)에도 다시 켜지 않고
+  바로 나타나는지.
