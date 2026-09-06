@@ -4661,3 +4661,74 @@ null)입니다.** null이면 "데이터 관리" 구역 자체가 안 보입니�
 - 복원은 지금 열려 있는 화면에 실시간으로 반영되지 않습니다. 앱을
   다시 켜야 합니다.
 - 백업 파일에 앱 설정(밝기 모드·이름)은 안 들어갑니다.
+
+---
+
+## PR #53 — 무드보드 확대·이동 상태를 판마다 기억한다
+
+4단계에서 "저장 구조를 또 바꿔야 해서 미뤘다"고 CLAUDE.md에 남겨둔
+항목입니다. 같은 판을 자주 오가며 작업할 때, 판을 나갔다 올 때마다
+다시 "카드 전부 보기"로 돌아가서 원하는 자리를 매번 다시 확대해
+찾아가야 하는 게 불편했습니다.
+
+### 확정된 동작
+
+- 판을 옮기거나(팬) 확대·축소한 뒤 그 판을 닫았다가 다시 열면, 마지막
+  으로 보던 배율·자리 그대로 열립니다.
+- **"카드 전부 보기"(⛶)를 누르면 저장해둔 값이 지워집니다.** 사용자가
+  직접 기본값으로 되돌린 것이므로, 다음에 열 때도 예전 자리가 아니라
+  전부 보기로 시작해야 자연스럽습니다.
+
+### 왜 데이터베이스가 아니라 SharedPreferences인가
+
+확대 배율·화면 위치는 "이 판에 무엇이 있는가"가 아니라 "지금 화면을
+어떻게 보고 있는가"라는 성격입니다. `board_window_controller.dart`의
+"항상 위" 기본값과 같은 이유로, 저장 구조(마이그레이션)를 새로 만들
+만큼 무게 있는 데이터가 아니라고 보고 SharedPreferences에 판 번호
+(`boardId`)별로 저장했습니다. **저장 구조는 안 바뀌었습니다. 마이그
+레이션 없음.**
+
+### 어떻게 했나
+
+`lib/widgets/board_view_state_storage.dart`(새 파일)에
+`loadBoardViewState`/`saveBoardViewState`/`clearBoardViewState`를
+만들었습니다. 판 옮기기·확대·축소가 **끝났을 때만** 저장합니다 —
+끄는 도중 매 프레임 저장하면 요청이 쉴 새 없이 나갑니다
+(`board_interaction_controller.dart`의 `onSaved`와 같은 원칙).
+
+**`board_viewport.dart`는 여전히 "판이 뭔지 모릅니다."** 이 파일이
+처음부터 지켜온 원칙(카드가 뭔지 모른다)을 그대로 지켜, `boardId`를
+이 위젯에 직접 넘기지 않았습니다. 대신 선택적 필드 넷
+(`initialScale`/`initialOffset`/`onViewChanged`/`onViewReset`)만
+추가해 값과 콜백으로 주고받습니다 — 판 번호로 저장하고 불러오는
+실제 작업은 `board_screen.dart`가 판을 읽어올 때(`_loadBoard`) 함께
+합니다. 저장된 적이 없으면 기존과 똑같이 "카드 전부 보기"로
+시작합니다.
+
+### 함께 고친 것: 테스트에 SharedPreferences mock 추가
+
+`board_screen_test.dart`/`board_list_screen_test.dart`에
+`SharedPreferences.setMockInitialValues`를 추가해야 했습니다.
+`board_screen.dart`가 이제 판을 열 때마다 SharedPreferences를
+읽으므로, 가짜 값이 없으면 진짜 플러그인 통로를 기다리다
+`pumpAndSettle`이 멈췄습니다(실제로 겪고 고쳤습니다 —
+`local_image_storage_test.dart`의 path_provider 사정과 같은 종류의
+함정입니다).
+
+### 나중에 이 부분을 고치려면 어디를 보면 되나
+
+| 고치고 싶은 것 | 봐야 할 곳 |
+|---|---|
+| 저장/불러오기/지우기 규칙 | `board_view_state_storage.dart` |
+| 언제 저장하는지(팬·확대·축소 끝) | `board_viewport.dart`의 `_notifyViewChanged()`를 부르는 곳들 |
+| 판을 열 때 저장된 값을 넘겨주는 곳 | `board_screen.dart`의 `_loadBoard()`/`_saveViewState()`/`_clearViewState()` |
+
+### 어떻게 테스트했나
+
+- `flutter analyze` 문제 없음, `flutter test` **643건 전부 통과**
+  (기존 633건 + 새 10건: 저장/불러오기 5건, `BoardViewport`의 새
+  콜백 5건).
+- `flutter build windows` 성공.
+- `flutter run -d windows`로 의뢰인이 직접 확인: 판을 옮기고
+  확대·축소한 뒤 닫았다 다시 열어서 그 자리 그대로인지, "카드 전부
+  보기"를 누른 뒤 다시 열었을 때 전부 보기로 시작하는지 확인.
