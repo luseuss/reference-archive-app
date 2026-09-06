@@ -14,7 +14,6 @@ import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:reference_archive_app/data/app_database.dart';
 import 'package:reference_archive_app/models/reference_item.dart';
-import 'package:reference_archive_app/models/taxonomy_item.dart';
 import 'package:reference_archive_app/repositories/local_reference_repository.dart';
 import 'package:reference_archive_app/services/reference_importer.dart';
 
@@ -52,28 +51,21 @@ void main() {
     imageSource.hasClipboardImage = true;
     imageSource.bytes = Uint8List.fromList(<int>[1, 2, 3]);
 
-    final ImportOutcome outcome = await importer.importFromClipboard(
-      partId: defaultPartId,
-    );
+    final ImportOutcome outcome = await importer.importFromClipboard();
 
     final List<ReferenceItem> items = await repository.getAll();
     expect(outcome.savedIds, <String>[items.single.id]);
   });
 
   test('클립보드에 이미지가 없으면 savedIds가 비어있다', () async {
-    final ImportOutcome outcome = await importer.importFromClipboard(
-      partId: defaultPartId,
-    );
+    final ImportOutcome outcome = await importer.importFromClipboard();
 
     expect(outcome.savedIds, isEmpty);
     expect(outcome.failedCount, 1);
   });
 
   test('유튜브 영상을 들여오면 savedIds에 그 번호가 들어있다', () async {
-    final ImportOutcome outcome = await importer.importYoutube(
-      'dQw4w9WgXcQ',
-      partId: defaultPartId,
-    );
+    final ImportOutcome outcome = await importer.importYoutube('dQw4w9WgXcQ');
 
     final List<ReferenceItem> items = await repository.getAll();
     expect(outcome.savedIds, <String>[items.single.id]);
@@ -82,9 +74,7 @@ void main() {
   test('savedCount는 항상 savedIds의 개수와 같다', () async {
     imageSource.hasClipboardImage = true;
 
-    final ImportOutcome outcome = await importer.importFromClipboard(
-      partId: defaultPartId,
-    );
+    final ImportOutcome outcome = await importer.importFromClipboard();
 
     expect(outcome.savedCount, outcome.savedIds.length);
   });

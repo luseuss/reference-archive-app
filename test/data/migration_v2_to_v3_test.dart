@@ -18,12 +18,9 @@ import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:reference_archive_app/data/app_database.dart';
 import 'package:reference_archive_app/models/board.dart';
-import 'package:reference_archive_app/models/enums.dart';
 import 'package:reference_archive_app/models/reference_item.dart';
-import 'package:reference_archive_app/models/taxonomy_item.dart';
 import 'package:reference_archive_app/repositories/local_board_repository.dart';
 import 'package:reference_archive_app/repositories/local_reference_repository.dart';
-import 'package:reference_archive_app/repositories/local_taxonomy_repository.dart';
 import 'package:sqlite3/sqlite3.dart';
 
 void main() {
@@ -111,14 +108,14 @@ void main() {
       raw.execute(
         'INSERT INTO "references" (id, title, type, part_id, created_at, updated_at) '
         'VALUES (?, ?, ?, ?, ?, ?)',
-        <Object>['old-1', '예전 사진', 'image', defaultPartId, now, now],
+        <Object>['old-1', '예전 사진', 'image', 'old-default-part', now, now],
       );
 
       // v2 파일에는 기본 파트가 이미 들어 있습니다.
       raw.execute(
         'INSERT INTO taxonomy_items (id, kind, name, created_at, updated_at) '
         'VALUES (?, ?, ?, ?, ?)',
-        <Object>[defaultPartId, 'part', defaultPartName, now, now],
+        <Object>['old-default-part', 'part', '기본', now, now],
       );
     } else {
       raw.execute(
@@ -152,7 +149,6 @@ void main() {
 
     expect(items.length, 1);
     expect(items.first.title, '예전 사진');
-    expect(items.first.partId, defaultPartId, reason: '파트 연결이 그대로여야 합니다');
   });
 
   test('무드보드 표가 새로 만들어져서 판을 저장할 수 있다', () async {
@@ -231,15 +227,6 @@ void main() {
 
     final AppDatabase db = AppDatabase.forTesting(NativeDatabase(dbFile));
     addTearDown(db.close);
-
-    // v2가 해줘야 할 일 — 예전 레퍼런스가 기본 파트에 들어가 있어야 합니다.
-    final List<ReferenceItem> items = await LocalReferenceRepository(db)
-        .getAll();
-    expect(items.first.partId, defaultPartId, reason: 'v2 단계가 건너뛰어졌습니다');
-
-    final List<TaxonomyItem> parts = await LocalTaxonomyRepository(db)
-        .getAll(TaxonomyKind.part);
-    expect(parts.length, 1);
 
     // v3이 해줘야 할 일 — 무드보드 표가 있어야 합니다.
     await LocalBoardRepository(db).saveBoard(makeBoard('겨울 무드'));

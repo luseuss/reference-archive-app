@@ -111,7 +111,10 @@ class ReferenceImporter {
   );
 
   /// 파일 고르기 창을 띄워 이미지를 들여옵니다.
-  Future<ImportOutcome> importFromFilePicker({required String partId}) async {
+  ///
+  /// [folderId]는 새 레퍼런스가 들어갈 폴더입니다. null이면 폴더 없음
+  /// (미분류)으로 들어갑니다 — 파트와 달리 폴더는 없어도 정상 상태입니다.
+  Future<ImportOutcome> importFromFilePicker({String? folderId}) async {
     // 여러 장을 한 번에 고를 수 있습니다. 사용자가 취소하면 null이 돌아옵니다.
     //
     // withData: true를 주면 파일 내용을 메모리에 함께 담아줍니다.
@@ -132,7 +135,7 @@ class ReferenceImporter {
     final List<String> savedIds = <String>[];
 
     for (final PlatformFile file in picked.files) {
-      final String? savedId = await _saveOneFile(file, partId);
+      final String? savedId = await _saveOneFile(file, folderId);
       if (savedId != null) {
         savedIds.add(savedId);
       } else {
@@ -154,7 +157,7 @@ class ReferenceImporter {
   /// 여기서는 그 결과를 저장하는 일만 합니다.
   Future<ImportOutcome> importFromDrop(
     PerformDropEvent event, {
-    required String partId,
+    String? folderId,
   }) async {
     int failedCount = 0;
     String? lastError;
@@ -172,7 +175,7 @@ class ReferenceImporter {
       // (자세한 이유는 DroppedItemReader.youtubeVideoIdOf() 설명 참고)
       final String? videoId = await _droppedItemReader.youtubeVideoIdOf(reader);
       if (videoId != null) {
-        final String? savedId = await saveYoutube(videoId, partId: partId);
+        final String? savedId = await saveYoutube(videoId, folderId: folderId);
         if (savedId != null) {
           savedIds.add(savedId);
         } else {
@@ -192,7 +195,7 @@ class ReferenceImporter {
 
       final String? savedId = await _saveImageBytes(
         fetched.bytes!,
-        partId: partId,
+        folderId: folderId,
         title: fetched.suggestedTitle,
       );
       if (savedId != null) {
@@ -224,7 +227,7 @@ class ReferenceImporter {
   ///   3. 글자가 **이미지 주소**면 내려받습니다. (브라우저에서 "이미지 주소 복사")
   ///
   /// 사용자는 둘 중 무엇을 복사했는지 신경 쓰지 않아도 되게 하려는 것입니다.
-  Future<ImportOutcome> importFromClipboard({required String partId}) async {
+  Future<ImportOutcome> importFromClipboard({String? folderId}) async {
     ImageFetchResult fetched = await imageSource.fetchFromClipboard();
 
     // 주소를 실제로 받아보려 시도했는지 기록합니다.
@@ -242,7 +245,7 @@ class ReferenceImporter {
       // 유튜브 페이지를 내려받아 봐야 HTML이라 "그림이 아니다"로 실패합니다.
       final String? videoId = text == null ? null : youtubeVideoIdFrom(text);
       if (videoId != null) {
-        return importYoutube(videoId, partId: partId);
+        return importYoutube(videoId, folderId: folderId);
       }
 
       if (text != null && looksLikeUrl(text)) {
@@ -265,7 +268,7 @@ class ReferenceImporter {
 
     final String? savedId = await _saveImageBytes(
       fetched.bytes!,
-      partId: partId,
+      folderId: folderId,
       title: fetched.suggestedTitle,
     );
 
@@ -280,9 +283,9 @@ class ReferenceImporter {
   /// 영상 번호로 유튜브 레퍼런스를 들여옵니다.
   Future<ImportOutcome> importYoutube(
     String videoId, {
-    required String partId,
+    String? folderId,
   }) async {
-    final String? savedId = await saveYoutube(videoId, partId: partId);
+    final String? savedId = await saveYoutube(videoId, folderId: folderId);
 
     return ImportOutcome(
       savedCount: savedId != null ? 1 : 0,
@@ -318,7 +321,7 @@ class ReferenceImporter {
   /// 나중에 재생할 수 있고, 제목은 편집 화면에서 직접 적을 수 있습니다.
   ///
   /// 성공하면 새로 만든 레퍼런스의 번호, 실패하면 null을 돌려줍니다.
-  Future<String?> saveYoutube(String videoId, {required String partId}) async {
+  Future<String?> saveYoutube(String videoId, {String? folderId}) async {
     try {
       final YoutubeVideoInfo info = await youtubeInfoSource.fetch(videoId);
 
@@ -337,7 +340,7 @@ class ReferenceImporter {
           type: ReferenceType.youtube,
           title: info.title,
           fileName: savedFileName,
-          partId: partId,
+          folderId: folderId,
           youtubeVideoId: videoId,
           // 썸네일이 있으면 그 자리에서 dHash도 계산해둡니다. 시각적
           // 유사도(services/utils/similarity.dart)에 씁니다.
@@ -358,7 +361,7 @@ class ReferenceImporter {
   /// 고른 파일 하나를 줄여서 저장하고 레퍼런스로 등록합니다.
   ///
   /// 성공하면 새로 만든 레퍼런스의 번호, 실패하면 null을 돌려줍니다.
-  Future<String?> _saveOneFile(PlatformFile file, String partId) async {
+  Future<String?> _saveOneFile(PlatformFile file, String? folderId) async {
     final String originalName = file.name;
     try {
       // withData: true로 골랐으므로 bytes에 내용이 들어있습니다.
@@ -375,7 +378,7 @@ class ReferenceImporter {
 
       return await _saveImageBytes(
         bytes,
-        partId: partId,
+        folderId: folderId,
         title: _stripExtension(originalName),
       );
     } catch (error) {
@@ -395,7 +398,7 @@ class ReferenceImporter {
   /// 성공하면 새로 만든 레퍼런스의 번호, 실패하면 null을 돌려줍니다.
   Future<String?> _saveImageBytes(
     Uint8List bytes, {
-    required String partId,
+    String? folderId,
     String? title,
   }) async {
     try {
@@ -416,7 +419,7 @@ class ReferenceImporter {
           // 목록에서는 "(제목 없음)"으로 보이고 편집 화면에서 고칠 수 있습니다.
           title: title ?? '',
           fileName: savedFileName,
-          partId: partId,
+          folderId: folderId,
           // 원본 바이트로 dHash를 계산해둡니다. 저장하며 줄인 크기가
           // 아니라 원본을 쓰는 이유: image_hash.dart가 9x8까지 average(평균)
           // 방식으로 줄여서 비교하므로, 원본이든 나중에 저장된 1600px

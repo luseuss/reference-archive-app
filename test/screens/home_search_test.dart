@@ -202,9 +202,7 @@ void main() {
       await tester.pumpWidget(makeApp());
       await tester.pumpAndSettle();
 
-      // 필터 메뉴를 열고 폴더를 고릅니다.
-      await tester.tap(find.widgetWithText(OutlinedButton, '폴더'));
-      await tester.pumpAndSettle();
+      // 폴더는 필터 줄이 아니라 사이드바에서 고릅니다.
       await tester.tap(find.text('인물').last);
       await tester.pumpAndSettle();
 
@@ -220,7 +218,6 @@ void main() {
       await tester.pumpAndSettle();
 
       // 눌러도 텅 빈 메뉴만 뜨면 사용자가 당황하므로 아예 숨깁니다.
-      expect(find.widgetWithText(OutlinedButton, '폴더'), findsNothing);
       expect(find.widgetWithText(OutlinedButton, '태그'), findsNothing);
     });
 

@@ -173,7 +173,7 @@ void main() {
     });
 
     testWidgets('사이드바에서 무드보드 목록으로 갈 수 있다', (WidgetTester tester) async {
-      // 무드보드는 파트 목록과 성격이 달라서 한 칸 띄워 따로 뒀습니다.
+      // 무드보드는 폴더 목록과 성격이 달라서 한 칸 띄워 따로 뒀습니다.
       // 그 자리가 실제로 무드보드 화면으로 이어지는지 확인합니다.
       await openApp(tester, size: wide);
 

@@ -1,9 +1,9 @@
-// 레퍼런스 편집 화면에서 "분류 항목(파트·폴더·카테고리·태그·프로젝트)을
+// 레퍼런스 편집 화면에서 "분류 항목(폴더·카테고리·태그·프로젝트)을
 // 고르는 부분"의 상태와 동작을 모은 곳입니다.
 //
 // ── 왜 reference_detail_screen.dart에서 뺐나 ──
 // home_selection_controller.dart를 뺀 것과 같은 이유입니다(CLAUDE.md
-// "밀린 정리거리" 참고). "지금 무엇을 골랐는지" 상태 다섯 개(파트·폴더·
+// "밀린 정리거리" 참고). "지금 무엇을 골랐는지" 상태 네 개(폴더·
 // 카테고리·태그·프로젝트)와, 그것들을 불러오고 바꾸는 동작이 함께 다녀야
 // 하는데, 화면 하나에 다 있으면 "이 화면이 하는 일" 중 어디까지가 분류
 // 항목 이야기인지 한눈에 안 들어옵니다.
@@ -44,9 +44,6 @@ class ReferenceTaxonomyEditController extends ChangeNotifier {
   String? get categoryId => _categoryId;
   String? _categoryId;
 
-  String? get partId => _partId;
-  String? _partId;
-
   List<String> get tagIds => _tagIds;
   List<String> _tagIds = <String>[];
 
@@ -61,7 +58,6 @@ class ReferenceTaxonomyEditController extends ChangeNotifier {
   void initFrom(ReferenceItem item) {
     _folderId = item.folderId;
     _categoryId = item.categoryId;
-    _partId = item.partId;
     _tagIds = List<String>.from(item.tagIds);
     _projectIds = List<String>.from(item.projectIds);
   }
@@ -112,12 +108,6 @@ class ReferenceTaxonomyEditController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// 파트를 고릅니다. null이면 "없음"입니다.
-  void setPart(String? id) {
-    _partId = id;
-    notifyListeners();
-  }
-
   /// 태그 목록을 통째로 바꿉니다.
   void setTags(List<String> ids) {
     _tagIds = ids;
@@ -133,7 +123,7 @@ class ReferenceTaxonomyEditController extends ChangeNotifier {
   /// [kind] 종류의 분류 항목을 새로 만든 직후 부릅니다.
   ///
   /// 목록을 다시 불러오고, 방금 만든 항목을 바로 골라줍니다. 또 고르게
-  /// 하면 번거롭습니다. 파트·폴더·카테고리는 하나만 고르는 값이라 그냥
+  /// 하면 번거롭습니다. 폴더·카테고리는 하나만 고르는 값이라 그냥
   /// 바꿔치기하고, 태그·프로젝트는 여러 개를 고르는 값이라 목록 맨 뒤에
   /// 더합니다.
   Future<void> handleCreated(
@@ -148,9 +138,6 @@ class ReferenceTaxonomyEditController extends ChangeNotifier {
     }
 
     switch (kind) {
-      case TaxonomyKind.part:
-        _partId = created.id;
-        break;
       case TaxonomyKind.folder:
         _folderId = created.id;
         break;

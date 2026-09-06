@@ -16,12 +16,9 @@ import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:reference_archive_app/data/app_database.dart';
 import 'package:reference_archive_app/models/board.dart';
-import 'package:reference_archive_app/models/enums.dart';
 import 'package:reference_archive_app/models/reference_item.dart';
-import 'package:reference_archive_app/models/taxonomy_item.dart';
 import 'package:reference_archive_app/repositories/local_board_repository.dart';
 import 'package:reference_archive_app/repositories/local_reference_repository.dart';
-import 'package:reference_archive_app/repositories/local_taxonomy_repository.dart';
 import 'package:reference_archive_app/utils/rich_text_memo.dart';
 import 'package:sqlite3/sqlite3.dart';
 
@@ -133,13 +130,21 @@ void main() {
       raw.execute(
         'INSERT INTO "references" (id, title, type, memo, part_id, created_at, updated_at) '
         'VALUES (?, ?, ?, ?, ?, ?, ?)',
-        <Object?>['old-1', '예전 사진', 'image', memo, defaultPartId, now, now],
+        <Object?>[
+          'old-1',
+          '예전 사진',
+          'image',
+          memo,
+          'old-default-part',
+          now,
+          now,
+        ],
       );
 
       raw.execute(
         'INSERT INTO taxonomy_items (id, kind, name, created_at, updated_at) '
         'VALUES (?, ?, ?, ?, ?)',
-        <Object>[defaultPartId, 'part', defaultPartName, now, now],
+        <Object>['old-default-part', 'part', '기본', now, now],
       );
     } else {
       raw.execute(
@@ -224,16 +229,9 @@ void main() {
     final AppDatabase db = AppDatabase.forTesting(NativeDatabase(dbFile));
     addTearDown(db.close);
 
-    // v2가 해줘야 할 일
     final List<ReferenceItem> items = await LocalReferenceRepository(
       db,
     ).getAll();
-    expect(items.first.partId, defaultPartId, reason: 'v2 단계가 건너뛰어졌습니다');
-
-    final List<TaxonomyItem> parts = await LocalTaxonomyRepository(
-      db,
-    ).getAll(TaxonomyKind.part);
-    expect(parts.length, 1);
 
     // v3이 해줘야 할 일 — 무드보드 표가 있어야 합니다.
     final DateTime now = DateTime.now().toUtc();

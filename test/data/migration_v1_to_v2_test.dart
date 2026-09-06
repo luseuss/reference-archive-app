@@ -135,45 +135,8 @@ void main() {
     );
   });
 
-  test('예전 레퍼런스가 전부 기본 파트에 들어간다', () async {
-    // ── 이게 이 파일의 핵심입니다 ──
-    // 파트를 안 넣어주면 예전 레퍼런스가 **어느 파트에도 안 속합니다.**
-    // 그러면 사이드바에서 파트를 고를 때마다 안 보여서, 사용자 눈에는
-    // **데이터가 사라진 것처럼** 보입니다. 실제로는 멀쩡히 있는데도요.
-    createVersion1Database(referenceCount: 2);
-
-    final AppDatabase db = AppDatabase.forTesting(NativeDatabase(dbFile));
-    addTearDown(db.close);
-
-    final LocalReferenceRepository repository = LocalReferenceRepository(db);
-    final List<ReferenceItem> items = await repository.getAll();
-
-    for (final ReferenceItem item in items) {
-      expect(item.partId, defaultPartId, reason: '${item.title}이(가) 기본 파트에 없습니다');
-    }
-  });
-
-  test('기본 파트가 만들어져 있다', () async {
-    createVersion1Database(referenceCount: 1);
-
-    final AppDatabase db = AppDatabase.forTesting(NativeDatabase(dbFile));
-    addTearDown(db.close);
-
-    final LocalTaxonomyRepository taxonomyRepository = LocalTaxonomyRepository(
-      db,
-    );
-
-    final List<TaxonomyItem> parts = await taxonomyRepository.getAll(
-      TaxonomyKind.part,
-    );
-
-    expect(parts.length, 1);
-    expect(parts.first.id, defaultPartId);
-    expect(parts.first.name, defaultPartName);
-  });
-
   test('원래 있던 폴더는 그대로 남는다', () async {
-    // 마이그레이션이 파트만 건드리고 다른 분류는 그대로 둬야 합니다.
+    // 마이그레이션이 다른 분류는 그대로 둬야 합니다.
     createVersion1Database(referenceCount: 1);
 
     final AppDatabase db = AppDatabase.forTesting(NativeDatabase(dbFile));
@@ -189,57 +152,5 @@ void main() {
 
     expect(folders.length, 1);
     expect(folders.first.name, '인물');
-  });
-
-  test('두 번 열어도 기본 파트가 하나만 생긴다', () async {
-    // 앱을 껐다 켜는 것과 같은 상황입니다.
-    // 열 때마다 기본 파트가 하나씩 늘어나면 사이드바가 "기본"으로 가득 찹니다.
-    createVersion1Database(referenceCount: 1);
-
-    final AppDatabase first = AppDatabase.forTesting(NativeDatabase(dbFile));
-    await LocalReferenceRepository(first).getAll();
-    await first.close();
-
-    final AppDatabase second = AppDatabase.forTesting(NativeDatabase(dbFile));
-    addTearDown(second.close);
-
-    final List<TaxonomyItem> parts = await LocalTaxonomyRepository(
-      second,
-    ).getAll(TaxonomyKind.part);
-
-    expect(parts.length, 1);
-  });
-
-  test('기본 파트 이름을 바꿔뒀으면 앱을 다시 켜도 되돌아가지 않는다', () async {
-    // 사용자가 "기본"을 "디자인"으로 바꿨는데 앱을 켤 때마다 되돌아가면
-    // 고쳐지지 않는 버그처럼 보입니다.
-    createVersion1Database(referenceCount: 1);
-
-    final AppDatabase first = AppDatabase.forTesting(NativeDatabase(dbFile));
-    final LocalTaxonomyRepository firstTaxonomy = LocalTaxonomyRepository(first);
-    final TaxonomyItem defaultPart = (await firstTaxonomy.getAll(
-      TaxonomyKind.part,
-    )).first;
-
-    await firstTaxonomy.save(
-      TaxonomyItem(
-        id: defaultPart.id,
-        kind: defaultPart.kind,
-        name: '디자인',
-        createdAt: defaultPart.createdAt,
-        updatedAt: defaultPart.updatedAt,
-      ),
-    );
-    await first.close();
-
-    final AppDatabase second = AppDatabase.forTesting(NativeDatabase(dbFile));
-    addTearDown(second.close);
-
-    final List<TaxonomyItem> parts = await LocalTaxonomyRepository(
-      second,
-    ).getAll(TaxonomyKind.part);
-
-    expect(parts.length, 1);
-    expect(parts.first.name, '디자인');
   });
 }

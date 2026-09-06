@@ -119,8 +119,10 @@ void main() {
 
     await openApp(tester);
 
-    // id가 아니라 이름이 보여야 합니다.
-    expect(find.textContaining('인물'), findsOneWidget);
+    // id가 아니라 이름이 보여야 합니다. 사이드바에도 같은 폴더 이름이
+    // 한 번 더 보이므로("전체 레퍼런스"와 나란히), 카드 안의 표시(📁 접두사)로
+    // 정확히 찾습니다.
+    expect(find.textContaining('📁 인물'), findsOneWidget);
     expect(find.textContaining(folderId), findsNothing);
   });
 

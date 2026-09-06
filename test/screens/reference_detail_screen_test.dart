@@ -231,7 +231,7 @@ void main() {
     //
     // 순서(.first)로 찾지 않고 이름표로 찾습니다. 화면에 드롭다운이 여럿이라
     // 순서로 찾으면 나중에 항목이 하나 추가될 때마다 테스트가 깨집니다.
-    // (실제로 파트 항목이 맨 위에 추가되면서 한 번 깨졌습니다)
+    // (실제로 분류 항목 하나가 맨 위에 추가되면서 한 번 깨졌습니다)
     await tester.tap(
       find.widgetWithText(DropdownButtonFormField<String?>, '폴더'),
     );
