@@ -127,6 +127,16 @@ class _HomeScreenState extends State<HomeScreen> {
   /// 누르면 같은 사진이 여러 장 들어가므로, 진행 중에는 버튼을 잠급니다.
   bool _isAdding = false;
 
+  /// 가장 최근에 지운(낱장이든 일괄이든) 레퍼런스들의 번호입니다.
+  /// 지운 적이 없거나 이미 되돌렸으면 null입니다.
+  ///
+  /// Ctrl+Z(`_undoLastDelete`)가 이 값을 봅니다. 이 화면을 여는 동안만
+  /// 기억합니다 — 앱을 다시 켜거나 화면을 벗어나면 초기화됩니다.
+  /// 폴더 이동·태그 추가 같은 다른 일괄 작업은 이번엔 되돌리지
+  /// 않습니다 — 지운 것은 이미 휴지통이라는 안전망이 있어서, 방금 지운
+  /// 걸 곧바로 되돌리는 손맛이 가장 아쉬웠던 부분이었습니다.
+  List<String>? _lastDeletedIds;
+
   /// 지금 걸려 있는 검색·필터·정렬 조건입니다.
   ReferenceQuery _query = const ReferenceQuery();
 
@@ -402,11 +412,23 @@ class _HomeScreenState extends State<HomeScreen> {
 
   /// 골라둔 것들을 한꺼번에 지웁니다.
   Future<void> _deleteSelected() async {
+    // delete()가 성공하면 exitSelectionMode()를 불러 선택을 비우므로,
+    // 지우기 전에 미리 번호를 적어둬야 나중에 되돌릴 수 있습니다.
+    final List<String> idsBeingDeleted = _selection.selectedIds.toList();
+
     final BulkActionOutcome outcome = await _selection.delete(
       context: context,
       repository: widget.repository,
     );
-    await _handleBulkActionOutcome(outcome);
+
+    if (outcome.shouldReload) {
+      _lastDeletedIds = idsBeingDeleted;
+    }
+
+    await _handleBulkActionOutcome(
+      outcome,
+      onUndo: outcome.shouldReload ? _undoLastDelete : null,
+    );
   }
 
   /// 일괄 작업(폴더 이동/태그 추가/삭제)이 끝난 뒤 결과를 화면에 반영합니다.
@@ -414,7 +436,10 @@ class _HomeScreenState extends State<HomeScreen> {
   /// 고르기 모드를 끝내는 일은 _selection이 스스로 처리합니다(성공했을
   /// 때만). 여기서는 그 결과를 보고 목록을 다시 불러올지, 안내를 띄울지만
   /// 정합니다 — "무엇을 보여줄지"는 화면 책임이기 때문입니다.
-  Future<void> _handleBulkActionOutcome(BulkActionOutcome outcome) async {
+  Future<void> _handleBulkActionOutcome(
+    BulkActionOutcome outcome, {
+    VoidCallback? onUndo,
+  }) async {
     if (outcome.shouldReload) {
       await _loadItems();
     }
@@ -424,13 +449,31 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     if (outcome.message != null) {
-      _showMessage(outcome.message!);
+      if (onUndo != null) {
+        _showUndoableMessage(outcome.message!, onUndo: onUndo);
+      } else {
+        _showMessage(outcome.message!);
+      }
     }
   }
 
   /// 화면 아래쪽에 짧은 안내를 띄웁니다.
   void _showMessage(String message) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  /// 화면 아래쪽에 "실행취소" 버튼이 붙은 안내를 띄웁니다.
+  ///
+  /// Ctrl+Z를 모르는 사용자도 이 버튼으로 곧바로 되돌릴 수 있게 하는
+  /// 보조 창구입니다. 삭제에만 씁니다 — 되돌릴 수 있는 일이
+  /// 삭제뿐이기 때문입니다(위 `_lastDeletedIds` 설명 참고).
+  void _showUndoableMessage(String message, {required VoidCallback onUndo}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        action: SnackBarAction(label: '실행취소', onPressed: onUndo),
+      ),
+    );
   }
 
   /// 유튜브 주소를 입력받아 레퍼런스로 추가합니다.
@@ -557,7 +600,39 @@ class _HomeScreenState extends State<HomeScreen> {
   /// 파일까지 지우면 되살렸을 때 그림 없는 빈 껍데기가 되기 때문입니다.
   Future<void> _deleteItem(ReferenceItem item) async {
     await widget.repository.delete(item.id);
+    _lastDeletedIds = <String>[item.id];
     await _loadItems();
+
+    if (!mounted) {
+      return;
+    }
+    _showUndoableMessage('지웠습니다.', onUndo: _undoLastDelete);
+  }
+
+  /// 가장 최근에 지운 것(낱장이든 일괄이든)을 되돌립니다. (Ctrl+Z)
+  ///
+  /// 지운 적이 없거나 이미 되돌렸으면 조용히 아무 일도 안 합니다.
+  /// 삭제가 소프트 삭제라서(`deletedAt`만 찍음) `restore()`를 부르면
+  /// 그대로 되살아납니다 — 휴지통 화면(trash_controller.dart)이 쓰는
+  /// 것과 같은 방법입니다.
+  Future<void> _undoLastDelete() async {
+    final List<String>? ids = _lastDeletedIds;
+    if (ids == null || ids.isEmpty) {
+      return;
+    }
+
+    _lastDeletedIds = null;
+
+    for (final String id in ids) {
+      await widget.repository.restore(id);
+    }
+
+    await _loadItems();
+
+    if (!mounted) {
+      return;
+    }
+    _showMessage(ids.length == 1 ? '되돌렸습니다.' : '${ids.length}장을 되돌렸습니다.');
   }
 
   /// 분류 관리 화면을 열고, 돌아오면 목록을 다시 불러옵니다.
@@ -660,6 +735,30 @@ class _HomeScreenState extends State<HomeScreen> {
                       partId: _partIdForNewItems,
                     ),
                   ),
+
+              // 여러 장 고르기 모드에서 체크된 것들을 지웁니다. 아래
+              // 일괄 작업 막대의 "삭제" 버튼과 똑같은 동작(확인창
+              // 포함)입니다. 고르기 모드가 아니거나 고른 게 없으면
+              // 아무 일도 안 합니다 — "지금 무엇을 지울지"가 카드
+              // 하나하나에는 없어서(체크박스로 고른 것만 뜻이 있음),
+              // 고르기 모드 밖에서는 Delete 키가 지울 대상 자체가
+              // 없습니다.
+              const SingleActivator(LogicalKeyboardKey.delete): () {
+                if (_selection.isSelecting && _selection.selectedIds.isNotEmpty) {
+                  _deleteSelected();
+                }
+              },
+              const SingleActivator(LogicalKeyboardKey.backspace): () {
+                if (_selection.isSelecting && _selection.selectedIds.isNotEmpty) {
+                  _deleteSelected();
+                }
+              },
+
+              // 가장 최근에 지운 것을 되돌립니다.
+              const SingleActivator(LogicalKeyboardKey.keyZ, control: true):
+                  _undoLastDelete,
+              const SingleActivator(LogicalKeyboardKey.keyZ, meta: true):
+                  _undoLastDelete,
             },
             child: Focus(
               autofocus: true,

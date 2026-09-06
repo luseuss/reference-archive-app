@@ -5109,3 +5109,104 @@ PR #54)가 이 상수를 그대로 가져다 쓰고 있어서 **한 곳만 고�
   자동화 테스트로 확인할 수 없습니다**(전체화면 재생 화면·호버
   미리보기와 같은 사정). `flutter run -d windows`로 의뢰인이 직접
   확인해야 합니다.
+
+---
+
+## PR #58 — 무드보드·목록 화면 단축키: Delete / Ctrl+V / Ctrl+Z
+
+의뢰인 요청: "컨트롤 cv나 델리트 키 컨트롤 z 키가 동작하도록 만들자".
+무드보드와 메인 레퍼런스 목록 둘 다에 적용했습니다.
+
+### 확정된 동작
+
+- **Delete/Backspace(무드보드)**: 선택된 카드들을 판에서 내립니다
+  (기존 "선택 삭제" 버튼과 동일).
+- **Delete/Backspace(메인 목록)**: 여러 장 고르기 모드에서 체크된
+  것을 지웁니다(확인 대화상자 포함). 고르기 모드가 아니면 아무 일도
+  안 합니다.
+- **Ctrl+V(무드보드)**: 클립보드의 사진·이미지 주소를 새 레퍼런스로
+  저장하며 판에도 곧바로 카드로 담습니다.
+- **Ctrl+V(메인 목록)**: 이미 있던 기능이라 손대지 않았습니다.
+- **Ctrl+Z(무드보드)**: 옮기기·크기 조절·추가·내리기·정렬·크기
+  맞추기를 최근 20단계까지 순서대로 되돌립니다. 판을 닫으면
+  초기화됩니다.
+- **Ctrl+Z(메인 목록)**: 가장 최근에 지운 레퍼런스(낱장이든
+  일괄이든)만 되돌립니다. 폴더 이동·태그 추가는 이번엔 범위 밖입니다
+  — 이미 휴지통이 있어서, "방금 지운 걸 곧바로 되돌리는" 것이 가장
+  아쉬웠던 부분이었습니다. 삭제 직후 스낵바에도 "실행취소" 버튼을
+  달았습니다.
+
+### 무드보드 되돌리기 — "스냅샷 비교" 방식
+
+`board_interaction_controller.dart`에 조작마다 "거꾸로 하는 법"을
+따로 적지 않았습니다. 옮기기·크기 조절·추가·내리기·정렬·크기
+맞추기가 전부 서로 다른 값을 바꾸는데, 종류마다 역방향 로직을 따로
+만들면 새 조작이 하나 늘 때마다 되돌리기도 함께 만들어야 합니다.
+
+대신 **조작이 일어나기 직전 카드 목록 전체**를 스냅샷으로 찍어
+`_undoStack`에 쌓아두고(`_pushUndoSnapshot()`), 되돌릴 때(`undo()`)는
+지금 목록과 스냅샷을 카드 번호로 견줘서 차이만 되돌립니다
+(`_restoreSnapshot()`):
+
+- 스냅샷에는 없고 지금은 있는 카드 → 새로 생긴 것이니 판에서 내립니다.
+- 스냅샷에는 있는데 지금은 없는 카드 → 지워진 것이니 되살립니다.
+- 그 외(계속 있던 카드) → 스냅샷 값으로 다시 저장합니다(옮기거나
+  크기가 바뀐 카드가 원래대로 돌아갑니다).
+
+**새 조작을 추가할 때는 그 메서드 맨 앞에 `_pushUndoSnapshot()` 한
+줄만 넣으면 되돌리기가 저절로 따라옵니다.**
+
+- **끌기·크기 조절은 `onDragStart`/`onResizeStart`에서 찍습니다.**
+  `onDragEnd`/`onResizeEnd`가 아닙니다 — 그 시점에는 이미 화면에서
+  옮겨진 뒤라, 거기서 찍으면 "옮긴 뒤" 자리를 찍는 셈이 됩니다.
+- **"카드 내리기"를 되돌리려면 되살리는 방법이 필요했습니다.**
+  `BoardRepository`에 `restoreCard(cardId)`를 새로 추가했습니다
+  (`deletedAt`을 다시 null로). 목록 화면에 노출되는 "복구" 기능이
+  아니라 이 되돌리기 전용입니다 — `saveCard`/`saveCards`는
+  `deletedAt`을 안 건드리므로(컴패니언에 그 칸 자체가 없음), 지운
+  카드를 되살리려면 이 메서드가 꼭 있어야 했습니다.
+- 되돌린 뒤에도 `onSaved?.call()`을 불러 상대 창(메인 ↔ 팝업)에
+  알립니다.
+
+### 그 밖에
+
+- 무드보드 단축키는 `board_screen.dart`가 `CallbackShortcuts`+
+  `Focus(autofocus: true)`로 겁니다(`home_screen.dart`의 Ctrl+V와
+  같은 방식).
+- 무드보드 Ctrl+V는 외부 드롭(PR #54)과 코드를 나눠 씁니다 —
+  `_reloadLookupForNewReferences()`(새 레퍼런스가 생기면 `_lookup`
+  표부터 다시 읽기)와 `_afterPlacingImportedReferences()`(메인 창에
+  `referencesChanged` 알리기)를 공용 메서드로 빼서
+  `_onExternalFilesDropped()`와 `_onPasteFromClipboard()`가 함께
+  씁니다. 놓는 자리만 다릅니다 — 드롭은 놓은 좌표(`addCardsAt`),
+  붙여넣기는 자동 배치(`addCards`) 후 전체 보기로 되돌립니다.
+- 메인 목록의 "실행취소"는 새 저장소 메서드가 필요 없었습니다.
+  삭제가 이미 소프트 삭제라서, 휴지통 기능(PR #51)이 만들어둔
+  `ReferenceRepository.restore(id)`를 그대로 재사용합니다.
+  `home_screen.dart`의 `_lastDeletedIds`가 "가장 최근에 지운 것"을
+  들고 있다가 `_undoLastDelete()`가 되돌립니다.
+- **저장 구조는 안 바뀌었습니다. 마이그레이션 없음.**
+
+### 나중에 이 부분을 고치려면 어디를 보면 되나
+
+| 고치고 싶은 것 | 봐야 할 곳 |
+|---|---|
+| 무드보드 되돌리기 규칙 | `board_interaction_controller.dart`의 `_pushUndoSnapshot`/`undo`/`_restoreSnapshot` |
+| 지운 카드를 되살리는 방법 | `board_repository.dart`/`local_board_repository.dart`의 `restoreCard` |
+| 무드보드 단축키 바인딩 | `board_screen.dart`의 `build()` 안 `CallbackShortcuts` |
+| 무드보드 Ctrl+V(붙여넣기) | `board_screen.dart`의 `_onPasteFromClipboard` |
+| 메인 목록 단축키 바인딩 | `home_screen.dart`의 `build()` 안 `CallbackShortcuts` |
+| 메인 목록 "가장 최근 삭제" 되돌리기 | `home_screen.dart`의 `_lastDeletedIds`/`_undoLastDelete` |
+
+### 어떻게 테스트했나
+
+- `flutter analyze` 문제 없음.
+- `flutter test` **673건 전부 통과** (기존 658건 + 신규 15건 —
+  `board_interaction_controller_test.dart`에 되돌리기(undo) 8건 추가,
+  `home_delete_undo_test.dart`(새 파일)에 삭제·되돌리기 흐름 7건).
+  무드보드 되돌리기는 실제 `LocalBoardRepository`(메모리 db)로 담기·
+  내리기·옮기기·크기조절·정렬 각각을 되돌려 원래 값으로 돌아가는지
+  확인했습니다.
+- 실제 키보드 입력(Ctrl+V/Ctrl+Z/Delete가 정말 눌리는 손맛, 무드보드
+  붙여넣기가 화면에 바로 나타나는지)은 `flutter run -d windows`로
+  의뢰인이 직접 확인해야 합니다.

@@ -29,6 +29,7 @@
 // 쓰게 되고, 안 누르고 나갔다가 배치를 통째로 잃습니다.
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:super_drag_and_drop/super_drag_and_drop.dart';
 
@@ -318,37 +319,12 @@ class _BoardScreenState extends State<BoardScreen> {
     }
 
     if (outcome.savedIds.isNotEmpty) {
-      // ── 표(_lookup)부터 다시 읽어와야 합니다 ──
-      // _lookup은 _loadBoard()를 열 때 한 번만 읽어둔 표라서, 방금
-      // importFromDrop()이 새로 만든 레퍼런스는 아직 그 표에 없습니다.
-      // board_canvas.dart는 이 표에 없는 카드를 "레퍼런스가 지워진
-      // 직후"로 보고 아예 안 그립니다(SizedBox.shrink) — 그대로 두면
-      // 카드는 저장됐는데 화면엔 안 보이는 상태가 됩니다. 새 레퍼런스를
-      // addCardsAt으로 배치하기 **전에** 먼저 표를 다시 읽어옵니다.
-      final ReferenceLookup lookup = await ReferenceLookup.load(
-        repository: widget.referenceRepository,
-        imageStorage: widget.imageStorage,
-      );
-
-      if (!mounted) {
+      final bool ok = await _reloadLookupForNewReferences();
+      if (!ok) {
         return;
       }
-
-      setState(() {
-        _lookup = lookup;
-      });
-
       await _interaction.addCardsAt(outcome.savedIds, canvasPosition);
-
-      // 메인 창(레퍼런스 목록)에도 새 레퍼런스가 생겼다고 알립니다.
-      // 이 판(팝업 창)의 화면은 방금 위에서 이미 새로 고쳤지만, 메인
-      // 창은 다른 엔진이라 그 사실을 전혀 모릅니다 — 알리지 않으면
-      // 데이터베이스엔 저장됐는데도 메인 화면에는 앱을 다시 켜야만
-      // 보이는 버그가 됩니다(실제로 겪었습니다). 상대 창이 없으면
-      // (팝업이 아니면) 조용히 실패합니다.
-      if (supportsBoardPopupWindow) {
-        await BoardWindowSync.notifyReferencesChanged();
-      }
+      await _afterPlacingImportedReferences();
     }
 
     if (!mounted) {
@@ -356,6 +332,86 @@ class _BoardScreenState extends State<BoardScreen> {
     }
 
     _showImportResult(outcome);
+  }
+
+  /// Ctrl+V(붙여넣기)로 클립보드의 사진·이미지 주소를 새 레퍼런스로
+  /// 저장하면서 판에도 곧바로 담습니다. (build()의 CallbackShortcuts)
+  ///
+  /// home_screen.dart의 Ctrl+V(클립보드 붙여넣기)와 같은 가져오기
+  /// 파이프라인(`ReferenceImporter.importFromClipboard`)을
+  /// 재사용합니다. 놓는 자리는 `_addCards()`(레퍼런스 담기 대화상자)와
+  /// 같은 규칙(자동으로 줄지어 놓기)을 따릅니다 — 담은 뒤 화면을 전체
+  /// 보기로 되돌리므로 어디에 놓이든 바로 눈에 들어옵니다.
+  Future<void> _onPasteFromClipboard() async {
+    final ImportOutcome outcome = await _importer.importFromClipboard(
+      partId: defaultPartId,
+    );
+
+    if (outcome.isNothingToDo) {
+      return;
+    }
+
+    if (outcome.savedIds.isNotEmpty) {
+      final bool ok = await _reloadLookupForNewReferences();
+      if (!ok) {
+        return;
+      }
+      await _interaction.addCards(outcome.savedIds);
+      await _afterPlacingImportedReferences();
+
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _viewResetCount++;
+      });
+    }
+
+    if (!mounted) {
+      return;
+    }
+
+    _showImportResult(outcome);
+  }
+
+  /// 새로 만들어진 레퍼런스들을 판에 놓기 **전에** 표(`_lookup`)부터
+  /// 다시 읽어옵니다. 외부 드롭과 붙여넣기가 함께 씁니다.
+  ///
+  /// `_lookup`은 `_loadBoard()`를 열 때 한 번만 읽어둔 표라서, 방금
+  /// 만든 새 레퍼런스는 아직 그 표에 없습니다. `board_canvas.dart`는
+  /// 이 표에 없는 카드를 "레퍼런스가 지워진 직후"로 보고 아예 안
+  /// 그립니다(`SizedBox.shrink`) — 그대로 두면 카드는 저장됐는데
+  /// 화면엔 안 보이는 상태가 됩니다.
+  ///
+  /// 화면이 사라졌으면(읽어오는 사이 판을 닫았으면) false를 돌려줘서
+  /// 부르는 쪽이 그 뒤 작업을 건너뛰게 합니다.
+  Future<bool> _reloadLookupForNewReferences() async {
+    final ReferenceLookup lookup = await ReferenceLookup.load(
+      repository: widget.referenceRepository,
+      imageStorage: widget.imageStorage,
+    );
+
+    if (!mounted) {
+      return false;
+    }
+
+    setState(() {
+      _lookup = lookup;
+    });
+    return true;
+  }
+
+  /// 새 레퍼런스를 카드로 놓은 뒤 메인 창(레퍼런스 목록)에도 알립니다.
+  ///
+  /// 이 판(팝업 창)의 화면은 이미 새로 고쳤지만, 메인 창은 다른
+  /// 엔진이라 그 사실을 전혀 모릅니다 — 알리지 않으면 데이터베이스엔
+  /// 저장됐는데도 메인 화면에는 앱을 다시 켜야만 보이는 버그가
+  /// 됩니다(실제로 겪었습니다). 상대 창이 없으면(팝업이 아니면)
+  /// 조용히 실패합니다.
+  Future<void> _afterPlacingImportedReferences() async {
+    if (supportsBoardPopupWindow) {
+      await BoardWindowSync.notifyReferencesChanged();
+    }
   }
 
   /// 들여오기 결과를 화면 아래쪽에 잠깐 띄웁니다.
@@ -427,7 +483,37 @@ class _BoardScreenState extends State<BoardScreen> {
           ),
         ],
       ),
-      body: _buildBody(),
+      // CallbackShortcuts는 지정한 키 조합이 눌리면 함수를 실행합니다.
+      // home_screen.dart의 Ctrl+V와 같은 방식입니다.
+      // Focus(autofocus: true)로 감싸야 화면이 키 입력을 받습니다 —
+      // 안 감싸면 아무 데도 초점이 없어서 키를 눌러도 무시됩니다.
+      body: CallbackShortcuts(
+        bindings: <ShortcutActivator, VoidCallback>{
+          // 골라둔 카드를 판에서 내립니다. 선택 툴바의 "선택 삭제"
+          // 버튼과 똑같은 동작입니다. 아무것도 안 골랐으면 조용히
+          // 아무 일도 안 합니다(removeSelectedCards의 빈 선택 처리).
+          const SingleActivator(LogicalKeyboardKey.delete):
+              _interaction.removeSelectedCards,
+          const SingleActivator(LogicalKeyboardKey.backspace):
+              _interaction.removeSelectedCards,
+
+          // 클립보드의 사진·이미지 주소를 새 레퍼런스로 저장하며
+          // 판에도 곧바로 담습니다.
+          const SingleActivator(LogicalKeyboardKey.keyV, control: true):
+              _onPasteFromClipboard,
+          // macOS는 Ctrl 대신 Command를 씁니다.
+          const SingleActivator(LogicalKeyboardKey.keyV, meta: true):
+              _onPasteFromClipboard,
+
+          // 가장 최근 조작(옮기기·크기 조절·추가·내리기·정렬·크기
+          // 맞추기)을 되돌립니다. 되돌릴 게 없으면 조용히 넘어갑니다.
+          const SingleActivator(LogicalKeyboardKey.keyZ, control: true):
+              _interaction.undo,
+          const SingleActivator(LogicalKeyboardKey.keyZ, meta: true):
+              _interaction.undo,
+        },
+        child: Focus(autofocus: true, child: _buildBody()),
+      ),
     );
   }
 
