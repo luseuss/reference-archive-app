@@ -46,3 +46,6 @@ app.*.map.json
 
 # Widget Preview related
 .widget_preview/
+
+# 설치 파일 만들 때 생기는 산출물입니다. 커밋 안 함 (tools/installer.iss 참고)
+/tools/output/
