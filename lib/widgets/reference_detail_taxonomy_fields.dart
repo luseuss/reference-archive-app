@@ -12,6 +12,7 @@ import '../models/enums.dart';
 import '../models/taxonomy_item.dart';
 import '../repositories/taxonomy_repository.dart';
 import '../screens/reference_taxonomy_edit_controller.dart';
+import '../utils/folder_tree.dart';
 import 'taxonomy_multi_field.dart';
 import 'taxonomy_single_field.dart';
 
@@ -32,12 +33,21 @@ class ReferenceDetailTaxonomyFields extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // 폴더 칸만 트리 순서(부모 다음에 자식)+들여쓰기로 보여줍니다.
+    // 카테고리는 중첩이 없어서 그대로입니다.
+    final List<FolderTreeEntry> folderTree = buildFolderTree(
+      controller.options[TaxonomyKind.folder] ?? <TaxonomyItem>[],
+    );
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
         TaxonomySingleField(
           kind: TaxonomyKind.folder,
-          options: controller.options[TaxonomyKind.folder] ?? <TaxonomyItem>[],
+          options: folderTree.map((FolderTreeEntry e) => e.folder).toList(),
+          depthById: <String, int>{
+            for (final FolderTreeEntry e in folderTree) e.folder.id: e.depth,
+          },
           selectedId: controller.folderId,
           repository: repository,
           onChanged: controller.setFolder,

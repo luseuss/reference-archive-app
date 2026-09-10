@@ -23,6 +23,7 @@ class TaxonomySingleField extends StatelessWidget {
     required this.repository,
     required this.onChanged,
     required this.onCreated,
+    this.depthById,
   });
 
   /// 폴더인지 카테고리인지
@@ -44,6 +45,10 @@ class TaxonomySingleField extends StatelessWidget {
   ///
   /// 목록을 다시 불러와야 새로 만든 항목이 보이므로, 화면 쪽에서 처리하도록 넘깁니다.
   final ValueChanged<TaxonomyItem> onCreated;
+
+  /// 항목 id → 트리 깊이입니다. 폴더처럼 중첩이 있는 종류를 들여써
+  /// 보여줄 때만 넘겨줍니다. null이면(카테고리 등) 들여쓰지 않습니다.
+  final Map<String, int>? depthById;
 
   /// + 버튼을 눌렀을 때 새 항목 만들기 대화상자를 띄웁니다.
   Future<void> _createNew(BuildContext context) async {
@@ -83,9 +88,10 @@ class TaxonomySingleField extends StatelessWidget {
                 child: Text('없음'),
               ),
               ...options.map((TaxonomyItem item) {
+                final int depth = depthById?[item.id] ?? 0;
                 return DropdownMenuItem<String?>(
                   value: item.id,
-                  child: Text(item.name),
+                  child: Text('${'    ' * depth}${item.name}'),
                 );
               }),
             ],
