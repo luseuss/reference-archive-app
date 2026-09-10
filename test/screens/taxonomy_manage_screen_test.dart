@@ -295,4 +295,144 @@ void main() {
     expect(folders.first.name, '건축');
   });
 
+  group('하위 폴더', () {
+    testWidgets('하위 폴더가 함께 보인다', (WidgetTester tester) async {
+      useTallScreen(tester);
+      final TaxonomyItem parent = await saveTaxonomy(TaxonomyKind.folder, '인물');
+      await taxonomyRepository.save(
+        TaxonomyItem(
+          id: newId(),
+          kind: TaxonomyKind.folder,
+          name: '얼굴',
+          parentId: parent.id,
+          createdAt: DateTime.now().toUtc(),
+          updatedAt: DateTime.now().toUtc(),
+        ),
+      );
+
+      await tester.pumpWidget(makeScreen());
+      await tester.pumpAndSettle();
+
+      expect(find.text('인물'), findsOneWidget);
+      expect(find.text('얼굴'), findsOneWidget);
+    });
+
+    testWidgets('하위 폴더가 있는 폴더를 지우면 개수를 알려주고 함께 지운다',
+        (WidgetTester tester) async {
+      useTallScreen(tester);
+      final TaxonomyItem parent = await saveTaxonomy(TaxonomyKind.folder, '인물');
+      final TaxonomyItem child = TaxonomyItem(
+        id: newId(),
+        kind: TaxonomyKind.folder,
+        name: '얼굴',
+        parentId: parent.id,
+        createdAt: DateTime.now().toUtc(),
+        updatedAt: DateTime.now().toUtc(),
+      );
+      await taxonomyRepository.save(child);
+
+      await tester.pumpWidget(makeScreen());
+      await tester.pumpAndSettle();
+
+      // "인물"이 트리에서 먼저 나오므로 첫 번째 삭제 버튼입니다.
+      await tester.tap(find.byIcon(Icons.delete_outline).first);
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('하위 폴더 1개도 함께 지워집니다'), findsOneWidget);
+
+      await tester.tap(find.widgetWithText(FilledButton, '삭제'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('인물'), findsNothing);
+      expect(find.text('얼굴'), findsNothing);
+      expect(await taxonomyRepository.getById(child.id), isNull);
+    });
+  });
+
+  group('상위 폴더', () {
+    testWidgets('새로 만들 때 상위 폴더를 고를 수 있다', (WidgetTester tester) async {
+      useTallScreen(tester);
+      final TaxonomyItem parent = await saveTaxonomy(TaxonomyKind.folder, '인물');
+
+      await tester.pumpWidget(makeScreen());
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('새로 만들기'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('최상위'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(
+        find.descendant(of: find.byType(AlertDialog).last, matching: find.text('인물')),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byType(TextField), '얼굴');
+      await tester.tap(find.text('만들기'));
+      await tester.pumpAndSettle();
+
+      final List<TaxonomyItem> folders =
+          await taxonomyRepository.getAll(TaxonomyKind.folder);
+      final TaxonomyItem child = folders.firstWhere((TaxonomyItem f) => f.name == '얼굴');
+      expect(child.parentId, parent.id);
+    });
+
+    testWidgets('이름 바꾸기에서 상위 폴더를 바꾸면 함께 저장된다', (WidgetTester tester) async {
+      useTallScreen(tester);
+      final TaxonomyItem parent = await saveTaxonomy(TaxonomyKind.folder, '인물');
+      final TaxonomyItem child = await saveTaxonomy(TaxonomyKind.folder, '풍경');
+
+      await tester.pumpWidget(makeScreen());
+      await tester.pumpAndSettle();
+
+      // 가나다순으로 "인물" 다음이 "풍경"이라 두 번째 이름 바꾸기 버튼입니다.
+      await tester.tap(find.byIcon(Icons.edit_outlined).last);
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('최상위'));
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.descendant(of: find.byType(AlertDialog).last, matching: find.text('인물')),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('바꾸기'));
+      await tester.pumpAndSettle();
+
+      final TaxonomyItem? reloaded = await taxonomyRepository.getById(child.id);
+      expect(reloaded!.parentId, parent.id);
+    });
+
+    testWidgets('자기 자신과 자기 하위는 상위 폴더 후보에 안 보인다', (WidgetTester tester) async {
+      useTallScreen(tester);
+      final TaxonomyItem parent = await saveTaxonomy(TaxonomyKind.folder, '인물');
+      await taxonomyRepository.save(
+        TaxonomyItem(
+          id: newId(),
+          kind: TaxonomyKind.folder,
+          name: '얼굴',
+          parentId: parent.id,
+          createdAt: DateTime.now().toUtc(),
+          updatedAt: DateTime.now().toUtc(),
+        ),
+      );
+      await saveTaxonomy(TaxonomyKind.folder, '풍경'); // 무관한 폴더(후보로 보여야 함)
+
+      await tester.pumpWidget(makeScreen());
+      await tester.pumpAndSettle();
+
+      // 트리 순서: 인물, 얼굴(들여쓰기), 풍경. "인물"의 이름 바꾸기가 첫 번째입니다.
+      await tester.tap(find.byIcon(Icons.edit_outlined).first);
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('최상위'));
+      await tester.pumpAndSettle();
+
+      final Finder pickDialog = find.byType(AlertDialog).last;
+      expect(find.descendant(of: pickDialog, matching: find.text('인물')), findsNothing);
+      expect(find.descendant(of: pickDialog, matching: find.text('얼굴')), findsNothing);
+      expect(find.descendant(of: pickDialog, matching: find.text('풍경')), findsOneWidget);
+    });
+  });
 }

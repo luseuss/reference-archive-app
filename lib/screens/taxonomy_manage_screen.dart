@@ -17,6 +17,7 @@ import 'package:flutter/material.dart';
 import '../models/enums.dart';
 import '../models/taxonomy_item.dart';
 import '../repositories/taxonomy_repository.dart';
+import '../utils/folder_tree.dart';
 import '../utils/korean_particle.dart';
 import '../widgets/create_taxonomy_dialog.dart';
 import '../widgets/rename_taxonomy_dialog.dart';
@@ -99,6 +100,9 @@ class _TaxonomyManageScreenState extends State<TaxonomyManageScreen>
       context: context,
       kind: kind,
       repository: widget.repository,
+      allFolders: kind == TaxonomyKind.folder
+          ? (_itemsByKind[TaxonomyKind.folder] ?? <TaxonomyItem>[])
+          : const <TaxonomyItem>[],
     );
 
     if (created != null) {
@@ -107,12 +111,15 @@ class _TaxonomyManageScreenState extends State<TaxonomyManageScreen>
     }
   }
 
-  /// 항목의 이름을 바꿉니다.
+  /// 항목의 이름을(폴더라면 상위 폴더도) 바꿉니다.
   Future<void> _renameItem(TaxonomyItem item) async {
     final bool renamed = await showRenameTaxonomyDialog(
       context: context,
       item: item,
       repository: widget.repository,
+      allFolders: item.kind == TaxonomyKind.folder
+          ? (_itemsByKind[TaxonomyKind.folder] ?? <TaxonomyItem>[])
+          : const <TaxonomyItem>[],
     );
 
     if (renamed) {
@@ -121,10 +128,19 @@ class _TaxonomyManageScreenState extends State<TaxonomyManageScreen>
     }
   }
 
-  /// 항목을 지웁니다. 쓰는 레퍼런스가 있으면 몇 개인지 알려주고 확인받습니다.
+  /// 항목을 지웁니다. 쓰는 레퍼런스가 있으면(폴더라면 하위 폴더가 있으면도)
+  /// 알려주고 확인받습니다.
   Future<void> _deleteItem(TaxonomyItem item) async {
     final int usageCount = _usageCounts[item.id] ?? 0;
-    final bool confirmed = await _confirmDelete(item, usageCount);
+    final int subfolderCount = item.kind == TaxonomyKind.folder
+        ? collectFolderAndDescendantIds(
+              item.id,
+              parentIdMap(_itemsByKind[TaxonomyKind.folder] ?? <TaxonomyItem>[]),
+            ).length -
+            1 // 자기 자신은 빼고 셉니다.
+        : 0;
+
+    final bool confirmed = await _confirmDelete(item, usageCount, subfolderCount);
 
     if (!confirmed) {
       return;
@@ -136,20 +152,30 @@ class _TaxonomyManageScreenState extends State<TaxonomyManageScreen>
   }
 
   /// 정말 지울지 확인받는 대화상자를 띄웁니다.
-  Future<bool> _confirmDelete(TaxonomyItem item, int usageCount) async {
+  Future<bool> _confirmDelete(
+    TaxonomyItem item,
+    int usageCount,
+    int subfolderCount,
+  ) async {
     final String kindName = item.kind.displayName;
 
-    // 쓰는 곳이 있는지에 따라 안내 문구를 다르게 합니다.
-    // "0개가 영향을 받습니다"는 읽는 사람을 불필요하게 긴장시킵니다.
-    final String message;
+    // 쓰는 곳이 있는지에 따라, 하위 폴더가 있는지에 따라 안내 문구를
+    // 다르게 합니다. "0개가 영향을 받습니다"는 읽는 사람을 불필요하게
+    // 긴장시킵니다.
+    final StringBuffer message = StringBuffer(
+      '"${item.name}" ${withObjectParticle(kindName)} 지웁니다.\n',
+    );
+    if (subfolderCount > 0) {
+      message.write('하위 폴더 $subfolderCount개도 함께 지워집니다.\n');
+    }
     if (usageCount == 0) {
-      message = '"${item.name}" ${withObjectParticle(kindName)} 지웁니다.\n'
-          '이 ${withObjectParticle(kindName)} 쓰는 레퍼런스는 없습니다.';
+      message.write('이 ${withObjectParticle(kindName)} 쓰는 레퍼런스는 없습니다.');
     } else {
-      message = '"${item.name}" ${withObjectParticle(kindName)} 지웁니다.\n\n'
-          '이 ${withObjectParticle(kindName)} 쓰는 레퍼런스가 $usageCount개 있습니다.\n'
-          '레퍼런스 자체는 지워지지 않지만, 그 $kindName 연결이 사라지며 '
-          '되돌릴 수 없습니다.';
+      message.write(
+        '이 ${withObjectParticle(kindName)} 쓰는 레퍼런스가 $usageCount개 있습니다.\n'
+        '레퍼런스 자체는 지워지지 않지만, 그 $kindName 연결이 사라지며 '
+        '되돌릴 수 없습니다.',
+      );
     }
 
     final bool? result = await showDialog<bool>(
@@ -157,7 +183,7 @@ class _TaxonomyManageScreenState extends State<TaxonomyManageScreen>
       builder: (BuildContext context) {
         return AlertDialog(
           title: Text('$kindName 삭제'),
-          content: Text(message),
+          content: Text(message.toString()),
           actions: <Widget>[
             TextButton(
               onPressed: () => Navigator.of(context).pop(false),
@@ -223,6 +249,9 @@ class _TaxonomyManageScreenState extends State<TaxonomyManageScreen>
   }
 
   /// 한 종류의 항목 목록을 만듭니다.
+  ///
+  /// 폴더만 트리 순서(부모 다음에 자식)+들여쓰기로 보여줍니다. 다른
+  /// 종류는 부모 개념이 없어서 지금처럼 평평한 가나다순 그대로입니다.
   Widget _buildList(TaxonomyKind kind) {
     final List<TaxonomyItem> items = _itemsByKind[kind] ?? <TaxonomyItem>[];
 
@@ -230,15 +259,23 @@ class _TaxonomyManageScreenState extends State<TaxonomyManageScreen>
       return _buildEmptyState(kind);
     }
 
+    final List<FolderTreeEntry> entries = kind == TaxonomyKind.folder
+        ? buildFolderTree(items)
+        : items
+            .map((TaxonomyItem item) => FolderTreeEntry(folder: item, depth: 0))
+            .toList();
+
     return ListView.builder(
       // 아래쪽 여백은 떠 있는 버튼에 마지막 항목이 가리지 않게 하려는 것입니다.
       padding: const EdgeInsets.only(bottom: 88),
-      itemCount: items.length,
+      itemCount: entries.length,
       itemBuilder: (BuildContext context, int index) {
-        final TaxonomyItem item = items[index];
+        final TaxonomyItem item = entries[index].folder;
+        final int depth = entries[index].depth;
         final int usageCount = _usageCounts[item.id] ?? 0;
 
         return ListTile(
+          contentPadding: EdgeInsets.only(left: 16.0 + (depth * 20), right: 16),
           title: Text(item.name),
           subtitle: Text(
             usageCount == 0 ? '쓰는 레퍼런스 없음' : '레퍼런스 $usageCount개에서 사용 중',
