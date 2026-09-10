@@ -6,38 +6,67 @@
 //
 // 이름이 이미 있으면 만들지 않고 그 자리에서 알려줍니다.
 // 폴더 "인물"이 두 개 생기면 사용자가 어느 쪽에 넣었는지 알 수 없게 되기 때문입니다.
+//
+// ── 폴더일 때는 "상위 폴더" 칸이 함께 붙습니다 (2026-09-11, 폴더 중첩) ──
+// 하위 폴더를 이 대화상자에서 바로 만들 수 있게, 폴더 종류일 때만 상위
+// 폴더 선택 칸이 나타납니다. 사이드바에서 드래그로 옮기는 것보다 손에
+// 덜 익은 사용자를 위한 대안 경로입니다.
 
 import 'package:flutter/material.dart';
 
 import '../models/enums.dart';
 import '../models/taxonomy_item.dart';
 import '../repositories/taxonomy_repository.dart';
+import '../utils/folder_tree.dart';
 import '../utils/korean_particle.dart';
 import '../utils/id_generator.dart';
+import 'pick_taxonomy_dialog.dart';
 
 /// 새 분류 항목을 만드는 대화상자를 띄웁니다.
 ///
 /// 사용자가 만들면 그 항목을, 취소하면 null을 돌려줍니다.
 /// 돌려받은 항목을 바로 선택 상태로 만들어주면 "만들었는데 또 골라야 하는" 번거로움이 없습니다.
+///
+/// [allFolders]와 [initialParentId]는 [kind]가 폴더일 때만 씁니다.
+/// [allFolders]는 "상위 폴더" 칸의 후보 목록이고, [initialParentId]는
+/// 처음에 골라져 있을 상위 폴더입니다(예: 사이드바 "하위 폴더 만들기").
 Future<TaxonomyItem?> showCreateTaxonomyDialog({
   required BuildContext context,
   required TaxonomyKind kind,
   required TaxonomyRepository repository,
+  List<TaxonomyItem> allFolders = const <TaxonomyItem>[],
+  String? initialParentId,
 }) {
   return showDialog<TaxonomyItem>(
     context: context,
     builder: (BuildContext context) {
-      return _CreateTaxonomyDialog(kind: kind, repository: repository);
+      return _CreateTaxonomyDialog(
+        kind: kind,
+        repository: repository,
+        allFolders: allFolders,
+        initialParentId: initialParentId,
+      );
     },
   );
 }
 
 /// 이름을 입력받아 새 분류 항목을 만드는 대화상자입니다.
 class _CreateTaxonomyDialog extends StatefulWidget {
-  const _CreateTaxonomyDialog({required this.kind, required this.repository});
+  const _CreateTaxonomyDialog({
+    required this.kind,
+    required this.repository,
+    this.allFolders = const <TaxonomyItem>[],
+    this.initialParentId,
+  });
 
   final TaxonomyKind kind;
   final TaxonomyRepository repository;
+
+  /// 폴더일 때만 씁니다. "상위 폴더" 칸을 채울 후보들입니다.
+  final List<TaxonomyItem> allFolders;
+
+  /// 처음에 골라져 있을 상위 폴더입니다(예: 사이드바 "하위 폴더 만들기").
+  final String? initialParentId;
 
   @override
   State<_CreateTaxonomyDialog> createState() => _CreateTaxonomyDialogState();
@@ -52,6 +81,9 @@ class _CreateTaxonomyDialogState extends State<_CreateTaxonomyDialog> {
 
   /// 저장하는 중인지 여부입니다. 중복 검사에 잠깐 시간이 걸립니다.
   bool _isSaving = false;
+
+  /// 폴더일 때만 씁니다. 지금 고른 상위 폴더의 id입니다. null이면 최상위입니다.
+  late String? _selectedParentId = widget.initialParentId;
 
   /// 화면이 사라질 때 입력창 도구를 정리합니다.
   ///
@@ -80,8 +112,12 @@ class _CreateTaxonomyDialogState extends State<_CreateTaxonomyDialog> {
       _errorText = null;
     });
 
-    final bool alreadyExists =
-        await widget.repository.existsWithName(widget.kind, name);
+    final bool isFolder = widget.kind == TaxonomyKind.folder;
+    final bool alreadyExists = await widget.repository.existsWithName(
+      widget.kind,
+      name,
+      parentId: isFolder ? _selectedParentId : null,
+    );
 
     if (!mounted) {
       return;
@@ -101,6 +137,7 @@ class _CreateTaxonomyDialogState extends State<_CreateTaxonomyDialog> {
       id: newId(),
       kind: widget.kind,
       name: name,
+      parentId: isFolder ? _selectedParentId : null,
       createdAt: now,
       updatedAt: now,
     );
@@ -114,30 +151,73 @@ class _CreateTaxonomyDialogState extends State<_CreateTaxonomyDialog> {
     Navigator.of(context).pop(created);
   }
 
+  /// "상위 폴더" 칸을 눌렀을 때 고르는 대화상자를 띄웁니다.
+  Future<void> _pickParent() async {
+    final List<FolderTreeEntry> tree = buildFolderTree(widget.allFolders);
+    final PickedTaxonomy? picked = await showPickTaxonomyDialog(
+      context: context,
+      kind: TaxonomyKind.folder,
+      items: tree.map((FolderTreeEntry e) => e.folder).toList(),
+      depthById: <String, int>{
+        for (final FolderTreeEntry e in tree) e.folder.id: e.depth,
+      },
+      title: '상위 폴더',
+      allowNone: true,
+    );
+    if (picked == null) {
+      return;
+    }
+    setState(() {
+      _selectedParentId = picked.item?.id;
+    });
+  }
+
   /// 대화상자의 생김새를 만들어 돌려줍니다.
   @override
   Widget build(BuildContext context) {
     final String kindName = widget.kind.displayName;
+    final bool isFolder = widget.kind == TaxonomyKind.folder;
+    final String parentLabel = _selectedParentId == null
+        ? '최상위'
+        : widget.allFolders
+            .firstWhere((TaxonomyItem f) => f.id == _selectedParentId)
+            .name;
 
     return AlertDialog(
       title: Text('새 $kindName 만들기'),
-      content: TextField(
-        controller: _controller,
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          TextField(
+            controller: _controller,
 
-        // 대화상자가 뜨자마자 바로 입력할 수 있게 커서를 놓습니다.
-        autofocus: true,
+            // 대화상자가 뜨자마자 바로 입력할 수 있게 커서를 놓습니다.
+            autofocus: true,
 
-        decoration: InputDecoration(
-          labelText: '$kindName 이름',
-          errorText: _errorText,
-        ),
+            decoration: InputDecoration(
+              labelText: '$kindName 이름',
+              errorText: _errorText,
+            ),
 
-        // 키보드의 확인 키를 눌러도 저장되게 합니다.
-        onSubmitted: (String _) {
-          if (!_isSaving) {
-            _save();
-          }
-        },
+            // 키보드의 확인 키를 눌러도 저장되게 합니다.
+            onSubmitted: (String _) {
+              if (!_isSaving) {
+                _save();
+              }
+            },
+          ),
+          if (isFolder) ...<Widget>[
+            const SizedBox(height: 8),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.folder_outlined),
+              title: const Text('상위 폴더'),
+              subtitle: Text(parentLabel),
+              onTap: _isSaving ? null : _pickParent,
+            ),
+          ],
+        ],
       ),
       actions: <Widget>[
         TextButton(
