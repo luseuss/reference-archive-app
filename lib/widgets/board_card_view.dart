@@ -260,7 +260,7 @@ class _BoardCardViewState extends State<BoardCardView> {
   Widget _buildImage(ColorScheme colors) {
     // 재생 중이면 썸네일 대신 진짜 재생기(웹뷰)를 보여줍니다.
     if (widget.isPlaying && widget.playerUrl != null) {
-      return _buildPlayer(widget.playerUrl!);
+      return _buildSizedPlayer(widget.playerUrl!);
     }
 
     final String? path = widget.imagePath;
@@ -303,6 +303,42 @@ class _BoardCardViewState extends State<BoardCardView> {
           child: _buildPlaceholder(colors, Icons.broken_image_outlined),
         );
       },
+    );
+  }
+
+  /// 재생기(웹뷰)에 카드의 지금 크기를 못 박아 넘겨줍니다.
+  ///
+  /// ── 실제로 겪은 크래시 ──
+  /// 이 Stack은 (재생 중이 아닐 때) `Image.file`이 스스로 정한 실제
+  /// 크기로 자기 높이를 정합니다(위 클래스 설명 "카드의 그림 부분"
+  /// 참고 — 카드 높이가 저장돼 있지 않은 경우, 즉 `BoardCard.height`가
+  /// null인 보통의 카드는 이 방식에 전적으로 기댑니다). 그런데
+  /// `InAppWebView`는 그림과 달리 스스로 크기를 정하지 않고 **"줄 수
+  /// 있는 만큼 다 달라"**(내부적으로 `SizedBox.expand`를 씁니다)고
+  /// 요구합니다. 재생 버튼을 누르는 순간 이 Stack의 크기를 정하는
+  /// 자리에 그림 대신 재생기가 들어가면, 위쪽(판 배치)에서 내려온
+  /// "높이는 그림이 알아서 정해라"(`0.0<=h<=Infinity`)라는 제약과
+  /// 만나 **"무한한 높이를 달라"**는 요청이 되어 레이아웃 계산 자체가
+  /// 깨지고 앱이 죽었습니다(정확히는 여러 겹의 레이아웃 단언
+  /// 실패로 이어졌습니다 — `integration_test/board_video_playback_test.dart`로
+  /// 재현해 확인했습니다).
+  ///
+  /// 그래서 재생기를 무한한 크기 대신 **지금까지 재둔 카드 크기
+  /// (`_reportedSize`)로 못 박아** 넘겨줍니다. 영상은 항상 썸네일
+  /// 상태를 먼저 거친 뒤에만 재생 버튼이 눌리므로(항상 보이는 재생
+  /// 버튼이 썸네일 위에 얹혀 있음), 이 시점에는 이미 썸네일 크기가
+  /// `_measureAfterBuild()`로 측정되어 있는 것이 보통입니다. 혹시라도
+  /// 아직 한 번도 안 재졌다면(이론상 일어나기 어렵지만 방어적으로)
+  /// 유튜브 썸네일의 표준 비율(16:9)로 대신합니다.
+  Widget _buildSizedPlayer(String url) {
+    final Size? size = _reportedSize;
+    if (size == null) {
+      return AspectRatio(aspectRatio: 16 / 9, child: _buildPlayer(url));
+    }
+    return SizedBox(
+      width: size.width,
+      height: size.height,
+      child: _buildPlayer(url),
     );
   }
 

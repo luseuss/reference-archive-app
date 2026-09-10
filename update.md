@@ -5483,3 +5483,65 @@ taxonomy_items 표가 schemaVersion 1부터 onCreate로만 만들어지고 그 �
 
 **한계**: 폴더 순서를 직접 정렬할 수 없습니다(항상 가나다순). 사이드바
 펼침/접힘 상태는 앱을 재시작하면 초기화됩니다.
+
+## 버그 수정 — 무드보드에서 유튜브 재생 버튼을 누르면 앱이 꺼지던 문제
+
+**무엇을**: 무드보드 카드의 재생 버튼(▶)을 누르면 앱이 통째로 꺼지던
+크래시를 고쳤습니다.
+
+**왜**: 의뢰인 보고 — "무드보드 내에 있는 유튜브영상을 실행시키면
+크래시 나면서 앱이 꺼져."
+
+### 어떻게 찾았나
+
+`flutter test`/평소 `flutter run`으로는 재현되지 않았습니다(웹뷰가
+실제로 필요한 문제라, `integration_test/youtube_player_test.dart`
+맨 위 설명이 경고해온 바로 그 유형입니다). 같은 방식으로
+`integration_test/board_video_playback_test.dart`(새 파일)를 만들어
+**진짜 BoardScreen을 실제로 띄우고 재생 버튼을 실제로 눌러서** 재현했고,
+그 로그에서 정확한 원인(아래)을 확인했습니다.
+
+### 진짜 원인
+
+`board_card_view.dart`의 카드 Stack은 (재생 중이 아닐 때) `Image.file`이
+스스로 정한 크기로 자기 높이를 정합니다. `BoardCard.height`가 저장돼
+있지 않은(=한 번도 손으로 크기를 안 바꾼) 보통의 카드는 이 방식에
+전적으로 기대고, 그래서 위쪽(`board_canvas.dart`)에서 내려오는 높이
+제약이 원래 "제한 없음"(`0.0<=h<=Infinity`)입니다.
+
+그런데 `InAppWebView`(재생기 웹뷰)는 그림과 달리 스스로 크기를 정하지
+않고 내부적으로 `SizedBox.expand`로 **"줄 수 있는 만큼 다 달라"**고
+요구합니다. 재생 버튼을 누르는 순간 이 자리에 그림 대신 재생기가
+들어가면서 "무한한 높이를 달라"는 요청이 되어 레이아웃 계산 자체가
+깨졌습니다(`BoxConstraints forces an infinite height` → 그 아래로
+여러 겹의 레이아웃 단언 실패가 이어짐).
+
+### 고침
+
+`board_card_view.dart`에 `_buildSizedPlayer()`를 추가해, 재생기를
+무한한 크기 대신 **지금까지 재둔 카드 크기(`_reportedSize`)로 못
+박아** 감싸서 넘겨줍니다. 측정된 적이 없으면(이론상 일어나기 어려움)
+방어적으로 유튜브 표준 비율(16:9)을 씁니다. 영상은 항상 썸네일을
+먼저 거친 뒤에만 재생 버튼이 눌리므로, 이 시점엔 `_reportedSize`가
+이미 채워져 있는 것이 보통입니다.
+
+### 배운 것 / 다음에 참고할 것
+
+- **카드 위에 웹뷰·플랫폼 뷰를 더 얹을 일이 생기면, 그 자리가 "Stack의
+  크기를 정하는 자리"(Positioned로 안 감싼 자리)인지 먼저 확인하세요.**
+  그 자리에 놓이는 위젯은 반드시 스스로 유한한 크기를 보고할 수 있어야
+  합니다(그림처럼). 웹뷰·플랫폼 뷰는 보통 그렇지 않으므로 명시적으로
+  크기를 못 박아 감싸야 합니다.
+- **`integration_test/board_video_playback_test.dart`가 이 크래시를
+  다시 잡는 회귀 테스트입니다.** 웹뷰가 얽힌 문제답게 평소
+  `flutter test`에는 안 끼고, `flutter test integration_test -d
+  windows`로만 돕니다.
+
+### 어떻게 테스트했나
+
+- `flutter analyze` 문제없음.
+- `flutter test` 720건 전부 통과.
+- `flutter test integration_test/board_video_playback_test.dart -d
+  windows` — 고치기 전에는 재생 버튼을 누르는 순간 레이아웃 단언
+  실패가 쏟아지며 테스트가 실패했고, 고친 뒤에는 통과했습니다(실제
+  크래시 재현 → 수정 확인).
