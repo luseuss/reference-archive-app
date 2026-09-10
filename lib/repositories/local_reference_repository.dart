@@ -11,6 +11,7 @@ import '../data/app_database.dart';
 import '../models/enums.dart';
 import '../models/reference_item.dart';
 import '../models/reference_query.dart';
+import '../utils/folder_tree.dart';
 import '../utils/similarity.dart';
 import 'reference_repository.dart';
 
@@ -64,9 +65,15 @@ class LocalReferenceRepository implements ReferenceRepository {
     }
 
     // ── 폴더 / 카테고리 필터 ──
+    //
+    // 폴더는 자기 자신뿐 아니라 그 아래 모든 하위 폴더도 함께 봅니다.
+    // 사이드바에서 상위 폴더를 고르면 하위 폴더의 레퍼런스까지 보여주기
+    // 위한 것입니다. 이 저장소를 거치는 모든 화면(메인 목록, 무드보드에
+    // 기존 레퍼런스를 고르는 화면 등)에 자동으로 적용됩니다.
     final String? folderId = query.folderId;
     if (folderId != null) {
-      statement.where(($ReferencesTable t) => t.folderId.equals(folderId));
+      final Set<String> folderIds = await _folderAndDescendantIds(folderId);
+      statement.where(($ReferencesTable t) => t.folderId.isIn(folderIds));
     }
 
     final String? categoryId = query.categoryId;
@@ -139,6 +146,20 @@ class LocalReferenceRepository implements ReferenceRepository {
   /// `instr(찾을대상, 검색어)`는 **와일드카드 개념 자체가 없어서** 언제나 글자
   /// 그대로 찾습니다. 들어있으면 그 위치(1부터), 없으면 0을 돌려줍니다.
   /// 양쪽 다 lower()로 소문자로 바꿔서 대소문자를 구분하지 않게 합니다.
+  /// [folderId] 자신과 그 아래 모든 하위 폴더의 id를 모아 돌려줍니다.
+  Future<Set<String>> _folderAndDescendantIds(String folderId) async {
+    final List<TaxonomyItemRow> folderRows = await (_db.select(_db.taxonomyItems)
+          ..where(($TaxonomyItemsTable t) =>
+              t.kind.equals(TaxonomyKind.folder.storedName) & t.deletedAt.isNull()))
+        .get();
+
+    final Map<String, String?> parentById = <String, String?>{
+      for (final TaxonomyItemRow row in folderRows) row.id: row.parentId,
+    };
+
+    return collectFolderAndDescendantIds(folderId, parentById);
+  }
+
   Expression<bool> _containsText(Expression<String> column, String needle) {
     return FunctionCallExpression<int>('instr', <Expression<Object>>[
       column.lower(),

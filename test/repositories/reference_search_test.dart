@@ -63,12 +63,13 @@ void main() {
   }
 
   /// 테스트용 분류 항목을 만들어 저장하고 그 id를 돌려줍니다.
-  Future<String> saveTaxonomy(TaxonomyKind kind, String name) async {
+  Future<String> saveTaxonomy(TaxonomyKind kind, String name, {String? parentId}) async {
     final DateTime now = DateTime.now().toUtc();
     final TaxonomyItem item = TaxonomyItem(
       id: newId(),
       kind: kind,
       name: name,
+      parentId: parentId,
       createdAt: now,
       updatedAt: now,
     );
@@ -175,6 +176,36 @@ void main() {
           await repository.search(ReferenceQuery(folderId: folder));
 
       expect(titlesOf(found), <String>['인물 사진']);
+    });
+
+    test('상위 폴더를 고르면 하위 폴더의 것도 함께 나온다', () async {
+      final String parent = await saveTaxonomy(TaxonomyKind.folder, '인물');
+      final String child =
+          await saveTaxonomy(TaxonomyKind.folder, '얼굴', parentId: parent);
+
+      await saveReference(title: '상위 폴더 사진', folderId: parent);
+      await saveReference(title: '하위 폴더 사진', folderId: child);
+      await saveReference(title: '무관한 사진');
+
+      final List<ReferenceItem> items =
+          await repository.search(ReferenceQuery(folderId: parent));
+
+      expect(titlesOf(items), containsAll(<String>['상위 폴더 사진', '하위 폴더 사진']));
+      expect(titlesOf(items), isNot(contains('무관한 사진')));
+    });
+
+    test('하위 폴더를 고르면 그 하위 것만 나온다(상위는 안 섞인다)', () async {
+      final String parent = await saveTaxonomy(TaxonomyKind.folder, '인물');
+      final String child =
+          await saveTaxonomy(TaxonomyKind.folder, '얼굴', parentId: parent);
+
+      await saveReference(title: '상위 폴더 사진', folderId: parent);
+      await saveReference(title: '하위 폴더 사진', folderId: child);
+
+      final List<ReferenceItem> items =
+          await repository.search(ReferenceQuery(folderId: child));
+
+      expect(titlesOf(items), <String>['하위 폴더 사진']);
     });
 
     test('카테고리로 거를 수 있다', () async {
