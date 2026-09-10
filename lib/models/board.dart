@@ -132,8 +132,8 @@ class BoardCard {
   ///
   /// height는 여기서 null로 되돌릴 수 없습니다. 인자를 안 넘긴 것과
   /// null을 넘긴 것을 구분할 수 없기 때문입니다(reference_item.dart와 같은 사정).
-  /// 지금은 되돌릴 일이 없어서 따로 만들지 않았습니다. 2단계에서 "원래 비율로"
-  /// 버튼을 붙이게 되면 clearHeight()를 그때 만드세요.
+  /// 높이를 비우고 싶으면(원래 그림 비율로 되돌리고 싶으면) 아래
+  /// clearHeight()를 쓰세요.
   BoardCard copyWith({
     double? x,
     double? y,
@@ -153,6 +153,28 @@ class BoardCard {
       zOrder: zOrder ?? this.zOrder,
       createdAt: createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
+    );
+  }
+
+  /// 높이를 비운(= "그림 비율대로 알아서"로 되돌린) 사본을 만들어 돌려줍니다.
+  ///
+  /// ── 왜 필요한가 ──
+  /// "같은 크기로 맞추기"가 다른 카드의 높이까지 그대로 복사하면, 그림
+  /// 비율이 다를 때 상자와 그림 사이에 빈 공간(레터박스)이 생깁니다.
+  /// 폭만 맞추고 높이는 이 메서드로 비워서, 각 카드가 자기 그림의
+  /// 원래 비율을 따르게 합니다(board_align.dart의 matchSizeSelectedCards
+  /// 참고).
+  BoardCard clearHeight() {
+    return BoardCard(
+      id: id,
+      boardId: boardId,
+      referenceId: referenceId,
+      x: x,
+      y: y,
+      width: width,
+      zOrder: zOrder,
+      createdAt: createdAt,
+      updatedAt: updatedAt,
     );
   }
 }

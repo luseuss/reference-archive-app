@@ -738,7 +738,6 @@ class BoardInteractionController extends ChangeNotifier {
       _cards,
       _selection.ids,
       reference.id,
-      measuredHeights: _measuredHeights,
     );
     notifyListeners();
 

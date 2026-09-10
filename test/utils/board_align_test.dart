@@ -206,7 +206,7 @@ void main() {
   });
 
   group('크기 맞추기', () {
-    test('기준 카드의 크기로 나머지가 바뀐다', () {
+    test('기준 카드의 폭으로 나머지가 바뀐다', () {
       final List<BoardCard> cards = <BoardCard>[
         makeCard('a', width: 200, height: 150),
         makeCard('b', width: 300, height: 300),
@@ -219,7 +219,30 @@ void main() {
       );
 
       expect(cardOf(result, 'b').width, 200);
-      expect(cardOf(result, 'b').height, 150);
+    });
+
+    test('높이는 복사하지 않고 비운다 — 각자 그림 비율을 따르게 한다', () {
+      // ── 왜 이렇게 하나 ──
+      // 예전에는 기준 카드의 높이까지 그대로 복사했습니다. 그런데 그림은
+      // 항상 원래 비율대로 그려지므로(resizeCard 설명 참고), 비율이 다른
+      // 사진에 그 높이를 억지로 씌우면 상자와 그림 사이에 빈 공간
+      // (레터박스)이 생겼습니다. 그 뒤 손잡이로 다시 조절하면 그
+      // 뒤틀린 비율을 "원래 비율"로 착각해 그대로 굳어버리는 문제까지
+      // 이어졌습니다(실제로 의뢰인이 겪은 문제). 그래서 폭만 맞추고
+      // 높이는 비워서(clearHeight) 각 카드가 자기 그림 비율을 따르게
+      // 합니다.
+      final List<BoardCard> cards = <BoardCard>[
+        makeCard('a', width: 200, height: 150),
+        makeCard('b', width: 300, height: 300),
+      ];
+
+      final List<BoardCard> result = matchSizeSelectedCards(
+        cards,
+        <String>{'a', 'b'},
+        'a',
+      );
+
+      expect(cardOf(result, 'b').height, isNull);
     });
 
     test('기준 카드 자신은 안 바뀐다', () {
@@ -252,22 +275,6 @@ void main() {
 
       expect(cardOf(result, 'b').x, 777);
       expect(cardOf(result, 'b').y, 888);
-    });
-
-    test('기준 카드의 높이가 비어 있으면 재서 알려준 값을 쓴다', () {
-      final List<BoardCard> cards = <BoardCard>[
-        makeCard('a', width: 200), // 높이 비어 있음(그림 비율대로)
-        makeCard('b', width: 300, height: 300),
-      ];
-
-      final List<BoardCard> result = matchSizeSelectedCards(
-        cards,
-        <String>{'a', 'b'},
-        'a',
-        measuredHeights: <String, double>{'a': 140},
-      );
-
-      expect(cardOf(result, 'b').height, 140);
     });
 
     test('선택 안 된 카드는 안 건드린다', () {

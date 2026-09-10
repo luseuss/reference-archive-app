@@ -96,7 +96,7 @@ BoardCard _aligned(
   }
 }
 
-/// [referenceId] 카드의 크기로 [ids]에 든 나머지 카드들의 크기를 맞춘
+/// [referenceId] 카드의 **폭**으로 [ids]에 든 나머지 카드들의 폭을 맞춘
 /// 새 목록을 돌려줍니다. **자리(x, y)는 건드리지 않습니다.**
 ///
 /// ── 왜 자리는 그대로 두나 ──
@@ -104,29 +104,37 @@ BoardCard _aligned(
 /// 싶으면 [alignSelectedCards]를 따로 씁니다. 한 번에 둘 다 하면
 /// 사용자가 "왜 자리도 바뀌었지" 하고 놀랍니다.
 ///
+/// ── 왜 높이는 안 맞추고 비우나 (실제로 겪은 문제) ──
+/// 예전에는 기준 카드의 높이까지 그대로 복사했습니다. 그런데 그림은
+/// 항상 원래 비율대로 그려지므로(board_card_actions.dart의 resizeCard
+/// 설명 참고 — 무드보드는 그림을 있는 그대로 보려고 만든 판이라
+/// 찌그러뜨리지 않습니다), 비율이 다른 사진에 그 높이를 억지로
+/// 씌우면 상자와 그림 사이에 **빈 공간(레터박스)** 이 생겼습니다. 그
+/// 뒤 손잡이로 다시 조절하면(resizeCard) 그 뒤틀린 상자 비율을
+/// "원래 비율"로 착각해 그대로 굳어버리는 문제까지 이어졌습니다.
+///
+/// 그래서 폭만 맞추고 높이는 [BoardCard.clearHeight]로 비워서, 각
+/// 카드가 자기 그림의 원래 비율을 따르게 합니다. 맞춘 카드들의
+/// 세로 길이는 사진마다 다를 수 있지만(가로만 맞추므로), 빈 공간도
+/// 찌그러짐도 생기지 않습니다.
+///
 /// [referenceId]가 [ids]에 없거나 목록에 없으면 아무 일도 안 합니다.
 List<BoardCard> matchSizeSelectedCards(
   List<BoardCard> cards,
   Set<String> ids,
-  String referenceId, {
-  Map<String, double> measuredHeights = const <String, double>{},
-}) {
+  String referenceId,
+) {
   final int referenceIndex = indexOfCard(cards, referenceId);
   if (referenceIndex == -1 || !ids.contains(referenceId)) {
     return cards;
   }
 
-  final BoardCard reference = cards[referenceIndex];
-  final double width = reference.width;
-  final double height = boardCardHeight(
-    reference,
-    measuredHeights: measuredHeights,
-  );
+  final double width = cards[referenceIndex].width;
 
   return <BoardCard>[
     for (final BoardCard card in cards)
       if (ids.contains(card.id) && card.id != referenceId)
-        card.copyWith(width: width, height: height)
+        card.copyWith(width: width).clearHeight()
       else
         card,
   ];
