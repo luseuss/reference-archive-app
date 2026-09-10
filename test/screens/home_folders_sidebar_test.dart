@@ -264,4 +264,178 @@ void main() {
       findsNothing,
     );
   });
+
+  group('폴더 트리(하위 폴더)', () {
+    testWidgets('하위 폴더가 기본으로 펼쳐져 함께 보인다', (WidgetTester tester) async {
+      final String parentId = await saveFolder('인물');
+      final DateTime now = DateTime.now().toUtc();
+      await taxonomyRepository.save(TaxonomyItem(
+        id: newId(),
+        kind: TaxonomyKind.folder,
+        name: '얼굴',
+        parentId: parentId,
+        createdAt: now,
+        updatedAt: now,
+      ));
+
+      await openApp(tester);
+
+      expect(find.text('인물'), findsOneWidget);
+      expect(find.text('얼굴'), findsOneWidget);
+    });
+
+    testWidgets('접기 화살표를 누르면 하위 폴더가 숨겨진다', (WidgetTester tester) async {
+      final String parentId = await saveFolder('인물');
+      final DateTime now = DateTime.now().toUtc();
+      await taxonomyRepository.save(TaxonomyItem(
+        id: newId(),
+        kind: TaxonomyKind.folder,
+        name: '얼굴',
+        parentId: parentId,
+        createdAt: now,
+        updatedAt: now,
+      ));
+
+      await openApp(tester);
+      expect(find.text('얼굴'), findsOneWidget);
+
+      await tester.tap(find.byIcon(Icons.expand_more));
+      await tester.pumpAndSettle();
+      expect(find.text('얼굴'), findsNothing);
+
+      await tester.tap(find.byIcon(Icons.chevron_right));
+      await tester.pumpAndSettle();
+      expect(find.text('얼굴'), findsOneWidget);
+    });
+
+    testWidgets('상위 폴더를 고르면 하위 폴더의 레퍼런스도 함께 보인다', (WidgetTester tester) async {
+      final String parentId = await saveFolder('인물');
+      final DateTime now = DateTime.now().toUtc();
+      final String childId = newId();
+      await taxonomyRepository.save(TaxonomyItem(
+        id: childId,
+        kind: TaxonomyKind.folder,
+        name: '얼굴',
+        parentId: parentId,
+        createdAt: now,
+        updatedAt: now,
+      ));
+      await saveReference(title: '상위 사진', folderId: parentId);
+      await saveReference(title: '하위 사진', folderId: childId);
+
+      await openApp(tester);
+
+      await tester.tap(find.text('인물'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('상위 사진'), findsOneWidget);
+      expect(find.text('하위 사진'), findsOneWidget);
+    });
+
+    testWidgets('사이드바 메뉴로 하위 폴더를 만들 수 있다', (WidgetTester tester) async {
+      await saveFolder('인물');
+
+      await openApp(tester);
+
+      await tester.tap(find.byIcon(Icons.more_vert));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('하위 폴더 만들기'));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byType(TextField).last, '얼굴');
+      await tester.tap(find.text('만들기'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('얼굴'), findsOneWidget);
+
+      final List<TaxonomyItem> folders =
+          await taxonomyRepository.getAll(TaxonomyKind.folder);
+      final TaxonomyItem child = folders.firstWhere((TaxonomyItem f) => f.name == '얼굴');
+      expect(child.parentId, isNotNull);
+    });
+
+    testWidgets('사이드바 메뉴로 폴더를 지울 수 있다', (WidgetTester tester) async {
+      final String folderId = await saveFolder('인물');
+
+      await openApp(tester);
+
+      await tester.tap(find.byIcon(Icons.more_vert));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('삭제'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, '삭제'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('인물'), findsNothing);
+      expect(await taxonomyRepository.getById(folderId), isNull);
+    });
+
+    testWidgets('폴더를 다른 폴더 위로 끌어다 놓으면 하위로 옮겨진다', (WidgetTester tester) async {
+      final String targetId = await saveFolder('인물');
+      final String draggedId = await saveFolder('풍경');
+
+      await openApp(tester);
+
+      await tester.drag(
+        find.text('풍경'),
+        tester.getCenter(find.text('인물')) - tester.getCenter(find.text('풍경')),
+      );
+      await tester.pumpAndSettle();
+
+      final TaxonomyItem? moved = await taxonomyRepository.getById(draggedId);
+      expect(moved!.parentId, targetId);
+    });
+
+    testWidgets('자기 하위로 옮기려 하면 안내하고 그대로 둔다', (WidgetTester tester) async {
+      final String parentId = await saveFolder('인물');
+      final DateTime now = DateTime.now().toUtc();
+      final String childId = newId();
+      await taxonomyRepository.save(TaxonomyItem(
+        id: childId,
+        kind: TaxonomyKind.folder,
+        name: '얼굴',
+        parentId: parentId,
+        createdAt: now,
+        updatedAt: now,
+      ));
+
+      await openApp(tester);
+
+      await tester.drag(
+        find.text('인물'),
+        tester.getCenter(find.text('얼굴')) - tester.getCenter(find.text('인물')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('폴더를 그 위치로 옮길 수 없습니다.'), findsOneWidget);
+
+      final TaxonomyItem? unchanged = await taxonomyRepository.getById(parentId);
+      expect(unchanged!.parentId, isNull);
+    });
+
+    testWidgets('"전체 레퍼런스" 위로 끌어다 놓으면 최상위로 돌아간다', (WidgetTester tester) async {
+      final String parentId = await saveFolder('인물');
+      final DateTime now = DateTime.now().toUtc();
+      final String childId = newId();
+      await taxonomyRepository.save(TaxonomyItem(
+        id: childId,
+        kind: TaxonomyKind.folder,
+        name: '얼굴',
+        parentId: parentId,
+        createdAt: now,
+        updatedAt: now,
+      ));
+
+      await openApp(tester);
+
+      await tester.drag(
+        find.text('얼굴'),
+        tester.getCenter(find.text('전체 레퍼런스')) - tester.getCenter(find.text('얼굴')),
+      );
+      await tester.pumpAndSettle();
+
+      final TaxonomyItem? moved = await taxonomyRepository.getById(childId);
+      expect(moved!.parentId, isNull);
+    });
+  });
 }

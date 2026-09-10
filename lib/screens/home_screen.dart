@@ -33,15 +33,18 @@ import '../services/image_source.dart';
 import '../services/image_storage.dart';
 import '../services/phash_backfill.dart';
 import '../services/youtube_info_source.dart';
+import '../utils/folder_tree.dart';
 import '../widgets/add_youtube_dialog.dart';
 import '../widgets/app_sidebar.dart';
 import '../widgets/bulk_action_bar.dart';
+import '../widgets/create_taxonomy_dialog.dart';
 import '../widgets/home_drop_area.dart';
 import '../widgets/home_selection_app_bar.dart';
 import '../widgets/main_header.dart';
 import '../widgets/reference_empty_state.dart';
 import '../widgets/reference_filter_bar.dart';
 import '../widgets/reference_grid.dart';
+import '../widgets/rename_taxonomy_dialog.dart';
 import 'board_list_screen.dart';
 import 'home_hover_preview_controller.dart';
 import 'home_selection_controller.dart';
@@ -797,6 +800,10 @@ class _HomeScreenState extends State<HomeScreen> {
       folders: _taxonomyOptions[TaxonomyKind.folder] ?? <TaxonomyItem>[],
       selectedFolderId: _selectedFolderId,
       onSelectFolder: _selectFolder,
+      onCreateSubfolder: _createSubfolder,
+      onRenameFolder: _renameFolder,
+      onDeleteFolder: _deleteFolderFromSidebar,
+      onMoveFolder: _moveFolder,
       onOpenBoards: _openBoards,
       onOpenTrash: _openTrash,
       onOpenSettings: _openSettings,
@@ -827,6 +834,103 @@ class _HomeScreenState extends State<HomeScreen> {
     } else {
       _applyQuery(_query.copyWith(folderId: folderId));
     }
+  }
+
+  /// 사이드바 메뉴에서 "하위 폴더 만들기"를 눌렀을 때 실행됩니다.
+  Future<void> _createSubfolder(TaxonomyItem parent) async {
+    final TaxonomyItem? created = await showCreateTaxonomyDialog(
+      context: context,
+      kind: TaxonomyKind.folder,
+      repository: widget.taxonomyRepository,
+      allFolders: _taxonomyOptions[TaxonomyKind.folder] ?? <TaxonomyItem>[],
+      initialParentId: parent.id,
+    );
+    if (created != null) {
+      await _loadTaxonomyOptions();
+    }
+  }
+
+  /// 사이드바 메뉴에서 폴더의 "이름 바꾸기"를 눌렀을 때 실행됩니다.
+  Future<void> _renameFolder(TaxonomyItem folder) async {
+    final bool renamed = await showRenameTaxonomyDialog(
+      context: context,
+      item: folder,
+      repository: widget.taxonomyRepository,
+      allFolders: _taxonomyOptions[TaxonomyKind.folder] ?? <TaxonomyItem>[],
+    );
+    if (renamed) {
+      await _loadTaxonomyOptions();
+      await _loadItems(); // 이름이 카드에도 보이는 곳이 있어 함께 새로고침합니다.
+    }
+  }
+
+  /// 사이드바 메뉴에서 폴더의 "삭제"를 눌렀을 때 실행됩니다.
+  Future<void> _deleteFolderFromSidebar(TaxonomyItem folder) async {
+    final List<TaxonomyItem> folders =
+        _taxonomyOptions[TaxonomyKind.folder] ?? <TaxonomyItem>[];
+    final Set<String> idsToDelete =
+        collectFolderAndDescendantIds(folder.id, parentIdMap(folders));
+    final int subfolderCount = idsToDelete.length - 1;
+
+    final String message = subfolderCount > 0
+        ? '"${folder.name}" 폴더를 지웁니다.\n하위 폴더 $subfolderCount개도 함께 지워집니다.'
+        : '"${folder.name}" 폴더를 지웁니다.';
+
+    final bool? confirmed = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('폴더 삭제'),
+          content: Text(message),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('취소'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              style: FilledButton.styleFrom(
+                backgroundColor: Theme.of(context).colorScheme.error,
+                foregroundColor: Theme.of(context).colorScheme.onError,
+              ),
+              child: const Text('삭제'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true) {
+      return;
+    }
+
+    await widget.taxonomyRepository.delete(folder.id);
+
+    // 지금 보고 있던 폴더(또는 그 상위)가 지워졌으면 "전체"로 돌아갑니다.
+    // 안 그러면 있지도 않은 폴더를 보고 있는 채로 남습니다.
+    if (_selectedFolderId != null && idsToDelete.contains(_selectedFolderId)) {
+      _selectFolder(null);
+    }
+
+    await _loadTaxonomyOptions();
+    await _loadItems();
+  }
+
+  /// 사이드바에서 폴더를 다른 폴더(또는 최상위) 위로 드래그해서 옮겼을 때
+  /// 실행됩니다.
+  Future<void> _moveFolder(String draggedFolderId, String? newParentId) async {
+    try {
+      await widget.taxonomyRepository.moveFolder(draggedFolderId, newParentId);
+    } on FolderMoveCycleException {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('폴더를 그 위치로 옮길 수 없습니다.')),
+      );
+      return;
+    }
+    await _loadTaxonomyOptions();
   }
 
   /// 오른쪽 본문을 만듭니다. (④⑤⑥)
