@@ -38,6 +38,7 @@ Future<PickedTaxonomy?> showPickTaxonomyDialog({
   required List<TaxonomyItem> items,
   required String title,
   bool allowNone = false,
+  Map<String, int>? depthById,
 }) {
   return showDialog<PickedTaxonomy>(
     context: context,
@@ -47,6 +48,7 @@ Future<PickedTaxonomy?> showPickTaxonomyDialog({
         items: items,
         title: title,
         allowNone: allowNone,
+        depthById: depthById,
       );
     },
   );
@@ -62,6 +64,7 @@ class _PickTaxonomyDialog extends StatelessWidget {
     required this.items,
     required this.title,
     required this.allowNone,
+    this.depthById,
   });
 
   /// 고르는 대상이 폴더인지 태그인지 등을 나타냅니다. 안내 문구에 씁니다.
@@ -75,6 +78,11 @@ class _PickTaxonomyDialog extends StatelessWidget {
 
   /// "없음" 선택지를 함께 보여줄지 여부입니다.
   final bool allowNone;
+
+  /// 항목 id → 트리 깊이입니다. 폴더처럼 중첩이 있는 종류를 들여써
+  /// 보여줄 때만 넘겨줍니다. null이면(태그 등 중첩이 없는 종류) 들여쓰지
+  /// 않습니다.
+  final Map<String, int>? depthById;
 
   /// 대화상자의 생김새를 만들어 돌려줍니다.
   @override
@@ -119,8 +127,10 @@ class _PickTaxonomyDialog extends StatelessWidget {
     }
 
     for (final TaxonomyItem item in items) {
+      final int depth = depthById?[item.id] ?? 0;
       options.add(
         ListTile(
+          contentPadding: EdgeInsets.only(left: 16.0 + (depth * 20), right: 16),
           leading: const Icon(Icons.label_outline),
           title: Text(item.name),
           onTap: () {
