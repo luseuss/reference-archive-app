@@ -12,6 +12,7 @@ class TaxonomyItem {
     required this.name,
     required this.createdAt,
     required this.updatedAt,
+    this.parentId,
   });
 
   /// 고유 번호(UUID v4)
@@ -23,6 +24,14 @@ class TaxonomyItem {
   /// 사용자가 붙인 이름
   final String name;
 
+  /// 상위 폴더의 id입니다. null이면 최상위(하위 폴더가 아님)입니다.
+  ///
+  /// 폴더(kind가 folder)일 때만 의미가 있습니다 — 카테고리·태그·프로젝트는
+  /// 항상 null입니다. 이 값을 바꾸는 건 copyWith가 아니라
+  /// TaxonomyRepository.moveFolder()를 통해서만 합니다(순환 참조 검사가
+  /// 거기 있습니다).
+  final String? parentId;
+
   /// 만든 시각 (UTC)
   final DateTime createdAt;
 
@@ -31,11 +40,16 @@ class TaxonomyItem {
 
   /// 몇 가지만 바꾼 사본을 만들어 돌려줍니다.
   /// 왜 이런 방식인지는 reference_item.dart의 copyWith 설명을 보세요.
+  ///
+  /// parentId는 여기서 못 바꿉니다 — 상위 폴더를 바꾸는 건
+  /// TaxonomyRepository.moveFolder()를 쓰세요(순환 참조 검사가 필요해서
+  /// 저장소 쪽 책임입니다).
   TaxonomyItem copyWith({String? name, DateTime? updatedAt}) {
     return TaxonomyItem(
       id: id,
       kind: kind,
       name: name ?? this.name,
+      parentId: parentId,
       createdAt: createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );

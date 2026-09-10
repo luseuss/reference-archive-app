@@ -98,6 +98,10 @@ class TaxonomyItems extends Table {
   /// 사용자가 붙인 이름입니다.
   TextColumn get name => text()();
 
+  /// 상위 폴더의 id입니다. null이면 최상위(하위 폴더가 아님)입니다.
+  /// 폴더(kind='folder')만 씁니다 — 카테고리·태그·프로젝트는 항상 null입니다.
+  TextColumn get parentId => text().nullable()();
+
   /// 만든 시각 (UTC)
   DateTimeColumn get createdAt => dateTime()();
 

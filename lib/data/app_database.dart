@@ -59,8 +59,9 @@ class AppDatabase extends _$AppDatabase {
   ///   5 — Boards에 folderId 추가 (무드보드를 폴더/프로젝트에 연결)
   ///   6 — 파트(Part) 개념을 없앰. References.partId 칼럼 삭제,
   ///       taxonomy_items의 kind='part' 행 삭제
+  ///   7 — TaxonomyItems에 parentId 추가 (폴더 중첩)
   @override
-  int get schemaVersion => 6;
+  int get schemaVersion => 7;
 
   /// 데이터베이스를 처음 만들 때, 그리고 구조가 바뀌었을 때 무엇을 할지 정합니다.
   @override
@@ -118,6 +119,10 @@ class AppDatabase extends _$AppDatabase {
         // 그냥 지우면 됩니다.
         if (from < 6) {
           await _upgradeToVersion6(m);
+        }
+
+        if (from < 7) {
+          await _upgradeToVersion7(m);
         }
       },
 
@@ -310,6 +315,24 @@ class AppDatabase extends _$AppDatabase {
     await customStatement(
       "DELETE FROM taxonomy_items WHERE kind = 'part'",
     );
+  }
+
+  /// 버전 6 → 7. 폴더에 상위 폴더(parentId) 칸을 추가합니다(폴더 중첩).
+  ///
+  /// nullable 칸을 addColumn으로 더하기만 하면 됩니다. 기존 폴더는 전부
+  /// "아직 상위가 없는"(null) 상태로 시작합니다 — 전부 최상위 폴더가 되고,
+  /// 데이터 손실은 없습니다.
+  ///
+  /// ── 왜 v5(boards.folderId)처럼 특수한 부등호 조건이 필요 없나 ──
+  /// v5는 `from >= 3 && from < 5`라는 특수 조건이 필요했습니다. boards
+  /// 표가 v3에서 `createTable`로 **그 시점의 tables.dart 정의**로 막 만들어져,
+  /// v1/v2에서 건너뛰어 온 사용자는 이미 folderId가 있는 채로 시작하기
+  /// 때문입니다. taxonomy_items는 schemaVersion 1부터 onCreate(createAll)로만
+  /// 만들어졌고, 그 뒤로 어떤 버전도 createTable로 다시 만든 적이 없습니다
+  /// (v3는 boards/boardCards만 만듭니다). 그래서 이 표는 "새로 만들 때
+  /// 현재 정의를 쓰는" 문제에서 애초에 자유롭고, 그냥 `from < 7`이면 됩니다.
+  Future<void> _upgradeToVersion7(Migrator m) async {
+    await m.addColumn(taxonomyItems, taxonomyItems.parentId);
   }
 }
 

@@ -878,6 +878,17 @@ class $TaxonomyItemsTable extends TaxonomyItems
     type: DriftSqlType.string,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _parentIdMeta = const VerificationMeta(
+    'parentId',
+  );
+  @override
+  late final GeneratedColumn<String> parentId = GeneratedColumn<String>(
+    'parent_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _createdAtMeta = const VerificationMeta(
     'createdAt',
   );
@@ -916,6 +927,7 @@ class $TaxonomyItemsTable extends TaxonomyItems
     id,
     kind,
     name,
+    parentId,
     createdAt,
     updatedAt,
     deletedAt,
@@ -952,6 +964,12 @@ class $TaxonomyItemsTable extends TaxonomyItems
       );
     } else if (isInserting) {
       context.missing(_nameMeta);
+    }
+    if (data.containsKey('parent_id')) {
+      context.handle(
+        _parentIdMeta,
+        parentId.isAcceptableOrUnknown(data['parent_id']!, _parentIdMeta),
+      );
     }
     if (data.containsKey('created_at')) {
       context.handle(
@@ -996,6 +1014,10 @@ class $TaxonomyItemsTable extends TaxonomyItems
         DriftSqlType.string,
         data['${effectivePrefix}name'],
       )!,
+      parentId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}parent_id'],
+      ),
       createdAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}created_at'],
@@ -1027,6 +1049,10 @@ class TaxonomyItemRow extends DataClass implements Insertable<TaxonomyItemRow> {
   /// 사용자가 붙인 이름입니다.
   final String name;
 
+  /// 상위 폴더의 id입니다. null이면 최상위(하위 폴더가 아님)입니다.
+  /// 폴더(kind='folder')만 씁니다 — 카테고리·태그·프로젝트는 항상 null입니다.
+  final String? parentId;
+
   /// 만든 시각 (UTC)
   final DateTime createdAt;
 
@@ -1039,6 +1065,7 @@ class TaxonomyItemRow extends DataClass implements Insertable<TaxonomyItemRow> {
     required this.id,
     required this.kind,
     required this.name,
+    this.parentId,
     required this.createdAt,
     required this.updatedAt,
     this.deletedAt,
@@ -1049,6 +1076,9 @@ class TaxonomyItemRow extends DataClass implements Insertable<TaxonomyItemRow> {
     map['id'] = Variable<String>(id);
     map['kind'] = Variable<String>(kind);
     map['name'] = Variable<String>(name);
+    if (!nullToAbsent || parentId != null) {
+      map['parent_id'] = Variable<String>(parentId);
+    }
     map['created_at'] = Variable<DateTime>(createdAt);
     map['updated_at'] = Variable<DateTime>(updatedAt);
     if (!nullToAbsent || deletedAt != null) {
@@ -1062,6 +1092,9 @@ class TaxonomyItemRow extends DataClass implements Insertable<TaxonomyItemRow> {
       id: Value(id),
       kind: Value(kind),
       name: Value(name),
+      parentId: parentId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(parentId),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
       deletedAt: deletedAt == null && nullToAbsent
@@ -1079,6 +1112,7 @@ class TaxonomyItemRow extends DataClass implements Insertable<TaxonomyItemRow> {
       id: serializer.fromJson<String>(json['id']),
       kind: serializer.fromJson<String>(json['kind']),
       name: serializer.fromJson<String>(json['name']),
+      parentId: serializer.fromJson<String?>(json['parentId']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
       deletedAt: serializer.fromJson<DateTime?>(json['deletedAt']),
@@ -1091,6 +1125,7 @@ class TaxonomyItemRow extends DataClass implements Insertable<TaxonomyItemRow> {
       'id': serializer.toJson<String>(id),
       'kind': serializer.toJson<String>(kind),
       'name': serializer.toJson<String>(name),
+      'parentId': serializer.toJson<String?>(parentId),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
       'deletedAt': serializer.toJson<DateTime?>(deletedAt),
@@ -1101,6 +1136,7 @@ class TaxonomyItemRow extends DataClass implements Insertable<TaxonomyItemRow> {
     String? id,
     String? kind,
     String? name,
+    Value<String?> parentId = const Value.absent(),
     DateTime? createdAt,
     DateTime? updatedAt,
     Value<DateTime?> deletedAt = const Value.absent(),
@@ -1108,6 +1144,7 @@ class TaxonomyItemRow extends DataClass implements Insertable<TaxonomyItemRow> {
     id: id ?? this.id,
     kind: kind ?? this.kind,
     name: name ?? this.name,
+    parentId: parentId.present ? parentId.value : this.parentId,
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
     deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
@@ -1117,6 +1154,7 @@ class TaxonomyItemRow extends DataClass implements Insertable<TaxonomyItemRow> {
       id: data.id.present ? data.id.value : this.id,
       kind: data.kind.present ? data.kind.value : this.kind,
       name: data.name.present ? data.name.value : this.name,
+      parentId: data.parentId.present ? data.parentId.value : this.parentId,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
       deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
@@ -1129,6 +1167,7 @@ class TaxonomyItemRow extends DataClass implements Insertable<TaxonomyItemRow> {
           ..write('id: $id, ')
           ..write('kind: $kind, ')
           ..write('name: $name, ')
+          ..write('parentId: $parentId, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('deletedAt: $deletedAt')
@@ -1138,7 +1177,7 @@ class TaxonomyItemRow extends DataClass implements Insertable<TaxonomyItemRow> {
 
   @override
   int get hashCode =>
-      Object.hash(id, kind, name, createdAt, updatedAt, deletedAt);
+      Object.hash(id, kind, name, parentId, createdAt, updatedAt, deletedAt);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -1146,6 +1185,7 @@ class TaxonomyItemRow extends DataClass implements Insertable<TaxonomyItemRow> {
           other.id == this.id &&
           other.kind == this.kind &&
           other.name == this.name &&
+          other.parentId == this.parentId &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt &&
           other.deletedAt == this.deletedAt);
@@ -1155,6 +1195,7 @@ class TaxonomyItemsCompanion extends UpdateCompanion<TaxonomyItemRow> {
   final Value<String> id;
   final Value<String> kind;
   final Value<String> name;
+  final Value<String?> parentId;
   final Value<DateTime> createdAt;
   final Value<DateTime> updatedAt;
   final Value<DateTime?> deletedAt;
@@ -1163,6 +1204,7 @@ class TaxonomyItemsCompanion extends UpdateCompanion<TaxonomyItemRow> {
     this.id = const Value.absent(),
     this.kind = const Value.absent(),
     this.name = const Value.absent(),
+    this.parentId = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.deletedAt = const Value.absent(),
@@ -1172,6 +1214,7 @@ class TaxonomyItemsCompanion extends UpdateCompanion<TaxonomyItemRow> {
     required String id,
     required String kind,
     required String name,
+    this.parentId = const Value.absent(),
     required DateTime createdAt,
     required DateTime updatedAt,
     this.deletedAt = const Value.absent(),
@@ -1185,6 +1228,7 @@ class TaxonomyItemsCompanion extends UpdateCompanion<TaxonomyItemRow> {
     Expression<String>? id,
     Expression<String>? kind,
     Expression<String>? name,
+    Expression<String>? parentId,
     Expression<DateTime>? createdAt,
     Expression<DateTime>? updatedAt,
     Expression<DateTime>? deletedAt,
@@ -1194,6 +1238,7 @@ class TaxonomyItemsCompanion extends UpdateCompanion<TaxonomyItemRow> {
       if (id != null) 'id': id,
       if (kind != null) 'kind': kind,
       if (name != null) 'name': name,
+      if (parentId != null) 'parent_id': parentId,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (deletedAt != null) 'deleted_at': deletedAt,
@@ -1205,6 +1250,7 @@ class TaxonomyItemsCompanion extends UpdateCompanion<TaxonomyItemRow> {
     Value<String>? id,
     Value<String>? kind,
     Value<String>? name,
+    Value<String?>? parentId,
     Value<DateTime>? createdAt,
     Value<DateTime>? updatedAt,
     Value<DateTime?>? deletedAt,
@@ -1214,6 +1260,7 @@ class TaxonomyItemsCompanion extends UpdateCompanion<TaxonomyItemRow> {
       id: id ?? this.id,
       kind: kind ?? this.kind,
       name: name ?? this.name,
+      parentId: parentId ?? this.parentId,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       deletedAt: deletedAt ?? this.deletedAt,
@@ -1232,6 +1279,9 @@ class TaxonomyItemsCompanion extends UpdateCompanion<TaxonomyItemRow> {
     }
     if (name.present) {
       map['name'] = Variable<String>(name.value);
+    }
+    if (parentId.present) {
+      map['parent_id'] = Variable<String>(parentId.value);
     }
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
@@ -1254,6 +1304,7 @@ class TaxonomyItemsCompanion extends UpdateCompanion<TaxonomyItemRow> {
           ..write('id: $id, ')
           ..write('kind: $kind, ')
           ..write('name: $name, ')
+          ..write('parentId: $parentId, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('deletedAt: $deletedAt, ')
@@ -3112,6 +3163,7 @@ typedef $$TaxonomyItemsTableCreateCompanionBuilder =
       required String id,
       required String kind,
       required String name,
+      Value<String?> parentId,
       required DateTime createdAt,
       required DateTime updatedAt,
       Value<DateTime?> deletedAt,
@@ -3122,6 +3174,7 @@ typedef $$TaxonomyItemsTableUpdateCompanionBuilder =
       Value<String> id,
       Value<String> kind,
       Value<String> name,
+      Value<String?> parentId,
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
       Value<DateTime?> deletedAt,
@@ -3149,6 +3202,11 @@ class $$TaxonomyItemsTableFilterComposer
 
   ColumnFilters<String> get name => $composableBuilder(
     column: $table.name,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get parentId => $composableBuilder(
+    column: $table.parentId,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -3192,6 +3250,11 @@ class $$TaxonomyItemsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get parentId => $composableBuilder(
+    column: $table.parentId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get createdAt => $composableBuilder(
     column: $table.createdAt,
     builder: (column) => ColumnOrderings(column),
@@ -3225,6 +3288,9 @@ class $$TaxonomyItemsTableAnnotationComposer
 
   GeneratedColumn<String> get name =>
       $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<String> get parentId =>
+      $composableBuilder(column: $table.parentId, builder: (column) => column);
 
   GeneratedColumn<DateTime> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
@@ -3270,6 +3336,7 @@ class $$TaxonomyItemsTableTableManager
                 Value<String> id = const Value.absent(),
                 Value<String> kind = const Value.absent(),
                 Value<String> name = const Value.absent(),
+                Value<String?> parentId = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
                 Value<DateTime?> deletedAt = const Value.absent(),
@@ -3278,6 +3345,7 @@ class $$TaxonomyItemsTableTableManager
                 id: id,
                 kind: kind,
                 name: name,
+                parentId: parentId,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
                 deletedAt: deletedAt,
@@ -3288,6 +3356,7 @@ class $$TaxonomyItemsTableTableManager
                 required String id,
                 required String kind,
                 required String name,
+                Value<String?> parentId = const Value.absent(),
                 required DateTime createdAt,
                 required DateTime updatedAt,
                 Value<DateTime?> deletedAt = const Value.absent(),
@@ -3296,6 +3365,7 @@ class $$TaxonomyItemsTableTableManager
                 id: id,
                 kind: kind,
                 name: name,
+                parentId: parentId,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
                 deletedAt: deletedAt,
