@@ -9,6 +9,12 @@
 import '../models/enums.dart';
 import '../models/taxonomy_item.dart';
 
+/// 폴더를 순환이 생기는 위치로 옮기려 할 때 [TaxonomyRepository.moveFolder]가
+/// 던지는 예외입니다(자기 자신이나 자기 하위를 자신의 상위로 지정하려는 경우).
+class FolderMoveCycleException implements Exception {
+  const FolderMoveCycleException();
+}
+
 /// 분류 항목(폴더/카테고리/태그/프로젝트)을 읽고 쓰는 방법에 대한 약속입니다.
 abstract class TaxonomyRepository {
   /// 해당 종류의 살아있는 항목을 전부 가져옵니다. 이름 가나다순입니다.
@@ -40,11 +46,26 @@ abstract class TaxonomyRepository {
   /// 아무 일도 일어나지 않습니다.
   Future<void> delete(String id);
 
+  /// 폴더의 상위 폴더를 바꿉니다. [newParentId]가 null이면 최상위로 옮깁니다.
+  ///
+  /// 폴더(kind가 folder)에만 부르세요 — 카테고리 등은 부모 개념이 없습니다.
+  /// 순환이 생기는 이동(자기 자신이나 자기 하위를 상위로 지정)은
+  /// [FolderMoveCycleException]을 던지고 아무것도 바꾸지 않습니다.
+  Future<void> moveFolder(String id, String? newParentId);
+
   /// 같은 종류 안에 같은 이름이 이미 있는지 확인합니다.
   ///
-  /// 폴더 "인물"이 두 개 생기면 사용자가 어느 쪽에 넣었는지 알 수 없게 됩니다.
+  /// 폴더는 **같은 상위 폴더([parentId]) 밑에서만** 겹치는지 봅니다 — 다른
+  /// 가지에서는 같은 이름을 써도 됩니다. 카테고리·태그·프로젝트는 부모
+  /// 개념이 없어서([parentId]를 안 넘기면) 지금처럼 전체 기준입니다.
+  ///
   /// [excludeId]는 이름 바꾸기를 할 때 자기 자신은 빼고 검사하려고 쓰는 값입니다.
-  Future<bool> existsWithName(TaxonomyKind kind, String name, {String? excludeId});
+  Future<bool> existsWithName(
+    TaxonomyKind kind,
+    String name, {
+    String? excludeId,
+    String? parentId,
+  });
 
   /// 이 분류 항목을 쓰고 있는 레퍼런스가 몇 개인지 세어 돌려줍니다.
   ///

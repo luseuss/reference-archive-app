@@ -8,6 +8,7 @@ import 'package:drift/drift.dart';
 import '../data/app_database.dart';
 import '../models/enums.dart';
 import '../models/taxonomy_item.dart';
+import '../utils/folder_tree.dart';
 import 'taxonomy_repository.dart';
 
 /// 분류 항목을 이 기기의 데이터베이스에 저장하는 구현체입니다.
@@ -56,6 +57,11 @@ class LocalTaxonomyRepository implements TaxonomyRepository {
             id: item.id,
             kind: item.kind.storedName,
             name: item.name,
+            // Value로 명시적으로 감싸야 null도 그대로 저장됩니다. 그냥
+            // item.parentId만 넘기면(감싸지 않으면) "이 칸은 안 건드린다"는
+            // 뜻이 되어, 최상위로 옮긴 것(null로 바꾼 것)이 저장되지 않습니다.
+            // (local_board_repository.dart의 folderId와 같은 이유입니다)
+            parentId: Value<String?>(item.parentId),
             createdAt: item.createdAt,
             updatedAt: now,
           ),
@@ -63,6 +69,8 @@ class LocalTaxonomyRepository implements TaxonomyRepository {
   }
 
   /// 항목을 지웁니다(소프트 삭제). 이 항목을 쓰던 레퍼런스도 함께 정리합니다.
+  ///
+  /// 폴더라면 하위 폴더(자식, 손자, ...)까지 전부 함께 지웁니다.
   @override
   Future<void> delete(String id) async {
     final DateTime now = DateTime.now().toUtc();
@@ -71,7 +79,10 @@ class LocalTaxonomyRepository implements TaxonomyRepository {
     // 중간에 실패해서 "이미 지운 폴더에 들어있는 레퍼런스"가 남으면 그 레퍼런스가
     // 폴더 목록 어디에도 안 보이게 되므로, transaction으로 묶습니다.
     await _db.transaction(() async {
-      await (_db.update(_db.taxonomyItems)..where(($TaxonomyItemsTable t) => t.id.equals(id)))
+      final Set<String> idsToDelete = await _folderAndDescendantIds(id);
+
+      await (_db.update(_db.taxonomyItems)
+            ..where(($TaxonomyItemsTable t) => t.id.isIn(idsToDelete)))
           .write(TaxonomyItemsCompanion(
         deletedAt: Value<DateTime?>(now),
         updatedAt: Value<DateTime>(now),
@@ -80,18 +91,21 @@ class LocalTaxonomyRepository implements TaxonomyRepository {
       // 태그·프로젝트로 쓰이던 연결을 끊습니다.
       await (_db.update(_db.referenceTaxonomyLinks)
             ..where(($ReferenceTaxonomyLinksTable t) =>
-                t.taxonomyItemId.equals(id) & t.deletedAt.isNull()))
+                t.taxonomyItemId.isIn(idsToDelete) & t.deletedAt.isNull()))
           .write(ReferenceTaxonomyLinksCompanion(deletedAt: Value<DateTime?>(now)));
 
-      // 폴더로 쓰이던 레퍼런스는 폴더 없음 상태로 되돌립니다.
-      await (_db.update(_db.references)..where(($ReferencesTable t) => t.folderId.equals(id)))
+      // 폴더로 쓰이던 레퍼런스는 폴더 없음 상태로 되돌립니다. (지운 폴더나
+      // 그 하위 폴더 중 어디에 있었든 전부 대상입니다)
+      await (_db.update(_db.references)
+            ..where(($ReferencesTable t) => t.folderId.isIn(idsToDelete)))
           .write(ReferencesCompanion(
         folderId: const Value<String?>(null),
         updatedAt: Value<DateTime>(now),
       ));
 
       // 카테고리로 쓰이던 레퍼런스도 마찬가지입니다.
-      await (_db.update(_db.references)..where(($ReferencesTable t) => t.categoryId.equals(id)))
+      await (_db.update(_db.references)
+            ..where(($ReferencesTable t) => t.categoryId.isIn(idsToDelete)))
           .write(ReferencesCompanion(
         categoryId: const Value<String?>(null),
         updatedAt: Value<DateTime>(now),
@@ -99,12 +113,47 @@ class LocalTaxonomyRepository implements TaxonomyRepository {
     });
   }
 
-  /// 같은 종류 안에 같은 이름이 이미 있는지 확인합니다.
+  /// [id]와(폴더라면) 그 하위 폴더 전부의 id를 모아 돌려줍니다.
+  /// 폴더가 아니면(하위 개념이 없으면) [id] 하나만 담긴 집합입니다.
+  Future<Set<String>> _folderAndDescendantIds(String id) async {
+    final List<TaxonomyItem> allFolders = await getAll(TaxonomyKind.folder);
+    final bool isFolder = allFolders.any((TaxonomyItem f) => f.id == id);
+    if (!isFolder) {
+      return <String>{id};
+    }
+    return collectFolderAndDescendantIds(id, parentIdMap(allFolders));
+  }
+
+  /// 폴더의 상위 폴더를 바꿉니다. [newParentId]가 null이면 최상위로 옮깁니다.
+  @override
+  Future<void> moveFolder(String id, String? newParentId) async {
+    final DateTime now = DateTime.now().toUtc();
+
+    if (newParentId != null) {
+      final List<TaxonomyItem> allFolders = await getAll(TaxonomyKind.folder);
+      final Set<String> forbidden =
+          collectFolderAndDescendantIds(id, parentIdMap(allFolders));
+      if (forbidden.contains(newParentId)) {
+        throw const FolderMoveCycleException();
+      }
+    }
+
+    await (_db.update(_db.taxonomyItems)
+          ..where(($TaxonomyItemsTable t) => t.id.equals(id)))
+        .write(TaxonomyItemsCompanion(
+      parentId: Value<String?>(newParentId),
+      updatedAt: Value<DateTime>(now),
+    ));
+  }
+
+  /// 같은 종류 안에, 폴더라면 같은 상위 폴더 밑에 같은 이름이 이미 있는지
+  /// 확인합니다.
   @override
   Future<bool> existsWithName(
     TaxonomyKind kind,
     String name, {
     String? excludeId,
+    String? parentId,
   }) async {
     // 사용자가 "인물"과 "인물 "(뒤에 공백)을 다른 것으로 만들 이유는 없습니다.
     // 앞뒤 공백을 떼고, 대소문자도 구분하지 않고 비교합니다.
@@ -119,6 +168,12 @@ class LocalTaxonomyRepository implements TaxonomyRepository {
 
     for (final TaxonomyItemRow row in rows) {
       if (excludeId != null && row.id == excludeId) {
+        continue;
+      }
+      // 같은 상위 폴더 밑에 있는 것만 비교합니다. 카테고리·태그·프로젝트는
+      // parentId가 늘 null이라(호출하는 쪽도 안 넘기므로) 지금처럼 전체
+      // 기준 그대로입니다.
+      if (row.parentId != parentId) {
         continue;
       }
       if (row.name.trim().toLowerCase() == normalized) {
@@ -190,6 +245,7 @@ class LocalTaxonomyRepository implements TaxonomyRepository {
       id: row.id,
       kind: kind,
       name: row.name,
+      parentId: row.parentId,
       // toUtc()를 한 번 더 씌우는 이유는 local_reference_repository.dart의
       // 같은 자리 설명을 보세요.
       createdAt: row.createdAt.toUtc(),

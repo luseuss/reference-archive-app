@@ -13,6 +13,7 @@ import 'package:reference_archive_app/models/reference_item.dart';
 import 'package:reference_archive_app/models/taxonomy_item.dart';
 import 'package:reference_archive_app/repositories/local_reference_repository.dart';
 import 'package:reference_archive_app/repositories/local_taxonomy_repository.dart';
+import 'package:reference_archive_app/repositories/taxonomy_repository.dart';
 import 'package:reference_archive_app/utils/id_generator.dart';
 
 void main() {
@@ -202,6 +203,157 @@ void main() {
       await repository.delete(folder.id);
 
       expect(await repository.existsWithName(TaxonomyKind.folder, '인물'), isFalse);
+    });
+  });
+
+  group('moveFolder', () {
+    test('상위 폴더를 옮길 수 있다', () async {
+      final TaxonomyItem parent = makeItem(TaxonomyKind.folder, '인물');
+      final TaxonomyItem child = makeItem(TaxonomyKind.folder, '풍경');
+      await repository.save(parent);
+      await repository.save(child);
+
+      await repository.moveFolder(child.id, parent.id);
+
+      final TaxonomyItem? reloaded = await repository.getById(child.id);
+      expect(reloaded!.parentId, parent.id);
+    });
+
+    test('null로 옮기면 최상위가 된다', () async {
+      final TaxonomyItem parent = makeItem(TaxonomyKind.folder, '인물');
+      final TaxonomyItem child = makeItem(TaxonomyKind.folder, '얼굴');
+      await repository.save(parent);
+      await repository.save(child);
+      await repository.moveFolder(child.id, parent.id);
+
+      await repository.moveFolder(child.id, null);
+
+      final TaxonomyItem? reloaded = await repository.getById(child.id);
+      expect(reloaded!.parentId, isNull);
+    });
+
+    test('자기 자신을 상위로 지정하면 예외가 난다', () async {
+      final TaxonomyItem folder = makeItem(TaxonomyKind.folder, '인물');
+      await repository.save(folder);
+
+      expect(
+        () => repository.moveFolder(folder.id, folder.id),
+        throwsA(isA<FolderMoveCycleException>()),
+      );
+    });
+
+    test('자기 하위를 상위로 지정하면 예외가 나고 바뀌지 않는다', () async {
+      final TaxonomyItem parent = makeItem(TaxonomyKind.folder, '인물');
+      final TaxonomyItem child = makeItem(TaxonomyKind.folder, '얼굴');
+      await repository.save(parent);
+      await repository.save(child);
+      await repository.moveFolder(child.id, parent.id);
+
+      await expectLater(
+        () => repository.moveFolder(parent.id, child.id),
+        throwsA(isA<FolderMoveCycleException>()),
+      );
+
+      final TaxonomyItem? reloadedParent = await repository.getById(parent.id);
+      expect(reloadedParent!.parentId, isNull, reason: '실패했으니 안 바뀌어야 합니다');
+    });
+  });
+
+  group('이름 중복 검사 — 상위 폴더별로', () {
+    test('부모가 다르면 같은 이름을 써도 중복이 아니다', () async {
+      final TaxonomyItem parentA = makeItem(TaxonomyKind.folder, '인물');
+      final TaxonomyItem parentB = makeItem(TaxonomyKind.folder, '풍경');
+      await repository.save(parentA);
+      await repository.save(parentB);
+      final TaxonomyItem childA = makeItem(TaxonomyKind.folder, '얼굴');
+      await repository.save(childA);
+      await repository.moveFolder(childA.id, parentA.id);
+
+      expect(
+        await repository.existsWithName(
+          TaxonomyKind.folder,
+          '얼굴',
+          parentId: parentB.id,
+        ),
+        isFalse,
+      );
+    });
+
+    test('같은 부모 밑이면 중복이다', () async {
+      final TaxonomyItem parent = makeItem(TaxonomyKind.folder, '인물');
+      await repository.save(parent);
+      final TaxonomyItem child = makeItem(TaxonomyKind.folder, '얼굴');
+      await repository.save(child);
+      await repository.moveFolder(child.id, parent.id);
+
+      expect(
+        await repository.existsWithName(
+          TaxonomyKind.folder,
+          '얼굴',
+          parentId: parent.id,
+        ),
+        isTrue,
+      );
+    });
+  });
+
+  group('하위 폴더 연쇄 삭제', () {
+    test('폴더를 지우면 하위 폴더도 함께 지워진다', () async {
+      final TaxonomyItem parent = makeItem(TaxonomyKind.folder, '인물');
+      await repository.save(parent);
+      final TaxonomyItem child = makeItem(TaxonomyKind.folder, '얼굴');
+      await repository.save(child);
+      await repository.moveFolder(child.id, parent.id);
+      final TaxonomyItem grandchild = makeItem(TaxonomyKind.folder, '눈');
+      await repository.save(grandchild);
+      await repository.moveFolder(grandchild.id, child.id);
+
+      await repository.delete(parent.id);
+
+      expect(await repository.getById(parent.id), isNull);
+      expect(await repository.getById(child.id), isNull);
+      expect(await repository.getById(grandchild.id), isNull);
+    });
+
+    test('하위 폴더에 있던 레퍼런스도 폴더 없음이 된다', () async {
+      final TaxonomyItem parent = makeItem(TaxonomyKind.folder, '인물');
+      await repository.save(parent);
+      final TaxonomyItem child = makeItem(TaxonomyKind.folder, '얼굴');
+      await repository.save(child);
+      await repository.moveFolder(child.id, parent.id);
+
+      final LocalReferenceRepository referenceRepository =
+          LocalReferenceRepository(db);
+      final DateTime now = DateTime.now().toUtc();
+      final ReferenceItem photo = ReferenceItem(
+        id: newId(),
+        type: ReferenceType.image,
+        title: '눈매',
+        folderId: child.id,
+        fileName: '${newId()}.jpg',
+        createdAt: now,
+        updatedAt: now,
+      );
+      await referenceRepository.save(photo);
+
+      await repository.delete(parent.id);
+
+      final ReferenceItem? reloaded = await referenceRepository.getById(photo.id);
+      expect(reloaded!.folderId, isNull);
+    });
+
+    test('형제 폴더는 지워지지 않는다', () async {
+      final TaxonomyItem parent = makeItem(TaxonomyKind.folder, '인물');
+      await repository.save(parent);
+      final TaxonomyItem childA = makeItem(TaxonomyKind.folder, '얼굴');
+      await repository.save(childA);
+      await repository.moveFolder(childA.id, parent.id);
+      final TaxonomyItem sibling = makeItem(TaxonomyKind.folder, '풍경');
+      await repository.save(sibling);
+
+      await repository.delete(parent.id);
+
+      expect(await repository.getById(sibling.id), isNotNull);
     });
   });
 }
