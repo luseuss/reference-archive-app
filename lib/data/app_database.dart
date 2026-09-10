@@ -331,8 +331,28 @@ class AppDatabase extends _$AppDatabase {
   /// 만들어졌고, 그 뒤로 어떤 버전도 createTable로 다시 만든 적이 없습니다
   /// (v3는 boards/boardCards만 만듭니다). 그래서 이 표는 "새로 만들 때
   /// 현재 정의를 쓰는" 문제에서 애초에 자유롭고, 그냥 `from < 7`이면 됩니다.
+  ///
+  /// ── 칼럼이 이미 있는지 먼저 확인하는 이유 (실제로 겪은 문제) ──
+  /// 마이그레이션 도중(칼럼은 이미 추가됐지만 "버전을 7로 기록"하기
+  /// 전) 앱이 강제 종료되면, 다음에 열 때 `user_version`은 여전히
+  /// 6이라 이 단계가 다시 실행됩니다. addColumn을 무작정 다시 부르면
+  /// "칼럼이 이미 있다"는 SQL 오류가 나고, 화면은 불러오기가 영원히
+  /// 안 끝나는 것처럼(로딩 화면에 멈춘 것처럼) 보입니다 — 개발 중
+  /// `flutter run`을 강제 종료(taskkill)했다가 실제로 이 상태를
+  /// 만들어서 확인했습니다. 그래서 칼럼이 이미 있으면 조용히
+  /// 건너뜁니다 — 이 확인 자체가 이번 단계를 몇 번을 다시 실행해도
+  /// 안전하게(멱등하게) 만들어줍니다.
   Future<void> _upgradeToVersion7(Migrator m) async {
-    await m.addColumn(taxonomyItems, taxonomyItems.parentId);
+    final List<QueryRow> columns = await customSelect(
+      "PRAGMA table_info('taxonomy_items')",
+    ).get();
+    final bool alreadyHasParentId = columns.any(
+      (QueryRow row) => row.read<String>('name') == 'parent_id',
+    );
+
+    if (!alreadyHasParentId) {
+      await m.addColumn(taxonomyItems, taxonomyItems.parentId);
+    }
   }
 }
 

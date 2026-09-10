@@ -173,4 +173,34 @@ void main() {
         await LocalTaxonomyRepository(second).getAll(TaxonomyKind.folder);
     expect(folders.length, 1);
   });
+
+  test('마이그레이션 도중 강제 종료된 상태(칼럼은 있는데 버전은 6)에서도 켜진다', () async {
+    // ── 실제로 겪은 문제 ──
+    // 마이그레이션이 parent_id 칼럼을 추가한 직후, "버전을 7로
+    // 기록"하기 전에 앱이 강제 종료되면 이 상태가 됩니다. 다음에 열 때
+    // user_version이 여전히 6이라 v7 단계가 다시 실행되는데,
+    // addColumn을 무작정 다시 부르면 "칼럼이 이미 있다"는 SQL 오류로
+    // 앱이 아예 안 켜집니다(로딩 화면에서 멈춘 것처럼 보임).
+    createOldDatabase();
+
+    // createOldDatabase가 만든 v6 모양 표에 parent_id 칼럼만 직접
+    // 추가해서, "칼럼은 있지만 버전 기록은 안 된" 중간 상태를
+    // 흉내냅니다. user_version은 일부러 6 그대로 둡니다.
+    final Database raw = sqlite3.open(dbFile.path);
+    raw.execute('ALTER TABLE taxonomy_items ADD COLUMN parent_id TEXT');
+    raw.close();
+
+    final AppDatabase db = AppDatabase.forTesting(NativeDatabase(dbFile));
+    addTearDown(db.close);
+
+    // 오류 없이 열리고 기존 폴더도 그대로 읽혀야 합니다.
+    final List<TaxonomyItem> folders =
+        await LocalTaxonomyRepository(db).getAll(TaxonomyKind.folder);
+    expect(folders.length, 1);
+    expect(folders.first.name, '인물');
+
+    // 다음번엔 다시 이 단계를 안 거치도록, 버전도 7로 고쳐져 있어야 합니다.
+    final List<QueryRow> version = await db.customSelect('PRAGMA user_version').get();
+    expect(version.first.data['user_version'], 7);
+  });
 }
