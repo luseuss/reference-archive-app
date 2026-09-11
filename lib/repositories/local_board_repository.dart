@@ -235,6 +235,7 @@ class LocalBoardRepository implements BoardRepository {
       zOrder: row.zOrder,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
+      groupId: row.groupId,
     );
   }
 
@@ -258,6 +259,11 @@ class LocalBoardRepository implements BoardRepository {
       // updatedAt은 부르는 쪽 값을 쓰지 않고 지금 시각으로 덮습니다.
       // 부르는 쪽에서 챙기게 하면 언젠가 반드시 빠뜨립니다.
       updatedAt: DateTime.now().toUtc(),
+
+      // Value로 명시적으로 감싸야 null도 그대로 저장됩니다. (Boards의
+      // folderId와 같은 이유 — local_board_repository.dart의 saveBoard 참고)
+      // 안 감싸면 그룹에서 뺀 것(null로 바꾼 것)이 저장되지 않습니다.
+      groupId: Value<String?>(card.groupId),
     );
   }
 }

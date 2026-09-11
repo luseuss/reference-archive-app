@@ -2200,6 +2200,17 @@ class $BoardCardsTable extends BoardCards
     type: DriftSqlType.dateTime,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _groupIdMeta = const VerificationMeta(
+    'groupId',
+  );
+  @override
+  late final GeneratedColumn<String> groupId = GeneratedColumn<String>(
+    'group_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -2213,6 +2224,7 @@ class $BoardCardsTable extends BoardCards
     createdAt,
     updatedAt,
     deletedAt,
+    groupId,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -2300,6 +2312,12 @@ class $BoardCardsTable extends BoardCards
         deletedAt.isAcceptableOrUnknown(data['deleted_at']!, _deletedAtMeta),
       );
     }
+    if (data.containsKey('group_id')) {
+      context.handle(
+        _groupIdMeta,
+        groupId.isAcceptableOrUnknown(data['group_id']!, _groupIdMeta),
+      );
+    }
     return context;
   }
 
@@ -2352,6 +2370,10 @@ class $BoardCardsTable extends BoardCards
       deletedAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}deleted_at'],
+      ),
+      groupId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}group_id'],
       ),
     );
   }
@@ -2406,6 +2428,21 @@ class BoardCardRow extends DataClass implements Insertable<BoardCardRow> {
 
   /// 판에서 내린 시각 (UTC). 비어 있으면 아직 판 위에 있습니다.
   final DateTime? deletedAt;
+
+  /// 같은 묶음으로 함께 다뤄야 할 카드들의 번호입니다. 안 정했으면 비어
+  /// 있습니다(schemaVersion 8).
+  ///
+  /// ── 왜 그룹 자체를 표로 안 두고 카드에 번호만 적나 ──
+  /// 그룹은 "이 카드들을 늘 함께 고르고 함께 옮긴다"는 뜻뿐이라, 그룹 자체가
+  /// 이름이나 순서 같은 자기 정보를 가질 필요가 없습니다. 묶인 카드들이 같은
+  /// 값을 들고 있는 것만으로 충분합니다. 표를 하나 더 두면 "카드는 있는데
+  /// 그룹이 없다"거나 "그룹엔 있는데 카드가 없다" 같은 어긋남을 따로
+  /// 신경 써야 합니다.
+  ///
+  /// 값 자체는 새로 만든 UUID일 뿐, 다른 표를 가리키지 않습니다. 여러 카드가
+  /// 같은 값을 들고 있으면 한 그룹입니다. 그룹을 풀면 이 칸을 다시
+  /// null로 되돌립니다 — 값 자체를 어디서도 다시 쓰지 않으므로 안전합니다.
+  final String? groupId;
   const BoardCardRow({
     required this.id,
     required this.boardId,
@@ -2418,6 +2455,7 @@ class BoardCardRow extends DataClass implements Insertable<BoardCardRow> {
     required this.createdAt,
     required this.updatedAt,
     this.deletedAt,
+    this.groupId,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -2436,6 +2474,9 @@ class BoardCardRow extends DataClass implements Insertable<BoardCardRow> {
     map['updated_at'] = Variable<DateTime>(updatedAt);
     if (!nullToAbsent || deletedAt != null) {
       map['deleted_at'] = Variable<DateTime>(deletedAt);
+    }
+    if (!nullToAbsent || groupId != null) {
+      map['group_id'] = Variable<String>(groupId);
     }
     return map;
   }
@@ -2457,6 +2498,9 @@ class BoardCardRow extends DataClass implements Insertable<BoardCardRow> {
       deletedAt: deletedAt == null && nullToAbsent
           ? const Value.absent()
           : Value(deletedAt),
+      groupId: groupId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(groupId),
     );
   }
 
@@ -2477,6 +2521,7 @@ class BoardCardRow extends DataClass implements Insertable<BoardCardRow> {
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
       deletedAt: serializer.fromJson<DateTime?>(json['deletedAt']),
+      groupId: serializer.fromJson<String?>(json['groupId']),
     );
   }
   @override
@@ -2494,6 +2539,7 @@ class BoardCardRow extends DataClass implements Insertable<BoardCardRow> {
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
       'deletedAt': serializer.toJson<DateTime?>(deletedAt),
+      'groupId': serializer.toJson<String?>(groupId),
     };
   }
 
@@ -2509,6 +2555,7 @@ class BoardCardRow extends DataClass implements Insertable<BoardCardRow> {
     DateTime? createdAt,
     DateTime? updatedAt,
     Value<DateTime?> deletedAt = const Value.absent(),
+    Value<String?> groupId = const Value.absent(),
   }) => BoardCardRow(
     id: id ?? this.id,
     boardId: boardId ?? this.boardId,
@@ -2521,6 +2568,7 @@ class BoardCardRow extends DataClass implements Insertable<BoardCardRow> {
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
     deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
+    groupId: groupId.present ? groupId.value : this.groupId,
   );
   BoardCardRow copyWithCompanion(BoardCardsCompanion data) {
     return BoardCardRow(
@@ -2537,6 +2585,7 @@ class BoardCardRow extends DataClass implements Insertable<BoardCardRow> {
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
       deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
+      groupId: data.groupId.present ? data.groupId.value : this.groupId,
     );
   }
 
@@ -2553,7 +2602,8 @@ class BoardCardRow extends DataClass implements Insertable<BoardCardRow> {
           ..write('zOrder: $zOrder, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
-          ..write('deletedAt: $deletedAt')
+          ..write('deletedAt: $deletedAt, ')
+          ..write('groupId: $groupId')
           ..write(')'))
         .toString();
   }
@@ -2571,6 +2621,7 @@ class BoardCardRow extends DataClass implements Insertable<BoardCardRow> {
     createdAt,
     updatedAt,
     deletedAt,
+    groupId,
   );
   @override
   bool operator ==(Object other) =>
@@ -2586,7 +2637,8 @@ class BoardCardRow extends DataClass implements Insertable<BoardCardRow> {
           other.zOrder == this.zOrder &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt &&
-          other.deletedAt == this.deletedAt);
+          other.deletedAt == this.deletedAt &&
+          other.groupId == this.groupId);
 }
 
 class BoardCardsCompanion extends UpdateCompanion<BoardCardRow> {
@@ -2601,6 +2653,7 @@ class BoardCardsCompanion extends UpdateCompanion<BoardCardRow> {
   final Value<DateTime> createdAt;
   final Value<DateTime> updatedAt;
   final Value<DateTime?> deletedAt;
+  final Value<String?> groupId;
   final Value<int> rowid;
   const BoardCardsCompanion({
     this.id = const Value.absent(),
@@ -2614,6 +2667,7 @@ class BoardCardsCompanion extends UpdateCompanion<BoardCardRow> {
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.deletedAt = const Value.absent(),
+    this.groupId = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   BoardCardsCompanion.insert({
@@ -2628,6 +2682,7 @@ class BoardCardsCompanion extends UpdateCompanion<BoardCardRow> {
     required DateTime createdAt,
     required DateTime updatedAt,
     this.deletedAt = const Value.absent(),
+    this.groupId = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        boardId = Value(boardId),
@@ -2648,6 +2703,7 @@ class BoardCardsCompanion extends UpdateCompanion<BoardCardRow> {
     Expression<DateTime>? createdAt,
     Expression<DateTime>? updatedAt,
     Expression<DateTime>? deletedAt,
+    Expression<String>? groupId,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -2662,6 +2718,7 @@ class BoardCardsCompanion extends UpdateCompanion<BoardCardRow> {
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (deletedAt != null) 'deleted_at': deletedAt,
+      if (groupId != null) 'group_id': groupId,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -2678,6 +2735,7 @@ class BoardCardsCompanion extends UpdateCompanion<BoardCardRow> {
     Value<DateTime>? createdAt,
     Value<DateTime>? updatedAt,
     Value<DateTime?>? deletedAt,
+    Value<String?>? groupId,
     Value<int>? rowid,
   }) {
     return BoardCardsCompanion(
@@ -2692,6 +2750,7 @@ class BoardCardsCompanion extends UpdateCompanion<BoardCardRow> {
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       deletedAt: deletedAt ?? this.deletedAt,
+      groupId: groupId ?? this.groupId,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -2732,6 +2791,9 @@ class BoardCardsCompanion extends UpdateCompanion<BoardCardRow> {
     if (deletedAt.present) {
       map['deleted_at'] = Variable<DateTime>(deletedAt.value);
     }
+    if (groupId.present) {
+      map['group_id'] = Variable<String>(groupId.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -2752,6 +2814,7 @@ class BoardCardsCompanion extends UpdateCompanion<BoardCardRow> {
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('deletedAt: $deletedAt, ')
+          ..write('groupId: $groupId, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -3823,6 +3886,7 @@ typedef $$BoardCardsTableCreateCompanionBuilder = BoardCardsCompanion Function({
   required DateTime createdAt,
   required DateTime updatedAt,
   Value<DateTime?> deletedAt,
+  Value<String?> groupId,
   Value<int> rowid,
 });
 typedef $$BoardCardsTableUpdateCompanionBuilder = BoardCardsCompanion Function({
@@ -3837,6 +3901,7 @@ typedef $$BoardCardsTableUpdateCompanionBuilder = BoardCardsCompanion Function({
   Value<DateTime> createdAt,
   Value<DateTime> updatedAt,
   Value<DateTime?> deletedAt,
+  Value<String?> groupId,
   Value<int> rowid,
 });
 
@@ -3901,6 +3966,11 @@ class $$BoardCardsTableFilterComposer
 
   ColumnFilters<DateTime> get deletedAt => $composableBuilder(
     column: $table.deletedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get groupId => $composableBuilder(
+    column: $table.groupId,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -3968,6 +4038,11 @@ class $$BoardCardsTableOrderingComposer
     column: $table.deletedAt,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get groupId => $composableBuilder(
+    column: $table.groupId,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$BoardCardsTableAnnotationComposer
@@ -4013,6 +4088,9 @@ class $$BoardCardsTableAnnotationComposer
 
   GeneratedColumn<DateTime> get deletedAt =>
       $composableBuilder(column: $table.deletedAt, builder: (column) => column);
+
+  GeneratedColumn<String> get groupId =>
+      $composableBuilder(column: $table.groupId, builder: (column) => column);
 }
 
 class $$BoardCardsTableTableManager
@@ -4057,6 +4135,7 @@ class $$BoardCardsTableTableManager
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
                 Value<DateTime?> deletedAt = const Value.absent(),
+                Value<String?> groupId = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => BoardCardsCompanion(
                 id: id,
@@ -4070,6 +4149,7 @@ class $$BoardCardsTableTableManager
                 createdAt: createdAt,
                 updatedAt: updatedAt,
                 deletedAt: deletedAt,
+                groupId: groupId,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -4085,6 +4165,7 @@ class $$BoardCardsTableTableManager
                 required DateTime createdAt,
                 required DateTime updatedAt,
                 Value<DateTime?> deletedAt = const Value.absent(),
+                Value<String?> groupId = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => BoardCardsCompanion.insert(
                 id: id,
@@ -4098,6 +4179,7 @@ class $$BoardCardsTableTableManager
                 createdAt: createdAt,
                 updatedAt: updatedAt,
                 deletedAt: deletedAt,
+                groupId: groupId,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0

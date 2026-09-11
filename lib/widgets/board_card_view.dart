@@ -41,6 +41,7 @@ class BoardCardView extends StatefulWidget {
     required this.onResizeEnd,
     this.isActive = false,
     this.isSelected = false,
+    this.isGrouped = false,
     this.isPlaying = false,
     this.playerUrl,
     this.onPlayPressed,
@@ -101,6 +102,15 @@ class BoardCardView extends StatefulWidget {
   /// **마우스를 올리지 않아도** 계속 보여야 합니다. 안 그러면 뭘 골랐는지
   /// 잊어버립니다.
   final bool isSelected;
+
+  /// 지금 이 카드가 **그룹에 속해 있는지** 여부입니다. (7단계 카드 그룹화)
+  ///
+  /// 마우스를 올렸을 때 제목 띠에 작은 사슬 모양 표시를 하나 더
+  /// 띄웁니다 — "이 카드는 혼자가 아니라 다른 카드와 함께 움직인다"를
+  /// 알려주는 용도입니다. isSelected와 달리 마우스를 안 올리면 안
+  /// 보입니다 — 그룹인지 아닌지는 늘 알아야 할 정보가 아니라, 만지기
+  /// 전에 살짝 참고하면 되는 정보입니다.
+  final bool isGrouped;
 
   /// 지금 이 카드가 **그 자리에서 유튜브 영상을 재생 중인지** 여부입니다.
   ///
@@ -435,6 +445,13 @@ class _BoardCardViewState extends State<BoardCardView> {
 
         child: Row(
           children: <Widget>[
+            // 그룹에 속해 있으면 제목 앞에 작은 사슬 표시를 둡니다.
+            // (7단계 카드 그룹화)
+            if (widget.isGrouped) ...<Widget>[
+              const Icon(Icons.link, size: 12, color: Colors.white70),
+              const SizedBox(width: 4),
+            ],
+
             Expanded(
               child: Text(
                 widget.item.title.isEmpty ? '(제목 없음)' : widget.item.title,

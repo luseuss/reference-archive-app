@@ -90,6 +90,7 @@ class BoardCard {
     this.width = defaultBoardCardWidth,
     this.height,
     this.zOrder = 0,
+    this.groupId,
   });
 
   /// 이 배치의 고유 번호(UUID v4)
@@ -128,12 +129,21 @@ class BoardCard {
   /// 마지막으로 옮기거나 고친 시각 (UTC)
   final DateTime updatedAt;
 
+  /// 같은 묶음으로 함께 다뤄야 할 카드들의 번호입니다. 안 정했으면
+  /// null입니다.
+  ///
+  /// 같은 값을 든 카드들이 한 그룹입니다. 하나를 고르거나 끌면 같은
+  /// 그룹의 카드가 전부 함께 고르거나 끌립니다(board_interaction_controller.dart의
+  /// `_groupMembersOf` 참고). schemaVersion 8.
+  final String? groupId;
+
   /// 몇 가지만 바꾼 사본을 만들어 돌려줍니다.
   ///
   /// height는 여기서 null로 되돌릴 수 없습니다. 인자를 안 넘긴 것과
   /// null을 넘긴 것을 구분할 수 없기 때문입니다(reference_item.dart와 같은 사정).
   /// 높이를 비우고 싶으면(원래 그림 비율로 되돌리고 싶으면) 아래
-  /// clearHeight()를 쓰세요.
+  /// clearHeight()를 쓰세요. 그룹에서 빼내고 싶으면(null로 되돌리고
+  /// 싶으면) 아래 ungroup()을 쓰세요.
   BoardCard copyWith({
     double? x,
     double? y,
@@ -141,6 +151,7 @@ class BoardCard {
     double? height,
     int? zOrder,
     DateTime? updatedAt,
+    String? groupId,
   }) {
     return BoardCard(
       id: id,
@@ -153,6 +164,7 @@ class BoardCard {
       zOrder: zOrder ?? this.zOrder,
       createdAt: createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
+      groupId: groupId ?? this.groupId,
     );
   }
 
@@ -172,6 +184,27 @@ class BoardCard {
       x: x,
       y: y,
       width: width,
+      zOrder: zOrder,
+      createdAt: createdAt,
+      updatedAt: updatedAt,
+      groupId: groupId,
+    );
+  }
+
+  /// 그룹에서 빼낸(= 어느 그룹에도 안 속한 상태로 되돌린) 사본을 만들어
+  /// 돌려줍니다.
+  ///
+  /// copyWith로는 안 됩니다. 인자를 안 넘긴 것과 null을 넘긴 것을
+  /// 구분할 수 없기 때문입니다(위 clearHeight()와 같은 사정).
+  BoardCard ungroup() {
+    return BoardCard(
+      id: id,
+      boardId: boardId,
+      referenceId: referenceId,
+      x: x,
+      y: y,
+      width: width,
+      height: height,
       zOrder: zOrder,
       createdAt: createdAt,
       updatedAt: updatedAt,

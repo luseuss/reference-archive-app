@@ -1,8 +1,8 @@
 // 무드보드에서 여러 장을 골랐을 때 화면 아래에 뜨는 작은 띠입니다.
-// (5단계 마퀴 다중선택, 6단계 정렬·분배 툴바)
+// (5단계 마퀴 다중선택, 6단계 정렬·분배 툴바, 7단계 카드 그룹화)
 //
-// "몇 장 골랐는지", 정렬 6개, 크기 맞추기, 선택 삭제 버튼이 있습니다.
-// 그룹화는 아직 없습니다(5단계에서 다음으로 미뤄뒀습니다).
+// "몇 장 골랐는지", 정렬 6개, 크기 맞추기, 그룹·그룹 해제, 선택 삭제
+// 버튼이 있습니다.
 
 import 'package:flutter/material.dart';
 
@@ -17,6 +17,10 @@ class BoardSelectionBar extends StatelessWidget {
     required this.count,
     required this.onAlign,
     required this.onMatchSize,
+    required this.canGroup,
+    required this.onGroup,
+    required this.canUngroup,
+    required this.onUngroup,
     required this.onRemoveSelected,
     required this.onClearSelection,
   });
@@ -34,6 +38,22 @@ class BoardSelectionBar extends StatelessWidget {
 
   /// "크기 맞추기"를 눌렀을 때 실행할 동작입니다.
   final VoidCallback onMatchSize;
+
+  /// 지금 골라진 카드를 그룹으로 묶을 수 있는지 여부입니다. (7단계
+  /// 카드 그룹화)
+  ///
+  /// **2장 이상 골랐을 때만** 참입니다. 정렬·크기맞추기와 같은
+  /// 이유로, 못 누르게 하는 편이 눌러도 아무 일 없는 버튼보다 낫습니다.
+  final bool canGroup;
+
+  /// "그룹"을 눌렀을 때 실행할 동작입니다.
+  final VoidCallback onGroup;
+
+  /// 지금 골라진 카드 중 하나라도 그룹에 속해 있는지 여부입니다.
+  final bool canUngroup;
+
+  /// "그룹 해제"를 눌렀을 때 실행할 동작입니다.
+  final VoidCallback onUngroup;
 
   /// "선택 삭제"를 눌렀을 때 실행할 동작입니다.
   final VoidCallback onRemoveSelected;
@@ -131,6 +151,22 @@ class BoardSelectionBar extends StatelessWidget {
               onPressed: canAlign ? onMatchSize : null,
               icon: const Icon(Icons.photo_size_select_large),
               tooltip: '크기 맞추기 (맨 위 카드 기준)',
+              iconSize: 18,
+            ),
+
+            _divider(colors),
+
+            // ── 그룹·그룹 해제 (7단계 카드 그룹화) ──
+            IconButton(
+              onPressed: canGroup ? onGroup : null,
+              icon: const Icon(Icons.link),
+              tooltip: '그룹으로 묶기',
+              iconSize: 18,
+            ),
+            IconButton(
+              onPressed: canUngroup ? onUngroup : null,
+              icon: const Icon(Icons.link_off),
+              tooltip: '그룹 풀기',
               iconSize: 18,
             ),
 

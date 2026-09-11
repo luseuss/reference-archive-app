@@ -250,6 +250,7 @@ class BoardCanvas extends StatelessWidget {
             imagePath: imagePaths[card.referenceId],
             isActive: activeCardId == card.id,
             isSelected: selectedCardIds.contains(card.id),
+            isGrouped: card.groupId != null,
             isPlaying: playingCardId == card.id,
             playerUrl: playingCardId == card.id ? playerUrl : null,
             onPlayPressed: canPlayThisCard

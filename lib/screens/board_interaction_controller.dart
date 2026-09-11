@@ -400,8 +400,12 @@ class BoardInteractionController extends ChangeNotifier {
   /// 선택을 그대로 두고(다 같이 끌 수 있게), 그 외에는 이 카드 하나만
   /// 선택합니다.
   void onCardPressed(BoardCard card, {required bool shiftHeld}) {
+    // 그룹에 속한 카드면 그룹 전체가 함께 선택됩니다. 그룹이 없으면
+    // 이 카드 하나뿐인 집합입니다. (7단계 카드 그룹화)
+    final Set<String> groupMembers = _groupMembersOf(card);
+
     if (shiftHeld) {
-      _selection.toggle(card.id);
+      _toggleGroupSelection(groupMembers);
       notifyListeners();
       return;
     }
@@ -409,7 +413,7 @@ class BoardInteractionController extends ChangeNotifier {
     final bool keepMultiSelection =
         _selection.ids.contains(card.id) && _selection.ids.length > 1;
     if (!keepMultiSelection) {
-      _selection.selectOnly(card.id);
+      _selection.ids = groupMembers;
       notifyListeners();
     }
   }
@@ -436,7 +440,11 @@ class BoardInteractionController extends ChangeNotifier {
     _activeCardId = card.id;
     _draggingIds = _selection.ids.contains(card.id) && _selection.ids.length > 1
         ? _selection.ids
-        : <String>{card.id};
+
+        // 여러 장 선택 상태가 아니면 이 카드가 속한 그룹 전체를
+        // 끕니다(그룹이 없으면 이 카드 하나뿐인 집합입니다). 그룹은
+        // 선택하지 않고 바로 끌어도 항상 함께 움직여야 합니다.
+        : _groupMembersOf(card);
     _cards = raiseCardToTop(_cards, card.id);
     notifyListeners();
   }
@@ -643,7 +651,7 @@ class BoardInteractionController extends ChangeNotifier {
   /// 매 순간 그때까지의 결과를 바로 selectedCardIds에 반영합니다. 그래야
   /// 마퀴를 끄는 동안 카드가 실시간으로 파랗게 물듭니다.
   void updateMarquee(Rect canvasRect) {
-    final Set<String> hits = <String>{
+    final Set<String> directHits = <String>{
       for (final BoardCard card in _cards)
         if (boardCardRect(
           card,
@@ -651,6 +659,17 @@ class BoardInteractionController extends ChangeNotifier {
         ).overlaps(canvasRect))
           card.id,
     };
+
+    // 카드 한 귀퉁이만 마퀴에 걸렸어도, 그 카드가 그룹에 속해 있으면
+    // **그룹 전체**가 선택됩니다. 그룹은 마퀴로도 일부만 골라지면 안
+    // 됩니다(7단계 카드 그룹화).
+    final Set<String> hits = <String>{};
+    for (final String id in directHits) {
+      final BoardCard? card = _cardById(id);
+      if (card != null) {
+        hits.addAll(_groupMembersOf(card));
+      }
+    }
 
     _selection.applyMarqueeHits(hits);
     notifyListeners();
@@ -742,5 +761,144 @@ class BoardInteractionController extends ChangeNotifier {
     notifyListeners();
 
     await _saveCards(_selection.ids);
+  }
+
+  // ── 여기서부터는 그룹화(7단계)입니다 ──
+  //
+  // 그룹 = 여러 카드를 "늘 함께 고르고 함께 옮기는" 하나의 묶음으로
+  // 만드는 것입니다. 같은 groupId를 든 카드들이 한 그룹입니다
+  // (lib/data/tables.dart의 BoardCards.groupId 설명 참고). 그룹 자체는
+  // 이름이나 순서 같은 자기 정보가 없어서 따로 표를 두지 않습니다.
+
+  /// [id]로 카드를 찾습니다. 없으면 null입니다.
+  BoardCard? _cardById(String id) {
+    final int index = indexOfCard(_cards, id);
+    return index == -1 ? null : _cards[index];
+  }
+
+  /// [card]가 속한 그룹의 카드 번호를 전부 돌려줍니다.
+  ///
+  /// 그룹이 없으면(groupId가 null이면) 이 카드 하나뿐인 집합입니다 —
+  /// 그룹이 있든 없든 "이 카드를 눌렀을 때 함께 다뤄야 할 카드들"을
+  /// 한 가지 방법으로 구할 수 있어서, 부르는 쪽(onCardPressed,
+  /// onDragStart, updateMarquee)이 그룹 유무를 따로 가리지 않아도 됩니다.
+  Set<String> _groupMembersOf(BoardCard card) {
+    final String? groupId = card.groupId;
+    if (groupId == null) {
+      return <String>{card.id};
+    }
+
+    return <String>{
+      for (final BoardCard each in _cards)
+        if (each.groupId == groupId) each.id,
+    };
+  }
+
+  /// [groupMembers](이 카드가 속한 그룹 전체, 그룹이 없으면 이 카드
+  /// 하나)를 통째로 선택에 더하거나 뺍니다. (Shift+클릭)
+  ///
+  /// 그룹의 일부만 선택돼 있던 경우(예: 마퀴가 아니라 다른 조작으로
+  /// 그룹 중 일부만 선택에 남은 경우)에도 **전부 있으면 빼고, 하나라도
+  /// 빠졌으면 전부 더합니다** — 안 그러면 Shift+클릭 한 번에 그룹
+  /// 안에서 선택된 것과 안 된 것이 뒤섞여 남아 "그룹은 늘 함께
+  /// 선택된다"는 규칙이 깨집니다.
+  void _toggleGroupSelection(Set<String> groupMembers) {
+    final bool allSelected = groupMembers.every(_selection.ids.contains);
+
+    final Set<String> next = Set<String>.of(_selection.ids);
+    if (allSelected) {
+      next.removeAll(groupMembers);
+    } else {
+      next.addAll(groupMembers);
+    }
+    _selection.ids = next;
+  }
+
+  /// 지금 골라진 카드를 그룹으로 묶을 수 있는지 여부입니다.
+  ///
+  /// 2장 이상 골랐을 때만 뜻이 있습니다. 그룹은 "여럿을 하나로 묶는"
+  /// 동작이라 1장이면 묶을 상대가 없습니다.
+  bool get canGroupSelected => _selection.ids.length >= 2;
+
+  /// 지금 골라진 카드 중 하나라도 그룹에 속해 있어서, 그룹을 풀 수
+  /// 있는지 여부입니다.
+  bool get canUngroupSelected =>
+      _selection.ids.any((String id) => _cardById(id)?.groupId != null);
+
+  /// 지금 골라진 카드를 새 그룹 하나로 묶고 저장합니다. (선택 툴바의
+  /// "그룹" 버튼)
+  ///
+  /// **이미 골라진 것 전부가 한 그룹이면 아무 일도 안 합니다** — 새
+  /// 번호로 다시 묶어봤자 뜻이 같은데, 저장이 한 번 더 일어나고
+  /// 되돌리기 기록만 늘어납니다.
+  ///
+  /// 골라진 것 중 일부만 그룹에 속해 있었다면(서로 다른 그룹이 섞여
+  /// 있거나, 그룹 없는 카드와 그룹 있는 카드가 섞여 있다면) **전부를
+  /// 아우르는 새 그룹**을 만듭니다. 예전 그룹에 남아있던, 지금은 선택
+  /// 안 된 카드는 그대로 예전 그룹에 남습니다 — 이 조작이 손댄 건
+  /// "지금 고른 카드들"뿐입니다.
+  Future<void> groupSelected() async {
+    if (!canGroupSelected) {
+      return;
+    }
+
+    final Set<String?> groupIdsOfSelected = <String?>{
+      for (final String id in _selection.ids) _cardById(id)?.groupId,
+    };
+    final bool alreadyOneGroup =
+        groupIdsOfSelected.length == 1 && groupIdsOfSelected.first != null;
+    if (alreadyOneGroup) {
+      return;
+    }
+
+    _pushUndoSnapshot();
+
+    final String newGroupId = newId();
+    final Set<String> targetIds = _selection.ids;
+
+    _cards = <BoardCard>[
+      for (final BoardCard card in _cards)
+        if (targetIds.contains(card.id))
+          card.copyWith(groupId: newGroupId)
+        else
+          card,
+    ];
+    notifyListeners();
+
+    await _saveCards(targetIds);
+  }
+
+  /// 지금 골라진 카드가 속한 그룹을 전부 풉니다. (선택 툴바의 "그룹
+  /// 해제" 버튼)
+  ///
+  /// **선택된 카드만 그룹에서 빼는 것이 아니라, 그 그룹에 속한 카드
+  /// 전부를 그룹에서 뺍니다.** 그룹의 절반만 남기고 절반만 풀면
+  /// "그룹인데 그룹이 아닌" 어중간한 상태가 됩니다 — 그룹은 통째로
+  /// 있거나 없거나 둘 중 하나여야 헷갈리지 않습니다.
+  Future<void> ungroupSelected() async {
+    if (!canUngroupSelected) {
+      return;
+    }
+
+    _pushUndoSnapshot();
+
+    final Set<String> groupIdsToDissolve = <String>{
+      for (final String id in _selection.ids)
+        if (_cardById(id)?.groupId != null) _cardById(id)!.groupId!,
+    };
+
+    final Set<String> affectedIds = <String>{
+      for (final BoardCard card in _cards)
+        if (card.groupId != null && groupIdsToDissolve.contains(card.groupId))
+          card.id,
+    };
+
+    _cards = <BoardCard>[
+      for (final BoardCard card in _cards)
+        if (affectedIds.contains(card.id)) card.ungroup() else card,
+    ];
+    notifyListeners();
+
+    await _saveCards(affectedIds);
   }
 }
