@@ -109,16 +109,22 @@ flutter:
   # 획이 각지고 무거워서 공문서 느낌이 났습니다. "고운"(이름 그대로
   # "곱다"는 뜻)이라는 더 부드럽고 문학적인 느낌의 세리프로 바꿨습니다.
   #
-  #   IBM Plex Sans KR — 본문·라벨·버튼 등 대부분의 글자. (app_theme.dart의 기본값)
-  #   Gowun Batang     — 화면 제목·카드 제목처럼 "이게 무엇인지" 보여주는 자리.
-  #                      (app_text.dart의 screenTitle/cardTitle에서만 골라 씀)
+  # ── 본문 글꼴도 Pretendard로 바꿨습니다 (의뢰인 요청) ──
+  # IBM Plex Sans KR도 나쁘지 않았지만, 의뢰인이 한국 웹·앱에서 가장
+  # 널리 쓰이는 Pretendard로 써달라고 했습니다. Google Fonts에는 없고
+  # 만든 사람(orioncactus)의 GitHub 릴리스에서 받았습니다 — 역시 OFL
+  # 라이선스라 번들·배포 자유입니다.
+  #
+  #   Pretendard   — 본문·라벨·버튼 등 대부분의 글자. (app_theme.dart의 기본값)
+  #   Gowun Batang — 화면 제목·카드 제목처럼 "이게 무엇인지" 보여주는 자리.
+  #                 (app_text.dart의 screenTitle/cardTitle에서만 골라 씀)
   fonts:
-    - family: IBM Plex Sans KR
+    - family: Pretendard
       fonts:
-        - asset: assets/fonts/IBMPlexSansKR-Regular.ttf
-        - asset: assets/fonts/IBMPlexSansKR-SemiBold.ttf
+        - asset: assets/fonts/Pretendard-Regular.ttf
+        - asset: assets/fonts/Pretendard-SemiBold.ttf
           weight: 600
-        - asset: assets/fonts/IBMPlexSansKR-Bold.ttf
+        - asset: assets/fonts/Pretendard-Bold.ttf
           weight: 700
     - family: Gowun Batang
       fonts:
