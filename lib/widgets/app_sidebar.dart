@@ -23,6 +23,13 @@
 // 목업에서 사이드바만 짙은 색입니다. 본문은 밝은데 사이드바는 어둡게 두면
 // "여기는 성격이 다른 영역"이라는 것이 한눈에 보입니다.
 // 그래서 밝은 모드에서도 사이드바는 어두운 색을 씁니다.
+//
+// ── 블록마다 있던 테두리 상자를 없앴습니다 (2026-09-11 "라이트테이블") ──
+// 전에는 ①②③ 블록마다 각각 테두리 있는 둥근 상자로 감쌌습니다. 이러면
+// "똑같이 둥근 상자를 계속 쌓아올린" 모양이 되어 사이드바 자체가
+// 시끄러워집니다. 지금은 상자를 걷어내고 얇은 구분선(_buildDivider)과
+// 여백만으로 블록을 나눕니다 — 본문의 사진 격자가 조용한 배경 위에서
+// 도드라지게 하려는 것과 같은 방향입니다.
 
 import 'package:flutter/material.dart';
 
@@ -148,29 +155,31 @@ class _AppSidebarState extends State<AppSidebar> {
       color: dark.background,
       child: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
               _buildUserBlock(dark),
 
-              const SizedBox(height: 20),
+              _buildDivider(dark),
 
               // 무드보드로 가는 길입니다. 폴더 목록 위에 따로 둡니다.
               //
               // ── 왜 폴더 목록 안에 넣지 않았나 ──
               // 폴더는 "레퍼런스를 어떻게 나눠 볼까"이고, 무드보드는 "레퍼런스로
               // 무엇을 할까"입니다. 성격이 달라서 같은 목록에 섞으면 폴더 중
-              // 하나처럼 보입니다. 한 칸 띄워 두면 다른 종류라는 것이 드러납니다.
+              // 하나처럼 보입니다. 구분선으로 나눠 두면 다른 종류라는 것이 드러납니다.
               _buildBoardsBlock(dark),
 
-              const SizedBox(height: 12),
+              _buildDivider(dark),
+
+              _buildSectionLabel(dark, '폴더'),
 
               // ② 폴더 목록입니다. Expanded로 감싸 남는 공간을 다 차지하게 하면,
               // ③(설정)이 언제나 맨 아래에 붙습니다.
               Expanded(child: _buildFolderList(dark)),
 
-              const SizedBox(height: 12),
+              _buildDivider(dark),
               _buildBottomBlock(dark),
             ],
           ),
@@ -179,77 +188,71 @@ class _AppSidebarState extends State<AppSidebar> {
     );
   }
 
+  /// 블록 사이를 나누는 얇은 구분선입니다. 테두리 상자 대신 씁니다.
+  Widget _buildDivider(AppPalette dark) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 14),
+      child: Divider(height: 1, thickness: 1, color: dark.border),
+    );
+  }
+
+  /// "폴더"처럼 구역 앞에 붙는 작은 이름표입니다.
+  Widget _buildSectionLabel(AppPalette dark, String label) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8, left: 4),
+      child: Text(label, style: AppText.sectionLabel.copyWith(color: dark.textDim)),
+    );
+  }
+
   /// ① 사용자 부분입니다.
   Widget _buildUserBlock(AppPalette dark) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: dark.surface,
-        borderRadius: BorderRadius.circular(appCornerRadius),
-        border: Border.all(color: dark.border),
-      ),
-      child: Row(
-        children: <Widget>[
-          // 사진이 없으므로 이름 첫 글자로 대신합니다.
-          CircleAvatar(
-            radius: 18,
-            backgroundColor: dark.accentSoft,
-            child: Text(
-              _initial(),
-              style: TextStyle(
-                color: dark.accent,
-                fontWeight: FontWeight.w700,
+    return Row(
+      children: <Widget>[
+        // 사진이 없으므로 이름 첫 글자로 대신합니다.
+        CircleAvatar(
+          radius: 18,
+          backgroundColor: dark.accentSoft,
+          child: Text(
+            _initial(),
+            style: TextStyle(color: dark.accent, fontWeight: FontWeight.w700),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Text(
+                widget.userName,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(color: dark.text, fontWeight: FontWeight.w700),
               ),
-            ),
+              Text(
+                // 로그인 기능이 없다는 것을 숨기지 않고 그대로 적습니다.
+                // 가짜 계정 아이디를 지어내면 나중에 진짜 로그인을 붙일 때
+                // 사용자가 혼란스러워집니다.
+                '로그인 안 함',
+                style: AppText.meta.copyWith(color: dark.textDim),
+              ),
+            ],
           ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                Text(
-                  widget.userName,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: dark.text,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                Text(
-                  // 로그인 기능이 없다는 것을 숨기지 않고 그대로 적습니다.
-                  // 가짜 계정 아이디를 지어내면 나중에 진짜 로그인을 붙일 때
-                  // 사용자가 혼란스러워집니다.
-                  '로그인 안 함',
-                  style: AppText.meta.copyWith(color: dark.textDim),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
   /// 무드보드로 가는 줄입니다.
   Widget _buildBoardsBlock(AppPalette dark) {
-    return Container(
-      padding: const EdgeInsets.all(8),
-      decoration: BoxDecoration(
-        color: dark.surface,
-        borderRadius: BorderRadius.circular(appCornerRadius),
-        border: Border.all(color: dark.border),
-      ),
-      child: _buildNavItem(
-        dark,
-        icon: Icons.dashboard_outlined,
-        label: '무드보드',
+    return _buildNavItem(
+      dark,
+      icon: Icons.dashboard_outlined,
+      label: '무드보드',
 
-        // 고른 상태로 표시하지 않습니다. 여기는 "머무는 자리"가 아니라
-        // 다른 화면으로 가는 문이라, 켜져 있으면 지금 그 화면인 줄 오해합니다.
-        isSelected: false,
-        onTap: widget.onOpenBoards,
-      ),
+      // 고른 상태로 표시하지 않습니다. 여기는 "머무는 자리"가 아니라
+      // 다른 화면으로 가는 문이라, 켜져 있으면 지금 그 화면인 줄 오해합니다.
+      isSelected: false,
+      onTap: widget.onOpenBoards,
     );
   }
 
@@ -262,23 +265,14 @@ class _AppSidebarState extends State<AppSidebar> {
     final List<FolderTreeEntry> tree = buildFolderTree(widget.folders);
     final List<FolderTreeEntry> visible = _visibleEntries(tree);
 
-    return Container(
-      padding: const EdgeInsets.all(8),
-      decoration: BoxDecoration(
-        color: dark.surface,
-        borderRadius: BorderRadius.circular(appCornerRadius),
-        border: Border.all(color: dark.border),
-      ),
-
-      // 폴더가 많아지면 사이드바 밖으로 넘칩니다. 스크롤되게 둡니다.
-      child: ListView(
-        padding: EdgeInsets.zero,
-        children: <Widget>[
-          _buildAllReferencesRow(dark),
-          for (final FolderTreeEntry entry in visible)
-            _buildFolderRow(dark, entry, tree),
-        ],
-      ),
+    // 폴더가 많아지면 사이드바 밖으로 넘칩니다. 스크롤되게 둡니다.
+    return ListView(
+      padding: EdgeInsets.zero,
+      children: <Widget>[
+        _buildAllReferencesRow(dark),
+        for (final FolderTreeEntry entry in visible)
+          _buildFolderRow(dark, entry, tree),
+      ],
     );
   }
 
@@ -431,42 +425,34 @@ class _AppSidebarState extends State<AppSidebar> {
 
   /// ③ 아래쪽 설정·로그인 부분입니다.
   Widget _buildBottomBlock(AppPalette dark) {
-    return Container(
-      padding: const EdgeInsets.all(8),
-      decoration: BoxDecoration(
-        color: dark.surface,
-        borderRadius: BorderRadius.circular(appCornerRadius),
-        border: Border.all(color: dark.border),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: <Widget>[
-          // 휴지통은 폴더 목록(②)이 아니라 여기 둡니다. 폴더는 "레퍼런스를
-          // 어떻게 나눠 볼까"인데, 휴지통은 설정처럼 가끔 들르는 도구라
-          // 성격이 다릅니다.
-          _buildNavItem(
-            dark,
-            icon: Icons.delete_outline,
-            label: '휴지통',
-            isSelected: false,
-            onTap: widget.onOpenTrash,
-          ),
-          _buildNavItem(
-            dark,
-            icon: Icons.settings_outlined,
-            label: '설정',
-            isSelected: false,
-            onTap: widget.onOpenSettings,
-          ),
-          _buildNavItem(
-            dark,
-            icon: Icons.login_outlined,
-            label: '로그인',
-            isSelected: false,
-            onTap: widget.onLogInOut,
-          ),
-        ],
-      ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        // 휴지통은 폴더 목록(②)이 아니라 여기 둡니다. 폴더는 "레퍼런스를
+        // 어떻게 나눠 볼까"인데, 휴지통은 설정처럼 가끔 들르는 도구라
+        // 성격이 다릅니다.
+        _buildNavItem(
+          dark,
+          icon: Icons.delete_outline,
+          label: '휴지통',
+          isSelected: false,
+          onTap: widget.onOpenTrash,
+        ),
+        _buildNavItem(
+          dark,
+          icon: Icons.settings_outlined,
+          label: '설정',
+          isSelected: false,
+          onTap: widget.onOpenSettings,
+        ),
+        _buildNavItem(
+          dark,
+          icon: Icons.login_outlined,
+          label: '로그인',
+          isSelected: false,
+          onTap: widget.onLogInOut,
+        ),
+      ],
     );
   }
 

@@ -91,6 +91,36 @@ flutter:
   # the material Icons class.
   uses-material-design: true
 
+  # ── 새 디자인(2026-09-11, "라이트테이블")에서 쓰는 글꼴입니다 ──
+  # Google Fonts에서 받은 파일을 assets/fonts에 그대로 담아뒀습니다(둘 다
+  # OFL 라이선스 — 번들·배포 자유. 라이선스 원문은 그 폴더의 *-OFL.txt).
+  # 런타임에 인터넷에서 받아오는 방식(google_fonts 패키지)을 쓰지 않고
+  # 파일로 직접 번들한 이유: 이 앱은 "로컬 우선"이 원칙이라, 인터넷이
+  # 없을 때 글자가 기본 폰트로 깨져 보이면 안 됩니다.
+  #
+  # ── 처음엔 Inter/Newsreader를 썼다가 바꿨습니다 ──
+  # 둘 다 라틴 문자만 있고 한글 글리프가 없습니다. 이 앱 글자는 거의 다
+  # 한글이라, 실제로 켜보니 한글은 전부 시스템 기본 폰트(맑은 고딕)로
+  # 대체되고 있었습니다 — 글꼴을 바꾼 보람이 거의 없었던 셈입니다. 그래서
+  # 한글을 제대로 지원하는 두 글꼴로 바꿨습니다.
+  #
+  #   IBM Plex Sans KR — 본문·라벨·버튼 등 대부분의 글자. (app_theme.dart의 기본값)
+  #   Noto Serif KR    — 화면 제목·카드 제목처럼 "이게 무엇인지" 보여주는 자리.
+  #                      (app_text.dart의 screenTitle/cardTitle에서만 골라 씀)
+  #                      가변 글꼴(하나의 파일에 여러 굵기)이라 파일은 하나뿐입니다.
+  fonts:
+    - family: IBM Plex Sans KR
+      fonts:
+        - asset: assets/fonts/IBMPlexSansKR-Regular.ttf
+        - asset: assets/fonts/IBMPlexSansKR-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/IBMPlexSansKR-Bold.ttf
+          weight: 700
+    - family: Noto Serif KR
+      fonts:
+        - asset: assets/fonts/NotoSerifKR-Variable.ttf
+          weight: 700
+
   # To add assets to your application, add an assets section, like this:
   # assets:
   #   - images/a_dot_burr.jpeg

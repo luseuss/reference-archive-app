@@ -61,6 +61,11 @@ ThemeData _buildTheme(AppPalette palette, Brightness brightness) {
     useMaterial3: true,
     colorScheme: colors,
 
+    // 앱 전체의 기본 글꼴입니다. (2026-09-11 "라이트테이블" 디자인)
+    // app_text.dart에서 fontFamily를 따로 지정한 자리(screenTitle,
+    // cardTitle — 세리프 Noto Serif KR)만 이 기본값을 벗어납니다.
+    fontFamily: 'IBM Plex Sans KR',
+
     // 화면 바탕은 카드보다 살짝 어둡습니다. 이 차이가 카드를 떠 보이게 합니다.
     scaffoldBackgroundColor: palette.background,
 
