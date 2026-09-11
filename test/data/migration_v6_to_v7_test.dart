@@ -199,8 +199,12 @@ void main() {
     expect(folders.length, 1);
     expect(folders.first.name, '인물');
 
-    // 다음번엔 다시 이 단계를 안 거치도록, 버전도 7로 고쳐져 있어야 합니다.
+    // 다음번엔 다시 이 단계를 안 거치도록, 버전도 (v7이 아니라) 지금의
+    // 최신 schemaVersion까지 고쳐져 있어야 합니다. v7 하나로 고정해서
+    // 적으면, 나중에 schemaVersion이 더 올라갈 때마다 이 테스트가
+    // 매번 실패해서 고쳐야 합니다 — 이 테스트가 확인하려는 것은 "v7
+    // 자리에서 멈추지 않는다"이지 "정확히 7이다"가 아닙니다.
     final List<QueryRow> version = await db.customSelect('PRAGMA user_version').get();
-    expect(version.first.data['user_version'], 7);
+    expect(version.first.data['user_version'], db.schemaVersion);
   });
 }

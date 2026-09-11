@@ -60,8 +60,9 @@ class AppDatabase extends _$AppDatabase {
   ///   6 — 파트(Part) 개념을 없앰. References.partId 칼럼 삭제,
   ///       taxonomy_items의 kind='part' 행 삭제
   ///   7 — TaxonomyItems에 parentId 추가 (폴더 중첩)
+  ///   8 — BoardCards에 groupId 추가 (무드보드 카드 그룹화)
   @override
-  int get schemaVersion => 7;
+  int get schemaVersion => 8;
 
   /// 데이터베이스를 처음 만들 때, 그리고 구조가 바뀌었을 때 무엇을 할지 정합니다.
   @override
@@ -123,6 +124,18 @@ class AppDatabase extends _$AppDatabase {
 
         if (from < 7) {
           await _upgradeToVersion7(m);
+        }
+
+        // ── 여기도 v5(boards.folderId)와 같은 이유로 `from >= 3`이 붙습니다ㅡ
+        // boardCards 표 역시 _upgradeToVersion3의 createTable로 **지금
+        // 이 시점의 tables.dart**를 기준으로 만들어집니다. v1이나 v2에서
+        // 곧장 v8로 건너뛰는 사용자는 그 createTable 단계에서 이미
+        // group_id가 포함된 board_cards 표를 받으므로, 여기서 또
+        // addColumn을 하면 "칼럼이 이미 있다"는 오류가 납니다. board_cards
+        // 표가 **이번 업데이트 전부터 실제로 있던**(버전 3~7) 사용자만
+        // 이 칸을 추가해야 합니다.
+        if (from >= 3 && from < 8) {
+          await _upgradeToVersion8(m);
         }
       },
 
@@ -353,6 +366,19 @@ class AppDatabase extends _$AppDatabase {
     if (!alreadyHasParentId) {
       await m.addColumn(taxonomyItems, taxonomyItems.parentId);
     }
+  }
+
+  /// 버전 7 → 8. 무드보드 카드에 그룹 번호(groupId) 칸을 추가합니다(카드 그룹화).
+  ///
+  /// nullable 칸을 addColumn으로 더하기만 하면 됩니다. 기존 카드는 전부
+  /// "어느 그룹에도 안 속한"(null) 상태로 시작합니다 — 그룹은 사용자가
+  /// 직접 묶기 전에는 존재하지 않는 것이 맞는 상태입니다.
+  ///
+  /// `from >= 3 && from < 8` 조건인 이유는 위 `onUpgrade`의 주석과
+  /// v5(boards.folderId)의 `_upgradeToVersion5` 주석을 보세요 — 같은
+  /// createTable/addColumn 함정입니다.
+  Future<void> _upgradeToVersion8(Migrator m) async {
+    await m.addColumn(boardCards, boardCards.groupId);
   }
 }
 
