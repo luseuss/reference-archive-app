@@ -31,13 +31,13 @@ class AppText {
 
   /// 화면 맨 위 제목입니다.
   ///
-  /// ── 여기만 세리프(Noto Serif KR)를 씁니다 ──
+  /// ── 여기만 세리프(Gowun Batang)를 씁니다 ──
   /// 나머지 글자는 전부 app_theme.dart가 기본으로 까는 IBM Plex Sans KR을
   /// 그대로 씁니다. "이게 무엇인지"를 보여주는 자리(화면 제목, 카드 제목)에만
   /// 세리프를 골라 써서, 그 자리가 눈에 띄되 화면 전체가 산만해지지
   /// 않게 했습니다.
   static const TextStyle screenTitle = TextStyle(
-    fontFamily: 'Noto Serif KR',
+    fontFamily: 'Gowun Batang',
     fontSize: 20,
     fontWeight: FontWeight.w700,
     letterSpacing: -0.2,
@@ -53,9 +53,9 @@ class AppText {
     letterSpacing: 0.44,
   );
 
-  /// 카드 제목입니다. screenTitle과 같은 이유로 세리프(Noto Serif KR)를 씁니다.
+  /// 카드 제목입니다. screenTitle과 같은 이유로 세리프(Gowun Batang)를 씁니다.
   static const TextStyle cardTitle = TextStyle(
-    fontFamily: 'Noto Serif KR',
+    fontFamily: 'Gowun Batang',
     fontSize: 15.5,
     fontWeight: FontWeight.w700,
     height: 1.3,
