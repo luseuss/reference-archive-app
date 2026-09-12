@@ -41,6 +41,7 @@ import '../widgets/create_taxonomy_dialog.dart';
 import '../widgets/home_drop_area.dart';
 import '../widgets/home_selection_app_bar.dart';
 import '../widgets/main_header.dart';
+import '../widgets/mesh_background.dart';
 import '../widgets/reference_empty_state.dart';
 import '../widgets/reference_filter_bar.dart';
 import '../widgets/reference_grid.dart';
@@ -763,16 +764,21 @@ class _HomeScreenState extends State<HomeScreen> {
               const SingleActivator(LogicalKeyboardKey.keyZ, meta: true):
                   _undoLastDelete,
             },
-            child: Focus(
-              autofocus: true,
-              child: Row(
-                children: <Widget>[
-                  // 넓은 창에서만 사이드바를 늘 펼쳐둡니다.
-                  if (isWide) _buildSidebar(),
+            // MeshBackground가 "에메랄드 글래스" 색 안개를 깔아줍니다.
+            // 사이드바(app_sidebar.dart)·머리줄(main_header.dart)이
+            // 반투명인 것은 이 안개가 뒤에 있어야 뜻이 있습니다.
+            child: MeshBackground(
+              child: Focus(
+                autofocus: true,
+                child: Row(
+                  children: <Widget>[
+                    // 넓은 창에서만 사이드바를 늘 펼쳐둡니다.
+                    if (isWide) _buildSidebar(),
 
-                  // Expanded로 감싸야 본문이 남는 폭을 다 차지합니다.
-                  Expanded(child: _buildMainArea(isWide)),
-                ],
+                    // Expanded로 감싸야 본문이 남는 폭을 다 차지합니다.
+                    Expanded(child: _buildMainArea(isWide)),
+                  ],
+                ),
               ),
             ),
           ),

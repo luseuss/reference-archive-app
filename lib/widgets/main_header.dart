@@ -6,6 +6,13 @@
 //
 // 기존 웹앱의 헤더와 같은 구성입니다. 추가 버튼이 여기 있는 것도 원본과 같습니다.
 // (예전에는 오른쪽 아래 떠 있는 버튼이었는데 의뢰인이 이리로 옮기기로 정했습니다)
+//
+// ── 반투명 유리 + 그라디언트 제목 (2026-09-13 "에메랄드 글래스") ──
+// 사이드바(app_sidebar.dart)와 같은 이유로 배경이 `palette.background`
+// (불투명)에서 `palette.surface`(반투명)로 바뀌었습니다. 제목 왼쪽의
+// 굵은 세로선과 "레퍼런스 아카이브" 글자는 에메랄드→시안→라임 그라디언트로
+// 칠합니다 — 이 앱에서 색을 세 가지 다 쓰는 유일한 자리입니다. 다른
+// 곳은 여전히 accent(에메랄드) 하나만 씁니다.
 
 import 'package:flutter/material.dart';
 
@@ -66,7 +73,7 @@ class MainHeader extends StatelessWidget {
         vertical: 14,
       ),
       decoration: BoxDecoration(
-        color: palette.background,
+        color: palette.surface,
         border: Border(bottom: BorderSide(color: palette.border)),
       ),
 
@@ -102,11 +109,21 @@ class MainHeader extends StatelessWidget {
           ),
 
         // 제목 왼쪽의 굵은 세로선입니다. 기존 웹앱 헤더에 있던 표시입니다.
+        // 세 강조색을 위에서 아래로 흘려서, 아래 제목 그라디언트와
+        // 같은 색 조합이라는 것을 알려주는 작은 예고편 역할도 합니다.
         Container(
           width: 4,
           height: 34,
           decoration: BoxDecoration(
-            color: palette.accent,
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: <Color>[
+                palette.accent,
+                palette.accentSecondary,
+                palette.accentTertiary,
+              ],
+            ),
             borderRadius: BorderRadius.circular(2),
           ),
         ),
@@ -116,9 +133,23 @@ class MainHeader extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
-            Text(
-              '레퍼런스 아카이브',
-              style: AppText.screenTitle.copyWith(color: palette.text),
+            // ShaderMask로 글자 모양 그대로 그라디언트를 입힙니다.
+            // Text의 color는 흰색으로 둬야 합니다 — ShaderMask는 알파(글자
+            // 모양)만 보고 색을 새로 칠하는데, 어두운 글자색이 남아있으면
+            // 그라디언트가 어둡게 섞여 탁해 보입니다.
+            ShaderMask(
+              blendMode: BlendMode.srcIn,
+              shaderCallback: (Rect bounds) => LinearGradient(
+                colors: <Color>[
+                  palette.accent,
+                  palette.accentSecondary,
+                  palette.accentTertiary,
+                ],
+              ).createShader(bounds),
+              child: Text(
+                '레퍼런스 아카이브',
+                style: AppText.screenTitle.copyWith(color: Colors.white),
+              ),
             ),
             Text(
               '$itemCount개',

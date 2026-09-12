@@ -30,6 +30,17 @@
 // 시끄러워집니다. 지금은 상자를 걷어내고 얇은 구분선(_buildDivider)과
 // 여백만으로 블록을 나눕니다 — 본문의 사진 격자가 조용한 배경 위에서
 // 도드라지게 하려는 것과 같은 방향입니다.
+//
+// ── 사이드바가 살짝 반투명해졌습니다 (2026-09-13 "에메랄드 글래스") ──
+// `dark.surface`(약 8% 불투명 흰색)를 그대로 쓰지 않습니다 — 그 값은
+// "어두운 안개 위에 얹는 유리"를 기준으로 잡은 값이라, **밝은 모드**에서는
+// 뒤 안개(MeshBackground)가 옅은 색이라 사이드바가 거의 안 어두워져
+// 버립니다(사이드바 글자색은 항상 어두운 모드 기준인데, 바탕이 밝아지면
+// 글자가 안 보입니다 — 실제로 켜보고 발견한 문제입니다).
+//
+// 그래서 사이드바만은 `dark.background`를 아주 살짝만 투명하게
+// (92% 불투명) 씁니다. 앱이 밝은 모드든 어두운 모드든 사이드바 자체는
+// 항상 충분히 어둡고, 가장자리로 안개 색이 아주 희미하게만 비칩니다.
 
 import 'package:flutter/material.dart';
 
@@ -152,7 +163,10 @@ class _AppSidebarState extends State<AppSidebar> {
 
     return Container(
       width: sidebarWidth,
-      color: dark.background,
+      decoration: BoxDecoration(
+        color: dark.background.withValues(alpha: 0.92),
+        border: Border(right: BorderSide(color: dark.border)),
+      ),
       child: SafeArea(
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
