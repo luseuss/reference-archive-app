@@ -20,6 +20,20 @@
 // 안 켜지는" 버그가 됩니다. 그래서 메인 창의 닫기 가드
 // (lib/main.dart의 _MainWindowCloseGuard)와 같은 방식으로, 닫기를
 // 가로채서 메인 창에 먼저 알리고 나서 진짜로 닫습니다.
+//
+// ── 밝은/어두운 모드 설정을 안 따라가던 버그 (2026-09-13 수정) ──
+// 이 창의 MaterialApp이 `themeMode`를 안 정해뒀어서, Flutter 기본값인
+// `ThemeMode.system`(운영체제 설정)을 그대로 썼습니다. 메인 창
+// (lib/main.dart)은 설정 화면에서 고른 값(`AppSettings.themeMode`)을
+// 쓰는데, 팝업은 다른 엔진이라 그 값을 몰라서 **의뢰인이 앱 안에서
+// 직접 "다크 모드"를 골라도 무드보드 창만 시스템 설정을 따라가는**
+// 어긋남이 있었습니다. 팝업도 메인 창과 똑같이 `AppSettings`를 새로
+// 읽어와(`_settings`) 씁니다 — 데이터베이스 연결을 새로 여는 것과
+// 같은 사정(엔진이 달라 메모리를 안 나눔)입니다. 팝업을 여는 시점의
+// 값을 한 번 읽으므로, **팝업이 떠 있는 동안 설정 화면에서 모드를
+// 바꾸면 그 팝업에는 다음에 새로 열 때 반영됩니다**(다른 무드보드
+// 창 설정값과 같은 방식 — CLAUDE.md "설정 화면에 무드보드 창 기본값
+// 추가" 참고).
 
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -30,6 +44,7 @@ import '../data/app_database.dart';
 import '../models/board.dart';
 import '../repositories/local_board_repository.dart';
 import '../repositories/local_reference_repository.dart';
+import '../services/app_settings.dart';
 import '../services/board_window_sync.dart';
 import '../services/local_image_storage.dart';
 import '../services/network_image_source.dart';
@@ -66,6 +81,10 @@ class _BoardPopupAppState extends State<BoardPopupApp> {
   late final LocalBoardRepository _boardRepository;
   late final LocalReferenceRepository _referenceRepository;
 
+  /// 밝은/어두운 모드 설정입니다. 메인 창과 다른 엔진이라 따로 읽어옵니다.
+  /// 읽어오기 전까지는 기본값(시스템 설정)으로 그려집니다.
+  final AppSettings _settings = AppSettings();
+
   @override
   void initState() {
     super.initState();
@@ -73,6 +92,7 @@ class _BoardPopupAppState extends State<BoardPopupApp> {
     _boardId = widget.initialBoardId;
     _boardRepository = LocalBoardRepository(_database);
     _referenceRepository = LocalReferenceRepository(_database);
+    _loadSettings();
 
     // 메인 창이 "닫아라"고 요청하면 스스로 닫히도록 준비합니다
     // (board_popup_controller.dart의 requestClose/registerPopupWindowCloseHandler
@@ -110,6 +130,15 @@ class _BoardPopupAppState extends State<BoardPopupApp> {
     windowManager.addListener(_PopupCloseGuard());
   }
 
+  /// 밝은/어두운 모드 설정을 읽어와 화면에 반영합니다.
+  Future<void> _loadSettings() async {
+    await _settings.load();
+    if (!mounted) {
+      return;
+    }
+    setState(() {});
+  }
+
   /// 지금 판 번호(_boardId)에 해당하는 판을 읽어옵니다.
   Future<void> _loadBoard() async {
     final Board? board = await _boardRepository.getBoardById(_boardId);
@@ -137,6 +166,7 @@ class _BoardPopupAppState extends State<BoardPopupApp> {
       supportedLocales: const <Locale>[Locale('ko'), Locale('en')],
       theme: buildLightTheme(),
       darkTheme: buildDarkTheme(),
+      themeMode: _settings.themeMode,
       home: _board == null
           ? const Scaffold(body: Center(child: CircularProgressIndicator()))
           : BoardScreen(
