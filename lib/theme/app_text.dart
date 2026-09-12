@@ -31,13 +31,12 @@ class AppText {
 
   /// 화면 맨 위 제목입니다.
   ///
-  /// ── 여기만 세리프(Gowun Batang)를 씁니다 ──
-  /// 나머지 글자는 전부 app_theme.dart가 기본으로 까는 Pretendard를
-  /// 그대로 씁니다. "이게 무엇인지"를 보여주는 자리(화면 제목, 카드 제목)에만
-  /// 세리프를 골라 써서, 그 자리가 눈에 띄되 화면 전체가 산만해지지
-  /// 않게 했습니다.
+  /// 2026-09-11 "라이트테이블" 디자인 때는 이 자리에 세리프(Gowun Batang)를
+  /// 잠깐 썼지만, 의뢰인이 "전부 Pretendard로 통일해달라"고 해서
+  /// 2026-09-13에 되돌렸습니다. 이제 나머지 글자와 마찬가지로
+  /// app_theme.dart가 기본으로 까는 Pretendard를 그대로 씁니다
+  /// (fontFamily를 따로 안 적으면 그 기본값을 물려받습니다).
   static const TextStyle screenTitle = TextStyle(
-    fontFamily: 'Gowun Batang',
     fontSize: 20,
     fontWeight: FontWeight.w700,
     letterSpacing: -0.2,
@@ -53,9 +52,8 @@ class AppText {
     letterSpacing: 0.44,
   );
 
-  /// 카드 제목입니다. screenTitle과 같은 이유로 세리프(Gowun Batang)를 씁니다.
+  /// 카드 제목입니다. screenTitle과 같은 이유로 세리프를 뺐습니다 — Pretendard로 통일.
   static const TextStyle cardTitle = TextStyle(
-    fontFamily: 'Gowun Batang',
     fontSize: 15.5,
     fontWeight: FontWeight.w700,
     height: 1.3,

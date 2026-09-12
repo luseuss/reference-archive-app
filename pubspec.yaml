@@ -104,20 +104,20 @@ flutter:
   # 대체되고 있었습니다 — 글꼴을 바꾼 보람이 거의 없었던 셈입니다. 그래서
   # 한글을 제대로 지원하는 두 글꼴로 바꿨습니다.
   #
-  # ── 세리프도 한 번 더 바꿨습니다 (Noto Serif KR → Gowun Batang) ──
-  # Noto Serif KR은 의뢰인이 "밀리터리/오래된 인쇄물 같다"고 했습니다 —
-  # 획이 각지고 무거워서 공문서 느낌이 났습니다. "고운"(이름 그대로
-  # "곱다"는 뜻)이라는 더 부드럽고 문학적인 느낌의 세리프로 바꿨습니다.
+  # ── 세리프(Noto Serif KR → Gowun Batang)로 한 번 바꿨다가, 2026-09-13에
+  #    다시 뺐습니다 ──
+  # 화면 제목·카드 제목만 세리프로 다르게 보이게 했었는데, 의뢰인이
+  # "전부 Pretendard로 통일해달라"고 해서 그 예외를 없앴습니다. 이제
+  # Gowun Batang 파일은 코드 어디서도 안 씁니다 — 앱 용량만 차지하므로
+  # fonts 목록에서도 뺐습니다. 폰트 파일 자체(assets/fonts/GowunBatang-*)는
+  # 나중에 다시 쓸 수도 있어 지우지 않고 남겨뒀습니다.
   #
-  # ── 본문 글꼴도 Pretendard로 바꿨습니다 (의뢰인 요청) ──
+  # ── 본문 글꼴은 Pretendard입니다 (의뢰인 요청) ──
   # IBM Plex Sans KR도 나쁘지 않았지만, 의뢰인이 한국 웹·앱에서 가장
   # 널리 쓰이는 Pretendard로 써달라고 했습니다. Google Fonts에는 없고
   # 만든 사람(orioncactus)의 GitHub 릴리스에서 받았습니다 — 역시 OFL
-  # 라이선스라 번들·배포 자유입니다.
-  #
-  #   Pretendard   — 본문·라벨·버튼 등 대부분의 글자. (app_theme.dart의 기본값)
-  #   Gowun Batang — 화면 제목·카드 제목처럼 "이게 무엇인지" 보여주는 자리.
-  #                 (app_text.dart의 screenTitle/cardTitle에서만 골라 씀)
+  # 라이선스라 번들·배포 자유입니다. 앱 전체 글자(제목 포함)가 전부
+  # 이 폰트 하나로 통일되어 있습니다(app_theme.dart의 기본값).
   fonts:
     - family: Pretendard
       fonts:
@@ -125,10 +125,6 @@ flutter:
         - asset: assets/fonts/Pretendard-SemiBold.ttf
           weight: 600
         - asset: assets/fonts/Pretendard-Bold.ttf
-          weight: 700
-    - family: Gowun Batang
-      fonts:
-        - asset: assets/fonts/GowunBatang-Bold.ttf
           weight: 700
 
   # To add assets to your application, add an assets section, like this:

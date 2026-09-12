@@ -62,8 +62,9 @@ ThemeData _buildTheme(AppPalette palette, Brightness brightness) {
     colorScheme: colors,
 
     // 앱 전체의 기본 글꼴입니다. (2026-09-11 "라이트테이블" 디자인)
-    // app_text.dart에서 fontFamily를 따로 지정한 자리(screenTitle,
-    // cardTitle — 세리프 Gowun Batang)만 이 기본값을 벗어납니다.
+    // 처음엔 screenTitle·cardTitle 두 곳만 세리프(Gowun Batang)로 예외를
+    // 뒀었지만, 의뢰인이 "전부 Pretendard로 통일해달라"고 해서
+    // 2026-09-13에 예외 없이 전체 적용으로 되돌렸습니다.
     fontFamily: 'Pretendard',
 
     // 화면 바탕은 카드보다 살짝 어둡습니다. 이 차이가 카드를 떠 보이게 합니다.
