@@ -1,25 +1,31 @@
 // 앱에서 쓰는 색을 한곳에 모아둔 파일입니다.
 //
-// ── 이 색들은 어디서 왔나 (2026-09-11, "라이트테이블" 디자인으로 교체) ──
-// 처음에는 기존 웹앱(`app.html`)의 CSS 변수를 그대로 옮긴 색이었습니다.
-// 두 앱을 함께 쓰는 동안은 그게 맞는 선택이었지만, 의뢰인이 메인 화면
-// UI를 "세련되게" 새로 디자인해달라고 요청하면서 **이 파일부터 새로
-// 정한 색으로 바뀌었습니다.** 더 이상 웹앱 CSS를 따라가지 않습니다.
+// ── 이 색들은 어디서 왔나 (2026-09-13, "에메랄드 글래스" 디자인으로 교체) ──
+// 처음에는 기존 웹앱(`app.html`)의 CSS 변수였다가, "라이트테이블"(2026-09-11)을
+// 거쳐 이번이 두 번째 전면 교체입니다. 의뢰인이 유리질 그라디언트 느낌의
+// 참고 화면(반투명 유리 패널 + 뒤에 번지는 색 안개)을 보여주고, 그 결로
+// 여러 색 조합 시안을 눈으로 비교해본 뒤 "에메랄드"를 골랐습니다.
 //
-// ── 컨셉: "라이트테이블" ──
-// 이 앱은 사진가의 라이트테이블·콘택트시트처럼, **사진이 주인공이고
-// UI는 그 사진을 올려두는 조용한 판**이어야 합니다(작업 중 옆에 띄워두는
-// 도구라는 CLAUDE.md의 원칙과 같은 결). 그래서
-//   - 바탕은 따뜻한 돌색(그레이베이지)이고 카드는 순백 — 사진이 도드라집니다.
-//   - 강조색은 딱 하나, 깊은 청록(페트롤)입니다. 다른 곳엔 색을 안 씁니다.
-//   - 어두운 모드도 순수 검정이 아니라 따뜻한 숯색입니다.
+// ── 컨셉: "에메랄드 글래스" ──
+//   - 바탕 위로 에메랄드·시안·라임이 흐릿하게 번지는 "색 안개"가 깔립니다
+//     (`meshColors` + `lib/widgets/mesh_background.dart`).
+//   - 사이드바·머리줄·카드 아래쪽 글자 부분은 **반투명**입니다 — 안개가
+//     비쳐 보여야 "유리" 느낌이 납니다. `surface`가 이제 불투명이 아니라
+//     알파(투명도)가 있는 색입니다.
+//   - **사진(썸네일) 자체는 그대로 불투명합니다.** 반투명은 글자가 있는
+//     자리에만 씁니다 — 사진 위까지 유리로 덮으면 사진이 흐려 보이고
+//     가독성도 떨어집니다(실제로 시안을 비교하며 의뢰인과 확인한 부분).
+//   - 안개를 이미 흐릿하게(blur) 그려두기 때문에, 그 위에 얹는 반투명
+//     패널은 **따로 블러를 또 먹일 필요가 없습니다.** 안개 자체가 이미
+//     또렷한 경계가 없어서, 위에 알파색만 얹어도 "뿌옇게 비치는" 느낌이
+//     그대로 납니다. (BackdropFilter를 카드마다 따로 쓰면 카드 수만큼
+//     블러 연산이 늘어나 느려질 수 있는데, 이 방식은 그 비용이 없습니다)
 //
 // ── 왜 Flutter가 색을 자동으로 만들게 두지 않았나 ──
 // Flutter에는 대표색 하나만 주면 나머지를 알아서 만들어주는 기능이 있습니다
 // (`ColorScheme.fromSeed`). 자동 생성 색은 이번에도 쓰지 않았습니다 —
-// 위 컨셉처럼 "이 색만은 반드시 이 톤"이라는 의도가 있는 팔레트는 자동
-// 생성으로는 못 만듭니다(전에도 배경이 푸른기 도는 회색이 되고 테두리
-// 색이 아예 없어서 버린 적이 있습니다 — PR #11).
+// "이 자리는 반드시 반투명, 이 자리는 반드시 불투명"이라는 의도가 있는
+// 팔레트는 자동 생성으로는 못 만듭니다(PR #11에서도 같은 이유로 버렸습니다).
 
 import 'package:flutter/material.dart';
 
@@ -36,6 +42,8 @@ class AppPalette {
     required this.text,
     required this.textDim,
     required this.accent,
+    required this.accentSecondary,
+    required this.accentTertiary,
     required this.accentText,
     required this.accentSoft,
     required this.tagBackground,
@@ -43,18 +51,21 @@ class AppPalette {
     required this.dangerSoft,
     required this.cardShadow,
     required this.cardShadowHovered,
+    required this.meshColors,
   });
 
-  /// 화면 전체 바탕색입니다. 카드보다 살짝 어둡습니다.
+  /// 화면 전체 바탕색입니다. 안개(mesh)를 그리는 기준 바탕이기도 합니다.
   final Color background;
 
-  /// 카드·대화상자처럼 바탕 위에 얹히는 것들의 색입니다.
+  /// 카드·머리줄·사이드바·대화상자처럼 바탕 위에 얹히는 것들의 색입니다.
+  ///
+  /// **에메랄드 글래스에서는 이 색이 반투명입니다.** 그래서 뒤에 있는
+  /// 색 안개(mesh)나 사진이 살짝 비쳐 보입니다. `Color`의 알파값이 곧
+  /// "유리가 얼마나 뿌연가"입니다 — 다크 모드는 아주 옅게(진한 안개 위),
+  /// 라이트 모드는 더 짙게(옅은 안개 위, 글자가 안 묻히도록) 잡았습니다.
   final Color surface;
 
-  /// 카드 테두리와 구분선 색입니다.
-  ///
-  /// 기존 앱은 그림자만으로 카드를 띄우지 않고 **얇은 테두리를 함께** 씁니다.
-  /// 이게 그 앱 특유의 차분한 느낌을 만드는 부분이라 빼면 인상이 달라집니다.
+  /// 카드 테두리와 구분선 색입니다. 유리 가장자리처럼 아주 옅습니다.
   final Color border;
 
   /// 본문 글자색입니다.
@@ -63,10 +74,15 @@ class AppPalette {
   /// 덜 중요한 글자색입니다. (메모, 날짜, 태그 등)
   final Color textDim;
 
-  /// 강조색입니다. 깊은 청록(페트롤)입니다. 이 앱에서 색을 쓰는 곳은
-  /// 사실상 여기 하나뿐입니다 — 강조가 여러 군데 흩어지면 아무것도
-  /// 강조되지 않습니다.
+  /// 강조색입니다. 에메랄드입니다. 버튼·선택 표시 등 "가장 중요한 강조"에 씁니다.
   final Color accent;
+
+  /// 두 번째 강조색입니다. 시안. 안개 그라디언트와 머리줄 제목 그라디언트에
+  /// accent·accentTertiary와 함께 쓰입니다 — 이 셋 외에는 색을 더 늘리지 않습니다.
+  final Color accentSecondary;
+
+  /// 세 번째 강조색입니다. 라임. accent·accentSecondary와 같은 자리에만 씁니다.
+  final Color accentTertiary;
 
   /// 강조색 위에 얹는 글자색입니다.
   final Color accentText;
@@ -92,6 +108,10 @@ class AppPalette {
   /// 마우스를 올렸을 때의 카드 그림자입니다. 더 진하고 넓게 퍼집니다.
   final List<BoxShadow> cardShadowHovered;
 
+  /// 배경에 흐릿하게 번지는 "색 안개" 색들입니다.
+  /// `lib/widgets/mesh_background.dart`가 이 색들로 뭉갠 원을 그립니다.
+  final List<Color> meshColors;
+
   /// 지금 화면에 맞는 색 묶음을 돌려줍니다.
   ///
   /// 화면 코드에서는 이렇게 씁니다.
@@ -103,60 +123,71 @@ class AppPalette {
     return isDark ? dark : light;
   }
 
-  /// 밝은 모드 색입니다. 따뜻한 돌색 바탕 + 순백 카드 + 깊은 청록 강조색.
+  /// 밝은 모드 색입니다. 옅은 민트빛 바탕 위에 파스텔 안개, 그 위에
+  /// 짙은 흰색(70%) 유리 패널을 얹습니다 — 라이트 모드는 안개가 옅어서
+  /// 유리를 너무 투명하게 두면 글자가 안개에 묻힙니다.
   static const AppPalette light = AppPalette(
-    background: Color(0xFFEDE9E1),
-    surface: Color(0xFFFFFFFF),
-    border: Color(0xFFDDD8CD),
-    text: Color(0xFF221F1A),
-    textDim: Color(0xFF7D7768),
-    accent: Color(0xFF1D5C56),
-    accentText: Color(0xFFF5FBF9),
-    accentSoft: Color(0xFFDCEAE7),
-    tagBackground: Color(0xFFF1EEE6),
-    danger: Color(0xFFA6402C),
-    dangerSoft: Color(0xFFF6E9E4),
+    background: Color(0xFFF1FAF5),
+    surface: Color(0xB3FFFFFF),
+    border: Color(0x330F3D2E),
+    text: Color(0xFF10281F),
+    textDim: Color(0xFF5C7A6C),
+    accent: Color(0xFF059669),
+    accentSecondary: Color(0xFF0891B2),
+    accentTertiary: Color(0xFF65A30D),
+    accentText: Color(0xFFF2FBF7),
+    accentSoft: Color(0xFFDCF3E8),
+    tagBackground: Color(0xFFE9F6EF),
+    danger: Color(0xFFB5432D),
+    dangerSoft: Color(0xFFF7E7E1),
     cardShadow: <BoxShadow>[
       BoxShadow(
-        color: Color(0x0A1E1C14),
+        color: Color(0x0A0F3D2E),
         blurRadius: 2,
         offset: Offset(0, 1),
       ),
       BoxShadow(
-        color: Color(0x0F1E1C14),
+        color: Color(0x0F0F3D2E),
         blurRadius: 16,
         offset: Offset(0, 4),
       ),
     ],
     cardShadowHovered: <BoxShadow>[
       BoxShadow(
-        color: Color(0x0F000000),
+        color: Color(0x140F3D2E),
         blurRadius: 6,
         offset: Offset(0, 4),
       ),
       BoxShadow(
-        color: Color(0x1A000000),
+        color: Color(0x220F3D2E),
         blurRadius: 28,
         offset: Offset(0, 12),
       ),
     ],
+    meshColors: <Color>[
+      Color(0xFF6EE7B7),
+      Color(0xFF67E8F9),
+      Color(0xFFD9F99D),
+      Color(0xFF5EEAD4),
+    ],
   );
 
-  /// 어두운 모드 색입니다. 순수 검정이 아니라 따뜻한 숯색 바탕입니다.
-  /// (근처색을 순전한 무채색 #0B0B0B 근처로 두면 화면이 차갑고 딱딱해
-  /// 보입니다 — 일부러 살짝 따뜻한 톤을 남겨뒀습니다)
+  /// 어두운 모드 색입니다. 거의 검정에 가까운 짙은 초록-검정 바탕 위에
+  /// 진한 안개, 그 위에 아주 옅은 흰색(약 8%) 유리 패널을 얹습니다.
   static const AppPalette dark = AppPalette(
-    background: Color(0xFF1B1A18),
-    surface: Color(0xFF242320),
-    border: Color(0xFF38362F),
-    text: Color(0xFFEDE9E0),
-    textDim: Color(0xFF8C8778),
-    accent: Color(0xFF4FA69C),
-    accentText: Color(0xFF0B211E),
-    accentSoft: Color(0xFF223330),
-    tagBackground: Color(0xFF2A2822),
-    danger: Color(0xFFD97A63),
-    dangerSoft: Color(0xFF332420),
+    background: Color(0xFF070F0C),
+    surface: Color(0x14FFFFFF),
+    border: Color(0x26D8FFEF),
+    text: Color(0xFFEAFBF2),
+    textDim: Color(0xFF8FB6A4),
+    accent: Color(0xFF34D399),
+    accentSecondary: Color(0xFF22D3EE),
+    accentTertiary: Color(0xFFA3E635),
+    accentText: Color(0xFF07130F),
+    accentSoft: Color(0xFF15352B),
+    tagBackground: Color(0xFF122A22),
+    danger: Color(0xFFE58A6C),
+    dangerSoft: Color(0xFF2E1C16),
     cardShadow: <BoxShadow>[
       BoxShadow(
         color: Color(0x4D000000),
@@ -181,6 +212,11 @@ class AppPalette {
         offset: Offset(0, 12),
       ),
     ],
+    meshColors: <Color>[
+      Color(0xFF34D399),
+      Color(0xFF22D3EE),
+      Color(0xFFA3E635),
+      Color(0xFF14B8A6),
+    ],
   );
 }
-
