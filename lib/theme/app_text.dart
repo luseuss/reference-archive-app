@@ -6,7 +6,10 @@
 // 그리고 나중에 "메모 글자를 좀 키우자"고 할 때 **어디를 다 고쳐야 하는지
 // 알 수 없게** 됩니다.
 //
-// 여기 값들은 기존 웹앱(`app.html`)의 CSS에서 그대로 가져왔습니다.
+// 크기·굵기 값은 대부분 기존 웹앱(`app.html`)의 CSS에서 그대로 가져왔습니다.
+// (2026-09-11 "라이트테이블" 디자인부터는 screenTitle/cardTitle 딱 둘만
+// 예외입니다 — 글꼴을 세리프로 바꾸면서 크기도 함께 새로 정했습니다.
+// app_palette.dart 위쪽 설명 참고)
 //
 // ── 색이 왜 안 들어있나 ──
 // 색은 밝은 모드와 어두운 모드가 다릅니다. 여기 박아두면 한쪽에서만 맞게 됩니다.
@@ -26,14 +29,17 @@ class AppText {
   // 이 클래스는 값을 모아두기만 합니다. 만들어 쓸 일이 없습니다.
   const AppText._();
 
-  /// 화면 맨 위 제목입니다. (웹앱의 `h1`)
+  /// 화면 맨 위 제목입니다.
   ///
-  /// letterSpacing이 음수인 이유: 큰 글자는 자간이 넓어 보여서 살짝 좁혀야
-  /// 단단해 보입니다. 웹앱의 `letter-spacing: -.01em`과 같습니다.
+  /// 2026-09-11 "라이트테이블" 디자인 때는 이 자리에 세리프(Gowun Batang)를
+  /// 잠깐 썼지만, 의뢰인이 "전부 Pretendard로 통일해달라"고 해서
+  /// 2026-09-13에 되돌렸습니다. 이제 나머지 글자와 마찬가지로
+  /// app_theme.dart가 기본으로 까는 Pretendard를 그대로 씁니다
+  /// (fontFamily를 따로 안 적으면 그 기본값을 물려받습니다).
   static const TextStyle screenTitle = TextStyle(
-    fontSize: 18,
-    fontWeight: FontWeight.w800,
-    letterSpacing: -0.18,
+    fontSize: 20,
+    fontWeight: FontWeight.w700,
+    letterSpacing: -0.2,
   );
 
   /// 구역 이름표입니다. ("폴더", "카테고리" 같은 작은 라벨)
@@ -46,11 +52,11 @@ class AppText {
     letterSpacing: 0.44,
   );
 
-  /// 카드 제목입니다.
+  /// 카드 제목입니다. screenTitle과 같은 이유로 세리프를 뺐습니다 — Pretendard로 통일.
   static const TextStyle cardTitle = TextStyle(
-    fontSize: 14.5,
+    fontSize: 15.5,
     fontWeight: FontWeight.w700,
-    height: 1.35,
+    height: 1.3,
   );
 
   /// 카드의 폴더 표시입니다.

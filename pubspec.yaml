@@ -91,6 +91,42 @@ flutter:
   # the material Icons class.
   uses-material-design: true
 
+  # ── 새 디자인(2026-09-11, "라이트테이블")에서 쓰는 글꼴입니다 ──
+  # Google Fonts에서 받은 파일을 assets/fonts에 그대로 담아뒀습니다(둘 다
+  # OFL 라이선스 — 번들·배포 자유. 라이선스 원문은 그 폴더의 *-OFL.txt).
+  # 런타임에 인터넷에서 받아오는 방식(google_fonts 패키지)을 쓰지 않고
+  # 파일로 직접 번들한 이유: 이 앱은 "로컬 우선"이 원칙이라, 인터넷이
+  # 없을 때 글자가 기본 폰트로 깨져 보이면 안 됩니다.
+  #
+  # ── 처음엔 Inter/Newsreader를 썼다가 바꿨습니다 ──
+  # 둘 다 라틴 문자만 있고 한글 글리프가 없습니다. 이 앱 글자는 거의 다
+  # 한글이라, 실제로 켜보니 한글은 전부 시스템 기본 폰트(맑은 고딕)로
+  # 대체되고 있었습니다 — 글꼴을 바꾼 보람이 거의 없었던 셈입니다. 그래서
+  # 한글을 제대로 지원하는 두 글꼴로 바꿨습니다.
+  #
+  # ── 세리프(Noto Serif KR → Gowun Batang)로 한 번 바꿨다가, 2026-09-13에
+  #    다시 뺐습니다 ──
+  # 화면 제목·카드 제목만 세리프로 다르게 보이게 했었는데, 의뢰인이
+  # "전부 Pretendard로 통일해달라"고 해서 그 예외를 없앴습니다. 이제
+  # Gowun Batang 파일은 코드 어디서도 안 씁니다 — 앱 용량만 차지하므로
+  # fonts 목록에서도 뺐습니다. 폰트 파일 자체(assets/fonts/GowunBatang-*)는
+  # 나중에 다시 쓸 수도 있어 지우지 않고 남겨뒀습니다.
+  #
+  # ── 본문 글꼴은 Pretendard입니다 (의뢰인 요청) ──
+  # IBM Plex Sans KR도 나쁘지 않았지만, 의뢰인이 한국 웹·앱에서 가장
+  # 널리 쓰이는 Pretendard로 써달라고 했습니다. Google Fonts에는 없고
+  # 만든 사람(orioncactus)의 GitHub 릴리스에서 받았습니다 — 역시 OFL
+  # 라이선스라 번들·배포 자유입니다. 앱 전체 글자(제목 포함)가 전부
+  # 이 폰트 하나로 통일되어 있습니다(app_theme.dart의 기본값).
+  fonts:
+    - family: Pretendard
+      fonts:
+        - asset: assets/fonts/Pretendard-Regular.ttf
+        - asset: assets/fonts/Pretendard-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/Pretendard-Bold.ttf
+          weight: 700
+
   # To add assets to your application, add an assets section, like this:
   # assets:
   #   - images/a_dot_burr.jpeg

@@ -1,20 +1,25 @@
 // 앱에서 쓰는 색을 한곳에 모아둔 파일입니다.
 //
-// ── 이 색들은 어디서 왔나 ──
-// 기존 웹앱(`app.html`)의 CSS 변수를 그대로 옮긴 것입니다. 새로 정한 색이
-// 아니라 **이미 쓰던 색**이라, 여기 값을 바꾸면 기존 앱과 달라집니다.
+// ── 이 색들은 어디서 왔나 (2026-09-11, "라이트테이블" 디자인으로 교체) ──
+// 처음에는 기존 웹앱(`app.html`)의 CSS 변수를 그대로 옮긴 색이었습니다.
+// 두 앱을 함께 쓰는 동안은 그게 맞는 선택이었지만, 의뢰인이 메인 화면
+// UI를 "세련되게" 새로 디자인해달라고 요청하면서 **이 파일부터 새로
+// 정한 색으로 바뀌었습니다.** 더 이상 웹앱 CSS를 따라가지 않습니다.
 //
-//   웹앱의 :root { --bg: #f6f5f2; ... }          → AppPalette.light
-//   웹앱의 html[data-theme="dark"] { ... }        → AppPalette.dark
+// ── 컨셉: "라이트테이블" ──
+// 이 앱은 사진가의 라이트테이블·콘택트시트처럼, **사진이 주인공이고
+// UI는 그 사진을 올려두는 조용한 판**이어야 합니다(작업 중 옆에 띄워두는
+// 도구라는 CLAUDE.md의 원칙과 같은 결). 그래서
+//   - 바탕은 따뜻한 돌색(그레이베이지)이고 카드는 순백 — 사진이 도드라집니다.
+//   - 강조색은 딱 하나, 깊은 청록(페트롤)입니다. 다른 곳엔 색을 안 씁니다.
+//   - 어두운 모드도 순수 검정이 아니라 따뜻한 숯색입니다.
 //
 // ── 왜 Flutter가 색을 자동으로 만들게 두지 않았나 ──
 // Flutter에는 대표색 하나만 주면 나머지를 알아서 만들어주는 기능이 있습니다
-// (`ColorScheme.fromSeed`). 처음에는 그걸 썼는데, 자동으로 만들어진 색이라
-// **기존 앱의 따뜻한 느낌과 달랐습니다.** 배경이 푸른기 도는 회색이 되고,
-// 테두리 색은 아예 없었습니다.
-//
-// 기존 앱과 같아 보이는 것이 목적이므로, 자동 생성을 쓰지 않고
-// 원본 값을 하나하나 적었습니다.
+// (`ColorScheme.fromSeed`). 자동 생성 색은 이번에도 쓰지 않았습니다 —
+// 위 컨셉처럼 "이 색만은 반드시 이 톤"이라는 의도가 있는 팔레트는 자동
+// 생성으로는 못 만듭니다(전에도 배경이 푸른기 도는 회색이 되고 테두리
+// 색이 아예 없어서 버린 적이 있습니다 — PR #11).
 
 import 'package:flutter/material.dart';
 
@@ -58,7 +63,9 @@ class AppPalette {
   /// 덜 중요한 글자색입니다. (메모, 날짜, 태그 등)
   final Color textDim;
 
-  /// 강조색입니다. 기존 앱의 진한 숲 초록입니다.
+  /// 강조색입니다. 깊은 청록(페트롤)입니다. 이 앱에서 색을 쓰는 곳은
+  /// 사실상 여기 하나뿐입니다 — 강조가 여러 군데 흩어지면 아무것도
+  /// 강조되지 않습니다.
   final Color accent;
 
   /// 강조색 위에 얹는 글자색입니다.
@@ -96,19 +103,19 @@ class AppPalette {
     return isDark ? dark : light;
   }
 
-  /// 밝은 모드 색입니다. (웹앱의 `:root`)
+  /// 밝은 모드 색입니다. 따뜻한 돌색 바탕 + 순백 카드 + 깊은 청록 강조색.
   static const AppPalette light = AppPalette(
-    background: Color(0xFFF6F5F2),
+    background: Color(0xFFEDE9E1),
     surface: Color(0xFFFFFFFF),
-    border: Color(0xFFE5E2DB),
-    text: Color(0xFF2A2824),
-    textDim: Color(0xFF8A8578),
-    accent: Color(0xFF3D5A4C),
-    accentText: Color(0xFFFFFFFF),
-    accentSoft: Color(0xFFE6EDE9),
-    tagBackground: Color(0xFFF0EEE8),
-    danger: Color(0xFFB3543F),
-    dangerSoft: Color(0xFFF7ECE9),
+    border: Color(0xFFDDD8CD),
+    text: Color(0xFF221F1A),
+    textDim: Color(0xFF7D7768),
+    accent: Color(0xFF1D5C56),
+    accentText: Color(0xFFF5FBF9),
+    accentSoft: Color(0xFFDCEAE7),
+    tagBackground: Color(0xFFF1EEE6),
+    danger: Color(0xFFA6402C),
+    dangerSoft: Color(0xFFF6E9E4),
     cardShadow: <BoxShadow>[
       BoxShadow(
         color: Color(0x0A1E1C14),
@@ -135,19 +142,21 @@ class AppPalette {
     ],
   );
 
-  /// 어두운 모드 색입니다. (웹앱의 `html[data-theme="dark"]`)
+  /// 어두운 모드 색입니다. 순수 검정이 아니라 따뜻한 숯색 바탕입니다.
+  /// (근처색을 순전한 무채색 #0B0B0B 근처로 두면 화면이 차갑고 딱딱해
+  /// 보입니다 — 일부러 살짝 따뜻한 톤을 남겨뒀습니다)
   static const AppPalette dark = AppPalette(
-    background: Color(0xFF17181B),
-    surface: Color(0xFF1F2023),
-    border: Color(0xFF33343A),
-    text: Color(0xFFEAE8E2),
-    textDim: Color(0xFF8F8D86),
-    accent: Color(0xFF7AB596),
-    accentText: Color(0xFF12241C),
-    accentSoft: Color(0xFF20302A),
-    tagBackground: Color(0xFF26272C),
-    danger: Color(0xFFE0897A),
-    dangerSoft: Color(0xFF2E2220),
+    background: Color(0xFF1B1A18),
+    surface: Color(0xFF242320),
+    border: Color(0xFF38362F),
+    text: Color(0xFFEDE9E0),
+    textDim: Color(0xFF8C8778),
+    accent: Color(0xFF4FA69C),
+    accentText: Color(0xFF0B211E),
+    accentSoft: Color(0xFF223330),
+    tagBackground: Color(0xFF2A2822),
+    danger: Color(0xFFD97A63),
+    dangerSoft: Color(0xFF332420),
     cardShadow: <BoxShadow>[
       BoxShadow(
         color: Color(0x4D000000),
