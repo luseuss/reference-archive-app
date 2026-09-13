@@ -5935,3 +5935,116 @@ PR #64("에메랄드 글래스")에서 `palette.surface`(카드·대화상자·�
 `flutter analyze` 오류 0건, `flutter test` 739개 전부 통과.
 `flutter run -d windows`로 직접 띄워 레퍼런스 편집 대화상자가
 불투명하게 보이는 것을 확인했습니다.
+
+## PR #67 — 무드보드에 텍스트 카드(노트) 기능 추가
+
+### 무엇을 추가했나
+
+무드보드 안에서 텍스트를 직접 쓸 수 있는 "텍스트 카드"를 추가했습니다.
+판 빈 캔버스를 우클릭 → **"텍스트 추가"**로 만들고, 카드를 **더블클릭**하면
+편집 모드로 들어갑니다. 편집 중에는 서식 툴바가 카드에 붙지 않고
+**떠 있는 작은 팝업**으로 뜨며(두 번 누른 자리 근처, 편집 중 우클릭으로
+다시 여닫기), 굵게·기울임·밑줄·목록·정렬·링크·글꼴·글자 크기(px 직접
+입력)를 다룹니다.
+
+- **글꼴 선택** — 이 컴퓨터에 설치된 글꼴을 한국어/영어/일본어/중국어/
+  특수문자 다섯 구역으로 나눠, 각 글꼴로 직접 렌더링한 미리보기와
+  함께 작은 팝업으로 보여줍니다. Windows 레지스트리를 읽는 부분은
+  `lib/services/system_fonts.dart`, 팝업은 `lib/widgets/font_picker_popup.dart`.
+- **글자 크기** — flutter_quill 기본(작게/보통/크게/아주 크게 4단계)
+  대신 `lib/widgets/font_size_stepper.dart`가 +/- 나 직접 입력으로
+  정확한 px 값을 넣을 수 있게 합니다.
+- **자유로운 크기 조절** — 사진 카드와 달리 가로세로 비율에 묶이지
+  않고, 위쪽 한도(사진의 960px 제한)도 없이 가로·세로를 각각 원하는
+  만큼 늘리고 줄일 수 있습니다(`board_card_actions.dart`의
+  `_resizeTextCard`).
+
+### 저장 구조 v9
+
+`BoardCards.referenceId`를 nullable로 바꾸고 `textContent`/`fontFamily`
+칼럼을 추가했습니다. `BoardCard.isText`는 `referenceId == null`로
+판단합니다. `_upgradeToVersion9`는 v5·v8과 같은 "createTable이 지금
+시점 정의를 쓰는" 함정을 피하려고 `from >= 3 && from < 9` 조건을
+씁니다. NOT NULL 제약이 SQLite에서 실제로 풀렸는지, 여러 버전을
+건너뛰어도 문제없는지를 `test/data/migration_v8_to_v9_test.dart`에서
+확인했습니다.
+
+### 새로 나온 개념: FocusNode와 초점(Focus)
+
+Flutter에서 "지금 키보드 입력이 어디로 가는지"를 관리하는 것이
+`FocusNode`입니다. 화면의 위젯 하나하나가 자기만의 `FocusNode`를 가질
+수 있고, 그중 딱 하나만 "지금 초점을 쥔 위젯"(`primaryFocus`)이
+됩니다. 키를 누르면 이 초점을 쥔 위젯부터 시작해서 위쪽 조상들에게
+순서대로 "이 키, 네가 처리할래?"라고 물어보며 올라갑니다(버블링).
+이번 작업에서 겪은 버그 두 개(아래 2·3번)가 전부 이 "초점이 지금
+정확히 어디 있는가"를 착각해서 생겼습니다.
+
+### 작업 중 발견해서 함께 고친 버그 셋
+
+1. **서식 있는 글 붙여넣기가 앱을 죽임** — 브라우저·워드 등에서 복사한
+   내용에 `<img>` 태그가 섞여 있으면(순수 글자처럼 보여도 클립보드
+   안에는 HTML로 같이 담기는 경우가 흔합니다), flutter_quill이 이를
+   그림 삽입 서식(embed)으로 바꿔 넣으려다가 이 앱이 그걸 그릴 방법을
+   등록해두지 않아서 `UnimplementedError: Embeddable type 'image' is
+   not supported`로 죽었습니다. 텍스트 카드(`board_card_view.dart`)와
+   레퍼런스 메모 편집기(`rich_memo_editor.dart` — 같은 구조라 똑같은
+   위험이 있어 함께 고쳤습니다) 둘 다 `QuillControllerConfig`의
+   `clipboardConfig`에 `enableExternalRichPaste: false`를 줘서, 서식
+   있는 붙여넣기 자체를 껐습니다. 이제 무엇을 붙여넣든 항상 순수
+   글자로만 들어옵니다. 그림은 이미 "레퍼런스 카드"라는 자기 자리가
+   있어서, 텍스트 노트 안에 끼워 넣는 기능은 범위 밖으로 봤습니다.
+2. **텍스트 편집 중 판의 단축키가 편집기보다 먼저 키를 가로챔** —
+   판 전체 단축키(Delete·Ctrl+V·Ctrl+Z)를 `CallbackShortcuts`(Flutter
+   기본 위젯)로 만들어뒀었는데, 이 위젯은 키가 매칭되면 콜백이 실제로
+   무엇을 하든 상관없이 **항상** `KeyEventResult.handled`를 돌려줍니다
+   (설치된 `flutter/widgets/shortcuts.dart` 소스를 직접 읽고 확인).
+   그래서 텍스트 카드를 편집하는 중 Ctrl+V로 글을 붙여넣으려 하면 이
+   판이 먼저 채가서 "클립보드 사진을 새 레퍼런스로 담으려" 시도하고,
+   정작 편집기에는 아무 글자도 안 붙여졌습니다. `board_screen.dart`에
+   직접 만든 `Focus.onKeyEvent` 처리(`_handleBoardKeyEvent`)로 바꿔서,
+   텍스트 편집기에 실제 초점이 있으면(`_isTextEditorFocused`) 판이
+   아예 가로채지 않고 그대로 흘려보내게 했습니다.
+3. **텍스트 편집을 벗어나도 판의 단축키가 안 돌아옴** — 2번을 고치고
+   나니 "완료"를 안 누르고 그냥 다른 곳을 클릭해 편집을 벗어나면
+   판의 단축키가 영영 안 돌아오는 새 문제가 생겼습니다. 원인은
+   `FocusNode.unfocus()`의 기본 동작(`UnfocusDisposition.scope`)이
+   "가장 가까운 FocusScope로 초점을 올려보낼 뿐"이라, 실제로는 판보다
+   훨씬 위(앱 뿌리 쪽) 스코프로 가버려서 판 자신의 단축키 처리가 초점
+   조상 사슬 밖으로 밀려난 것이었습니다. 판 화면 자신의
+   `FocusNode`(`_boardFocusNode`)를 새로 만들어, 텍스트 편집을 벗어날
+   때(완료 버튼·다른 카드 클릭·빈 캔버스 클릭·마퀴 시작) 그 노드에
+   직접 `requestFocus()`를 불러 도착지를 확실히 했습니다. "완료" 버튼을
+   누르는 경로는 `board_card_view.dart`가 board_screen.dart에 직접
+   접근할 수 없어서, `onRequestBoardFocus` 콜백을 새로 만들어
+   `board_canvas.dart`를 거쳐 전달합니다.
+
+### 나중에 여기를 고치려면
+
+- 텍스트 카드 스키마·모델: `lib/data/tables.dart`의 `BoardCards`,
+  `lib/models/board.dart`의 `BoardCard.isText`/`copyWithText`.
+- 크기 조절 규칙: `lib/utils/board_card_actions.dart`의
+  `_resizeTextCard`/`_clampFreeformCardSize`.
+- 편집 UI·떠 있는 툴바: `lib/widgets/board_card_view.dart`의
+  `_buildTextCard`/`_buildFloatingToolbarPanel`/`_openFloatingToolbar`.
+- 글꼴 목록·미리보기: `lib/services/system_fonts.dart`(구역 분류는
+  `categorizeFontFamily`), `lib/widgets/font_picker_popup.dart`.
+- 판 단축키와 텍스트 편집기 초점 조율: `lib/screens/board_screen.dart`의
+  `_handleBoardKeyEvent`/`_releaseTextFocusUnlessEditing`/`_boardFocusNode`.
+- **새로 텍스트 붙여넣기가 얽힌 편집기를 추가할 때는, 항상
+  `enableExternalRichPaste: false`를 기본으로 검토하세요** — 이미지가
+  섞인 클립보드 내용을 embedBuilders 없이 받으면 항상 이번과 같은
+  크래시 위험이 있습니다.
+- **판·화면 전체에 걸리는 키보드 단축키를 추가할 때는 `CallbackShortcuts`
+  대신 직접 만든 `Focus.onKeyEvent`를 검토하세요** — 안에 텍스트
+  입력 위젯이 있다면 `CallbackShortcuts`는 그 위젯보다 먼저 키를
+  가로챌 위험이 있습니다.
+
+### 어떻게 테스트했나
+
+`flutter analyze` 클린(flutter_quill 자체의 "실험적 기능" 경고 6개만
+있음, 문제 아님). `flutter test` 758개 전부 통과(마이그레이션 5개,
+글꼴 구역 분류 5개, 텍스트 카드 자유 크기 조절 6개, 텍스트 카드
+생성·저장 3개 포함해 새로 추가). `flutter build windows --release`로
+실제 빌드해 무드보드에서 텍스트 카드 생성·편집·서식·글꼴·크기
+조절·붙여넣기(순수 텍스트/이미지)·편집 진입·이탈을 반복하며 의뢰인이
+직접 확인했습니다.
