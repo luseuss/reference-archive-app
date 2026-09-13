@@ -138,6 +138,12 @@ class ContextMenuRegion extends StatelessWidget {
         // (Scaffold 등 조상 위젯도 자기만의 Listener를 여럿 쓰기 때문에,
         // 이름표 없이 타입만으로 찾으면 여러 개가 걸립니다)
         key: const ValueKey<String>('context-menu-region-listener'),
+
+        // opaque = 아무것도 안 그려진 자리(카드 사이 여백, 짧은 글자
+        // 옆의 남는 자리 등)를 눌러도 반응합니다. 기본값(deferToChild)은
+        // 자식이 실제로 그림을 그린 자리만 반응해서, "줄 전체 아무 데나
+        // 눌러도 메뉴가 뜬다"는 기대와 어긋납니다.
+        behavior: HitTestBehavior.opaque,
         onPointerDown: (PointerDownEvent event) {
           if (event.kind == PointerDeviceKind.mouse &&
               event.buttons == kSecondaryMouseButton) {
@@ -149,6 +155,8 @@ class ContextMenuRegion extends StatelessWidget {
     }
 
     return GestureDetector(
+      // 위 Listener 분기와 같은 이유로 opaque를 씁니다.
+      behavior: HitTestBehavior.opaque,
       onSecondaryTapUp: (TapUpDetails details) =>
           _open(context, details.globalPosition),
       onLongPressStart: enableLongPress

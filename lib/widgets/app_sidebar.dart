@@ -391,9 +391,23 @@ class _AppSidebarState extends State<AppSidebar> {
       onTap: () => widget.onSelectFolder(folder.id),
     );
 
-    final Widget draggableLabel = ContextMenuRegion(
-      // "⋮" 버튼과 똑같은 세 가지를 우클릭(또는 길게 누르기)으로도
-      // 열어줍니다 — 아래 목록은 그 버튼의 itemBuilder와 내용을 맞춰뒀습니다.
+    final Widget draggableLabel = Draggable<String>(
+      data: folder.id,
+      feedback: Material(
+        color: Colors.transparent,
+        child: Chip(label: Text(folder.name)),
+      ),
+      childWhenDragging: Opacity(opacity: 0.4, child: navItem),
+      child: navItem,
+    );
+
+    // 우클릭(또는 길게 누르기) 메뉴를 줄 전체(화살표·이름·"⋮" 버튼을
+    // 포함한 가로 폭 전부)에 걸어둡니다. 이름 부분에만 걸어두면 화살표나
+    // 여백을 우클릭했을 때는 안 열려서 "줄 전체가 눌려야" 한다는
+    // 기대와 어긋납니다. "⋮" 버튼 자체를 눌러도(왼쪽 클릭) 그 버튼의
+    // 평소 동작은 그대로입니다 — 이 메뉴는 오른쪽 버튼(또는 길게
+    // 누르기)에만 반응하기 때문입니다.
+    final Widget row = ContextMenuRegion(
       buildActions: () => <ContextMenuAction>[
         ContextMenuAction(
           label: '하위 폴더 만들기',
@@ -412,55 +426,45 @@ class _AppSidebarState extends State<AppSidebar> {
           onSelected: () => widget.onDeleteFolder(folder),
         ),
       ],
-      child: Draggable<String>(
-        data: folder.id,
-        feedback: Material(
-          color: Colors.transparent,
-          child: Chip(label: Text(folder.name)),
+      child: Padding(
+        padding: EdgeInsets.only(left: entry.depth * 16.0),
+        child: Row(
+          children: <Widget>[
+            // 자식이 있으면 펼치기/접기 화살표, 없으면 그만큼 빈 자리.
+            SizedBox(
+              width: 24,
+              child: hasChildren
+                  ? IconButton(
+                      padding: EdgeInsets.zero,
+                      iconSize: 18,
+                      color: dark.textDim,
+                      icon: Icon(isExpanded ? Icons.expand_more : Icons.chevron_right),
+                      onPressed: () => _toggleExpanded(folder.id),
+                    )
+                  : null,
+            ),
+            Expanded(child: draggableLabel),
+            PopupMenuButton<String>(
+              icon: Icon(Icons.more_vert, size: 18, color: dark.textDim),
+              onSelected: (String value) {
+                if (value == 'subfolder') {
+                  widget.onCreateSubfolder(folder);
+                } else if (value == 'rename') {
+                  widget.onRenameFolder(folder);
+                } else if (value == 'delete') {
+                  widget.onDeleteFolder(folder);
+                }
+              },
+              itemBuilder: (BuildContext context) {
+                return const <PopupMenuEntry<String>>[
+                  PopupMenuItem<String>(value: 'subfolder', child: Text('하위 폴더 만들기')),
+                  PopupMenuItem<String>(value: 'rename', child: Text('이름 바꾸기')),
+                  PopupMenuItem<String>(value: 'delete', child: Text('삭제')),
+                ];
+              },
+            ),
+          ],
         ),
-        childWhenDragging: Opacity(opacity: 0.4, child: navItem),
-        child: navItem,
-      ),
-    );
-
-    final Widget row = Padding(
-      padding: EdgeInsets.only(left: entry.depth * 16.0),
-      child: Row(
-        children: <Widget>[
-          // 자식이 있으면 펼치기/접기 화살표, 없으면 그만큼 빈 자리.
-          SizedBox(
-            width: 24,
-            child: hasChildren
-                ? IconButton(
-                    padding: EdgeInsets.zero,
-                    iconSize: 18,
-                    color: dark.textDim,
-                    icon: Icon(isExpanded ? Icons.expand_more : Icons.chevron_right),
-                    onPressed: () => _toggleExpanded(folder.id),
-                  )
-                : null,
-          ),
-          Expanded(child: draggableLabel),
-          PopupMenuButton<String>(
-            icon: Icon(Icons.more_vert, size: 18, color: dark.textDim),
-            onSelected: (String value) {
-              if (value == 'subfolder') {
-                widget.onCreateSubfolder(folder);
-              } else if (value == 'rename') {
-                widget.onRenameFolder(folder);
-              } else if (value == 'delete') {
-                widget.onDeleteFolder(folder);
-              }
-            },
-            itemBuilder: (BuildContext context) {
-              return const <PopupMenuEntry<String>>[
-                PopupMenuItem<String>(value: 'subfolder', child: Text('하위 폴더 만들기')),
-                PopupMenuItem<String>(value: 'rename', child: Text('이름 바꾸기')),
-                PopupMenuItem<String>(value: 'delete', child: Text('삭제')),
-              ];
-            },
-          ),
-        ],
       ),
     );
 
