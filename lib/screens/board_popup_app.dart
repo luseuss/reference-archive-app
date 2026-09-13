@@ -44,6 +44,7 @@ import '../data/app_database.dart';
 import '../models/board.dart';
 import '../repositories/local_board_repository.dart';
 import '../repositories/local_reference_repository.dart';
+import '../repositories/local_taxonomy_repository.dart';
 import '../services/app_settings.dart';
 import '../services/board_window_sync.dart';
 import '../services/local_image_storage.dart';
@@ -80,6 +81,7 @@ class _BoardPopupAppState extends State<BoardPopupApp> {
 
   late final LocalBoardRepository _boardRepository;
   late final LocalReferenceRepository _referenceRepository;
+  late final LocalTaxonomyRepository _taxonomyRepository;
 
   /// 밝은/어두운 모드 설정입니다. 메인 창과 다른 엔진이라 따로 읽어옵니다.
   /// 읽어오기 전까지는 기본값(시스템 설정)으로 그려집니다.
@@ -92,6 +94,7 @@ class _BoardPopupAppState extends State<BoardPopupApp> {
     _boardId = widget.initialBoardId;
     _boardRepository = LocalBoardRepository(_database);
     _referenceRepository = LocalReferenceRepository(_database);
+    _taxonomyRepository = LocalTaxonomyRepository(_database);
     _loadSettings();
 
     // 메인 창이 "닫아라"고 요청하면 스스로 닫히도록 준비합니다
@@ -177,6 +180,7 @@ class _BoardPopupAppState extends State<BoardPopupApp> {
               board: _board!,
               boardRepository: _boardRepository,
               referenceRepository: _referenceRepository,
+              taxonomyRepository: _taxonomyRepository,
               imageStorage: LocalImageStorage(),
 
               // 팝업 창은 메인 창과 다른 엔진이라(위쪽 설명 참고) 도구를

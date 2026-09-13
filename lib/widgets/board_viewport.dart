@@ -60,6 +60,7 @@ import '../services/dropped_item_reader.dart' show dropRegionFormats;
 import '../theme/app_metrics.dart';
 import '../theme/app_palette.dart';
 import '../utils/board_view.dart';
+import 'context_menu.dart';
 import '../utils/reference_drag_payload.dart';
 import 'board_viewport_gestures.dart';
 import 'board_zoom_controls.dart';
@@ -82,6 +83,7 @@ class BoardViewport extends StatefulWidget {
     this.initialOffset,
     this.onViewChanged,
     this.onViewReset,
+    this.emptyCanvasActions,
   });
 
   /// 카드를 그릴 자리입니다. (`boardCanvasRect`로 구합니다)
@@ -190,6 +192,16 @@ class BoardViewport extends StatefulWidget {
   /// 저장해뒀던 배율·자리가 있다면 이제 뜻이 없어졌으니 지우라는
   /// 신호입니다.
   final VoidCallback? onViewReset;
+
+  /// 빈 캔버스를 우클릭했을 때 보여줄 메뉴 항목을 만듭니다. null이거나
+  /// 빈 목록을 돌려주면 메뉴가 안 뜹니다.
+  ///
+  /// 이 위젯은 "판이 뭔지 모릅니다"는 원칙(맨 위 설명 참고)을 지키느라
+  /// 항목의 뜻은 전혀 모르고, board_screen.dart가 만들어 넘긴 목록을
+  /// 그대로 보여주기만 합니다. 길게 누르기는 일부러 안 받습니다 — 빈
+  /// 곳의 드래그(마퀴·판 이동) 인식기와 같은 자리에서 경쟁시키고
+  /// 싶지 않아서, 데스크톱 우클릭 전용으로 뒀습니다.
+  final List<ContextMenuAction> Function()? emptyCanvasActions;
 
   @override
   State<BoardViewport> createState() => _BoardViewportState();
@@ -594,7 +606,12 @@ class _BoardViewportState extends State<BoardViewport> {
                             ),
                       },
 
-                      child: ColoredBox(color: palette.background),
+                      child: ContextMenuRegion(
+                        enableLongPress: false,
+                        buildActions: widget.emptyCanvasActions ??
+                            () => const <ContextMenuAction>[],
+                        child: ColoredBox(color: palette.background),
+                      ),
                     ),
                   ),
                 ),

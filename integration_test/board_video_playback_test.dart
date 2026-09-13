@@ -18,6 +18,7 @@ import 'package:reference_archive_app/models/enums.dart';
 import 'package:reference_archive_app/models/reference_item.dart';
 import 'package:reference_archive_app/repositories/local_board_repository.dart';
 import 'package:reference_archive_app/repositories/local_reference_repository.dart';
+import 'package:reference_archive_app/repositories/local_taxonomy_repository.dart';
 import 'package:reference_archive_app/screens/board_screen.dart';
 import 'package:reference_archive_app/utils/id_generator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -49,6 +50,8 @@ void main() {
     final LocalBoardRepository boardRepository = LocalBoardRepository(db);
     final LocalReferenceRepository referenceRepository =
         LocalReferenceRepository(db);
+    final LocalTaxonomyRepository taxonomyRepository =
+        LocalTaxonomyRepository(db);
 
     final DateTime now = DateTime.now().toUtc();
     final Board board = Board(
@@ -92,6 +95,7 @@ void main() {
           board: board,
           boardRepository: boardRepository,
           referenceRepository: referenceRepository,
+          taxonomyRepository: taxonomyRepository,
           imageStorage: FakeImageStorage(),
           imageSource: FakeImageSource(),
           youtubeInfoSource: FakeYoutubeInfoSource(),

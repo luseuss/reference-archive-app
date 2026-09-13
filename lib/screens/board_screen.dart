@@ -34,8 +34,10 @@ import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:super_drag_and_drop/super_drag_and_drop.dart';
 
 import '../models/board.dart';
+import '../models/reference_item.dart';
 import '../repositories/board_repository.dart';
 import '../repositories/reference_repository.dart';
+import '../repositories/taxonomy_repository.dart';
 import '../services/board_window_sync.dart';
 import '../services/image_source.dart';
 import '../services/image_storage.dart';
@@ -44,6 +46,7 @@ import '../services/reference_lookup.dart';
 import '../services/youtube_info_source.dart';
 import '../utils/board_layout.dart';
 import '../widgets/board_canvas.dart';
+import '../widgets/context_menu.dart';
 import '../widgets/board_selection_bar.dart';
 import '../widgets/board_toolbar_actions.dart';
 import '../widgets/board_view_state_storage.dart';
@@ -55,6 +58,7 @@ import 'board_interaction_controller.dart';
 import 'board_popup_controller.dart';
 import 'board_video_playback_controller.dart';
 import 'board_window_controller.dart';
+import 'reference_detail_screen.dart';
 
 /// 무드보드 판 하나를 보여주는 화면입니다.
 class BoardScreen extends StatefulWidget {
@@ -63,6 +67,7 @@ class BoardScreen extends StatefulWidget {
     required this.board,
     required this.boardRepository,
     required this.referenceRepository,
+    required this.taxonomyRepository,
     required this.imageStorage,
     required this.imageSource,
     required this.youtubeInfoSource,
@@ -77,6 +82,12 @@ class BoardScreen extends StatefulWidget {
 
   /// 레퍼런스를 읽는 통로입니다. 카드가 보여줄 제목과 그림을 여기서 가져옵니다.
   final ReferenceRepository referenceRepository;
+
+  /// 폴더·카테고리·태그·프로젝트를 읽고 쓰는 통로입니다.
+  ///
+  /// 카드 우클릭 메뉴의 "레퍼런스 상세 열기"가 여는
+  /// showReferenceDetailDialog()가 분류 항목을 고르는 칸을 그리는 데 씁니다.
+  final TaxonomyRepository taxonomyRepository;
 
   /// 이미지 파일 경로를 알려주는 도구입니다.
   final ImageStorage imageStorage;
@@ -264,6 +275,73 @@ class _BoardScreenState extends State<BoardScreen> {
   void _removeCard(BoardCard card) {
     _videoPlayback.stopIfPlaying(card.id);
     _interaction.removeCard(card);
+  }
+
+  /// 카드 우클릭 메뉴의 "레퍼런스 상세 열기"를 실행합니다. (BoardCanvas.onOpenDetail)
+  ///
+  /// board_card_view.dart가 이미 그 카드의 ReferenceItem을 들고 있어서,
+  /// 따로 데이터베이스에서 다시 읽어올 필요가 없습니다.
+  Future<void> _openCardDetail(ReferenceItem item) async {
+    await showReferenceDetailDialog(
+      context: context,
+      item: item,
+      referenceRepository: widget.referenceRepository,
+      taxonomyRepository: widget.taxonomyRepository,
+      imageStorage: widget.imageStorage,
+    );
+    if (!mounted) {
+      return;
+    }
+    // 상세 화면에서 제목·분류를 고쳤을 수 있어서, 판의 카드 표시를
+    // 최신 내용으로 다시 읽어옵니다. home_screen.dart가 목록을 다시
+    // 읽는 것과 같은 이유입니다.
+    await _reloadLookupForNewReferences();
+    setState(() {});
+  }
+
+  /// 빈 캔버스 우클릭 메뉴의 "카드 전부 보기"를 실행합니다.
+  /// _addCards()/_onExternalFilesDropped() 등이 이미 쓰던 것과 같은
+  /// 방식(_viewResetCount를 올려 BoardViewport에 알림)입니다.
+  void _resetView() {
+    setState(() {
+      _viewResetCount++;
+    });
+  }
+
+  /// 빈 캔버스 우클릭 메뉴 항목을 만듭니다. (BoardViewport.emptyCanvasActions)
+  List<ContextMenuAction> _emptyCanvasMenuActions() {
+    return <ContextMenuAction>[
+      ContextMenuAction(
+        label: '레퍼런스 담기',
+        icon: Icons.photo_library_outlined,
+        onSelected: _addCards,
+      ),
+      ContextMenuAction(
+        label: '붙여넣기',
+        icon: Icons.content_paste,
+        onSelected: _onPasteFromClipboard,
+      ),
+      ContextMenuAction(
+        label: '카드 전부 보기',
+        icon: Icons.fit_screen_outlined,
+        onSelected: _resetView,
+      ),
+      ContextMenuAction(
+        label: _interaction.gridSnap ? '격자 끄기' : '격자 켜기',
+        icon: Icons.grid_on_outlined,
+        onSelected: _interaction.toggleGridSnap,
+      ),
+    ];
+  }
+
+  /// 카드 우클릭 메뉴의 "그룹 해제"를 실행합니다. (BoardCanvas.onUngroupCard)
+  ///
+  /// ungroupSelected()는 "지금 골라둔 카드들"을 기준으로 동작하므로,
+  /// 먼저 이 카드를 고른(=그룹 전체가 자동으로 함께 골라지는) 다음에
+  /// 그룹을 풉니다.
+  Future<void> _ungroupCard(BoardCard card) async {
+    _interaction.onCardPressed(card, shiftHeld: false);
+    await _interaction.ungroupSelected();
   }
 
   /// 레퍼런스를 골라 판에 담습니다.
@@ -559,6 +637,7 @@ class _BoardScreenState extends State<BoardScreen> {
               initialOffset: _viewState?.offset,
               onViewChanged: _saveViewState,
               onViewReset: _clearViewState,
+              emptyCanvasActions: _emptyCanvasMenuActions,
 
               onMarqueeBegin: ({required bool additive}) =>
                   _interaction.beginMarquee(additive: additive),
@@ -596,6 +675,8 @@ class _BoardScreenState extends State<BoardScreen> {
                 onResizeUpdate: _interaction.onResizeUpdate,
                 onResizeEnd: _interaction.onResizeEnd,
                 onRemoveCard: _removeCard,
+                onOpenDetail: _openCardDetail,
+                onUngroupCard: _ungroupCard,
 
                 // 웹뷰가 없는 환경(리눅스 등)에서는 재생 버튼 자체를
                 // 안 보여줍니다. InAppWebViewPlatform.instance가 그

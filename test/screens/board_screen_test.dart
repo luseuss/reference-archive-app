@@ -19,6 +19,7 @@ import 'package:reference_archive_app/models/enums.dart';
 import 'package:reference_archive_app/models/reference_item.dart';
 import 'package:reference_archive_app/repositories/local_board_repository.dart';
 import 'package:reference_archive_app/repositories/local_reference_repository.dart';
+import 'package:reference_archive_app/repositories/local_taxonomy_repository.dart';
 import 'package:reference_archive_app/screens/board_screen.dart';
 import 'package:reference_archive_app/utils/id_generator.dart';
 import 'package:reference_archive_app/widgets/board_canvas.dart';
@@ -36,6 +37,7 @@ void main() {
   late AppDatabase db;
   late LocalBoardRepository boardRepository;
   late LocalReferenceRepository referenceRepository;
+  late LocalTaxonomyRepository taxonomyRepository;
   late Board board;
 
   setUp(() async {
@@ -48,6 +50,7 @@ void main() {
     db = AppDatabase.forTesting(NativeDatabase.memory());
     boardRepository = LocalBoardRepository(db);
     referenceRepository = LocalReferenceRepository(db);
+    taxonomyRepository = LocalTaxonomyRepository(db);
 
     final DateTime now = DateTime.now().toUtc();
     board = Board(id: newId(), name: '겨울 무드', createdAt: now, updatedAt: now);
@@ -79,6 +82,7 @@ void main() {
           board: board,
           boardRepository: boardRepository,
           referenceRepository: referenceRepository,
+          taxonomyRepository: taxonomyRepository,
           imageStorage: FakeImageStorage(),
           imageSource: FakeImageSource(),
           youtubeInfoSource: FakeYoutubeInfoSource(),

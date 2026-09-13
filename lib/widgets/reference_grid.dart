@@ -29,6 +29,9 @@ class ReferenceGrid extends StatelessWidget {
     required this.onSelectToggle,
     required this.onPlay,
     required this.onHoverChanged,
+    required this.onToggleFavorite,
+    required this.onTogglePin,
+    required this.onMoveToFolder,
   });
 
   /// 보여줄 레퍼런스 목록입니다.
@@ -66,6 +69,15 @@ class ReferenceGrid extends StatelessWidget {
 
   /// 마우스가 카드에 올라오거나 벗어났을 때 실행할 동작입니다.
   final void Function(ReferenceItem item, bool isHovering) onHoverChanged;
+
+  /// 우클릭 메뉴의 "즐겨찾기 켜기/끄기"를 눌렀을 때 실행할 동작입니다.
+  final ValueChanged<ReferenceItem> onToggleFavorite;
+
+  /// 우클릭 메뉴의 "고정 켜기/끄기"를 눌렀을 때 실행할 동작입니다.
+  final ValueChanged<ReferenceItem> onTogglePin;
+
+  /// 우클릭 메뉴의 "폴더로 이동"을 눌렀을 때 실행할 동작입니다.
+  final ValueChanged<ReferenceItem> onMoveToFolder;
 
   @override
   Widget build(BuildContext context) {
@@ -114,6 +126,9 @@ class ReferenceGrid extends StatelessWidget {
           isPreviewPlaying: previewingItemId == item.id,
           previewUrl: previewUrl,
           taxonomyNames: taxonomyNames,
+          onToggleFavorite: () => onToggleFavorite(item),
+          onTogglePin: () => onTogglePin(item),
+          onMoveToFolder: () => onMoveToFolder(item),
         );
       },
     );

@@ -49,6 +49,7 @@ import '../theme/app_metrics.dart';
 import '../theme/app_palette.dart';
 import '../theme/app_text.dart';
 import '../utils/folder_tree.dart';
+import 'context_menu.dart';
 
 /// 사이드바의 너비입니다. (기존 웹앱의 `flex: 0 0 176px`보다 조금 넓게)
 const double sidebarWidth = 232;
@@ -71,7 +72,9 @@ class AppSidebar extends StatefulWidget {
     required this.onRenameFolder,
     required this.onDeleteFolder,
     required this.onMoveFolder,
+    required this.onCreateFolder,
     required this.onOpenBoards,
+    required this.onCreateBoard,
     required this.onOpenTrash,
     required this.onOpenSettings,
     required this.onLogInOut,
@@ -103,8 +106,15 @@ class AppSidebar extends StatefulWidget {
   /// 뜻입니다.
   final void Function(String draggedFolderId, String? newParentId) onMoveFolder;
 
+  /// "전체 레퍼런스" 줄의 우클릭 메뉴 "새 폴더 만들기"를 눌렀을 때 실행합니다.
+  /// 상위 폴더 없이 최상위 폴더를 만듭니다.
+  final VoidCallback onCreateFolder;
+
   /// 무드보드 목록을 눌렀을 때 실행할 동작입니다.
   final VoidCallback onOpenBoards;
+
+  /// "무드보드" 줄의 우클릭 메뉴 "새 무드보드 만들기"를 눌렀을 때 실행합니다.
+  final VoidCallback onCreateBoard;
 
   /// 휴지통을 눌렀을 때 실행할 동작입니다.
   final VoidCallback onOpenTrash;
@@ -258,15 +268,26 @@ class _AppSidebarState extends State<AppSidebar> {
 
   /// 무드보드로 가는 줄입니다.
   Widget _buildBoardsBlock(AppPalette dark) {
-    return _buildNavItem(
-      dark,
-      icon: Icons.dashboard_outlined,
-      label: '무드보드',
+    // "전체 레퍼런스" 줄의 "새 폴더 만들기"와 같은 결로, 우클릭(또는
+    // 길게 누르기)하면 "새 무드보드 만들기"가 바로 뜹니다.
+    return ContextMenuRegion(
+      buildActions: () => <ContextMenuAction>[
+        ContextMenuAction(
+          label: '새 무드보드 만들기',
+          icon: Icons.add_to_photos_outlined,
+          onSelected: widget.onCreateBoard,
+        ),
+      ],
+      child: _buildNavItem(
+        dark,
+        icon: Icons.dashboard_outlined,
+        label: '무드보드',
 
-      // 고른 상태로 표시하지 않습니다. 여기는 "머무는 자리"가 아니라
-      // 다른 화면으로 가는 문이라, 켜져 있으면 지금 그 화면인 줄 오해합니다.
-      isSelected: false,
-      onTap: widget.onOpenBoards,
+        // 고른 상태로 표시하지 않습니다. 여기는 "머무는 자리"가 아니라
+        // 다른 화면으로 가는 문이라, 켜져 있으면 지금 그 화면인 줄 오해합니다.
+        isSelected: false,
+        onTap: widget.onOpenBoards,
+      ),
     );
   }
 
@@ -280,12 +301,36 @@ class _AppSidebarState extends State<AppSidebar> {
     final List<FolderTreeEntry> visible = _visibleEntries(tree);
 
     // 폴더가 많아지면 사이드바 밖으로 넘칩니다. 스크롤되게 둡니다.
-    return ListView(
-      padding: EdgeInsets.zero,
-      children: <Widget>[
-        _buildAllReferencesRow(dark),
-        for (final FolderTreeEntry entry in visible)
-          _buildFolderRow(dark, entry, tree),
+    //
+    // ── ListView가 아니라 CustomScrollView + Sliver인 이유 ──
+    // 폴더 줄이 몇 개 없으면 목록 아래에 빈 자리가 남습니다. 그 빈
+    // 자리도 우클릭하면 "새 폴더 만들기"가 뜨게 하고 싶은데, 보통의
+    // ListView는 "줄 다음에 남는 빈 자리"를 가리키는 위젯 자체가
+    // 없어서 거기에 우클릭 메뉴를 걸어둘 곳이 없습니다. SliverFillRemaining
+    // (hasScrollBody: false)이 정확히 그 남는 자리만큼 위젯을 만들어줘서,
+    // 그 위젯에 메뉴를 걸 수 있습니다.
+    return CustomScrollView(
+      slivers: <Widget>[
+        SliverList(
+          delegate: SliverChildListDelegate(<Widget>[
+            _buildAllReferencesRow(dark),
+            for (final FolderTreeEntry entry in visible)
+              _buildFolderRow(dark, entry, tree),
+          ]),
+        ),
+        SliverFillRemaining(
+          hasScrollBody: false,
+          child: ContextMenuRegion(
+            buildActions: () => <ContextMenuAction>[
+              ContextMenuAction(
+                label: '새 폴더 만들기',
+                icon: Icons.create_new_folder_outlined,
+                onSelected: widget.onCreateFolder,
+              ),
+            ],
+            child: const SizedBox.expand(),
+          ),
+        ),
       ],
     );
   }
@@ -315,6 +360,9 @@ class _AppSidebarState extends State<AppSidebar> {
   }
 
   /// "전체 레퍼런스" 줄입니다. 폴더를 여기로 끌어다 놓으면 최상위로 옮겨집니다.
+  /// 우클릭(또는 길게 누르기)하면 "새 폴더 만들기"가 나옵니다 — 지금까지는
+  /// 새 최상위 폴더를 만들 방법이 "분류 관리" 화면뿐이었는데, 여기서도
+  /// 바로 만들 수 있게 했습니다.
   Widget _buildAllReferencesRow(AppPalette dark) {
     return DragTarget<String>(
       onWillAcceptWithDetails: (DragTargetDetails<String> details) => true,
@@ -325,12 +373,21 @@ class _AppSidebarState extends State<AppSidebar> {
         List<String?> candidateData,
         List<Object?> rejectedData,
       ) {
-        return _buildNavItem(
-          dark,
-          icon: Icons.photo_library_outlined,
-          label: '전체 레퍼런스',
-          isSelected: widget.selectedFolderId == null,
-          onTap: () => widget.onSelectFolder(null),
+        return ContextMenuRegion(
+          buildActions: () => <ContextMenuAction>[
+            ContextMenuAction(
+              label: '새 폴더 만들기',
+              icon: Icons.create_new_folder_outlined,
+              onSelected: widget.onCreateFolder,
+            ),
+          ],
+          child: _buildNavItem(
+            dark,
+            icon: Icons.photo_library_outlined,
+            label: '전체 레퍼런스',
+            isSelected: widget.selectedFolderId == null,
+            onTap: () => widget.onSelectFolder(null),
+          ),
         );
       },
     );
@@ -368,44 +425,70 @@ class _AppSidebarState extends State<AppSidebar> {
       child: navItem,
     );
 
-    final Widget row = Padding(
-      padding: EdgeInsets.only(left: entry.depth * 16.0),
-      child: Row(
-        children: <Widget>[
-          // 자식이 있으면 펼치기/접기 화살표, 없으면 그만큼 빈 자리.
-          SizedBox(
-            width: 24,
-            child: hasChildren
-                ? IconButton(
-                    padding: EdgeInsets.zero,
-                    iconSize: 18,
-                    color: dark.textDim,
-                    icon: Icon(isExpanded ? Icons.expand_more : Icons.chevron_right),
-                    onPressed: () => _toggleExpanded(folder.id),
-                  )
-                : null,
-          ),
-          Expanded(child: draggableLabel),
-          PopupMenuButton<String>(
-            icon: Icon(Icons.more_vert, size: 18, color: dark.textDim),
-            onSelected: (String value) {
-              if (value == 'subfolder') {
-                widget.onCreateSubfolder(folder);
-              } else if (value == 'rename') {
-                widget.onRenameFolder(folder);
-              } else if (value == 'delete') {
-                widget.onDeleteFolder(folder);
-              }
-            },
-            itemBuilder: (BuildContext context) {
-              return const <PopupMenuEntry<String>>[
-                PopupMenuItem<String>(value: 'subfolder', child: Text('하위 폴더 만들기')),
-                PopupMenuItem<String>(value: 'rename', child: Text('이름 바꾸기')),
-                PopupMenuItem<String>(value: 'delete', child: Text('삭제')),
-              ];
-            },
-          ),
-        ],
+    // 우클릭(또는 길게 누르기) 메뉴를 줄 전체(화살표·이름·"⋮" 버튼을
+    // 포함한 가로 폭 전부)에 걸어둡니다. 이름 부분에만 걸어두면 화살표나
+    // 여백을 우클릭했을 때는 안 열려서 "줄 전체가 눌려야" 한다는
+    // 기대와 어긋납니다. "⋮" 버튼 자체를 눌러도(왼쪽 클릭) 그 버튼의
+    // 평소 동작은 그대로입니다 — 이 메뉴는 오른쪽 버튼(또는 길게
+    // 누르기)에만 반응하기 때문입니다.
+    final Widget row = ContextMenuRegion(
+      buildActions: () => <ContextMenuAction>[
+        ContextMenuAction(
+          label: '하위 폴더 만들기',
+          icon: Icons.create_new_folder_outlined,
+          onSelected: () => widget.onCreateSubfolder(folder),
+        ),
+        ContextMenuAction(
+          label: '이름 바꾸기',
+          icon: Icons.edit_outlined,
+          onSelected: () => widget.onRenameFolder(folder),
+        ),
+        ContextMenuAction(
+          label: '삭제',
+          icon: Icons.delete_outline,
+          isDestructive: true,
+          onSelected: () => widget.onDeleteFolder(folder),
+        ),
+      ],
+      child: Padding(
+        padding: EdgeInsets.only(left: entry.depth * 16.0),
+        child: Row(
+          children: <Widget>[
+            // 자식이 있으면 펼치기/접기 화살표, 없으면 그만큼 빈 자리.
+            SizedBox(
+              width: 24,
+              child: hasChildren
+                  ? IconButton(
+                      padding: EdgeInsets.zero,
+                      iconSize: 18,
+                      color: dark.textDim,
+                      icon: Icon(isExpanded ? Icons.expand_more : Icons.chevron_right),
+                      onPressed: () => _toggleExpanded(folder.id),
+                    )
+                  : null,
+            ),
+            Expanded(child: draggableLabel),
+            PopupMenuButton<String>(
+              icon: Icon(Icons.more_vert, size: 18, color: dark.textDim),
+              onSelected: (String value) {
+                if (value == 'subfolder') {
+                  widget.onCreateSubfolder(folder);
+                } else if (value == 'rename') {
+                  widget.onRenameFolder(folder);
+                } else if (value == 'delete') {
+                  widget.onDeleteFolder(folder);
+                }
+              },
+              itemBuilder: (BuildContext context) {
+                return const <PopupMenuEntry<String>>[
+                  PopupMenuItem<String>(value: 'subfolder', child: Text('하위 폴더 만들기')),
+                  PopupMenuItem<String>(value: 'rename', child: Text('이름 바꾸기')),
+                  PopupMenuItem<String>(value: 'delete', child: Text('삭제')),
+                ];
+              },
+            ),
+          ],
+        ),
       ),
     );
 
