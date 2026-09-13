@@ -301,12 +301,36 @@ class _AppSidebarState extends State<AppSidebar> {
     final List<FolderTreeEntry> visible = _visibleEntries(tree);
 
     // 폴더가 많아지면 사이드바 밖으로 넘칩니다. 스크롤되게 둡니다.
-    return ListView(
-      padding: EdgeInsets.zero,
-      children: <Widget>[
-        _buildAllReferencesRow(dark),
-        for (final FolderTreeEntry entry in visible)
-          _buildFolderRow(dark, entry, tree),
+    //
+    // ── ListView가 아니라 CustomScrollView + Sliver인 이유 ──
+    // 폴더 줄이 몇 개 없으면 목록 아래에 빈 자리가 남습니다. 그 빈
+    // 자리도 우클릭하면 "새 폴더 만들기"가 뜨게 하고 싶은데, 보통의
+    // ListView는 "줄 다음에 남는 빈 자리"를 가리키는 위젯 자체가
+    // 없어서 거기에 우클릭 메뉴를 걸어둘 곳이 없습니다. SliverFillRemaining
+    // (hasScrollBody: false)이 정확히 그 남는 자리만큼 위젯을 만들어줘서,
+    // 그 위젯에 메뉴를 걸 수 있습니다.
+    return CustomScrollView(
+      slivers: <Widget>[
+        SliverList(
+          delegate: SliverChildListDelegate(<Widget>[
+            _buildAllReferencesRow(dark),
+            for (final FolderTreeEntry entry in visible)
+              _buildFolderRow(dark, entry, tree),
+          ]),
+        ),
+        SliverFillRemaining(
+          hasScrollBody: false,
+          child: ContextMenuRegion(
+            buildActions: () => <ContextMenuAction>[
+              ContextMenuAction(
+                label: '새 폴더 만들기',
+                icon: Icons.create_new_folder_outlined,
+                onSelected: widget.onCreateFolder,
+              ),
+            ],
+            child: const SizedBox.expand(),
+          ),
+        ),
       ],
     );
   }

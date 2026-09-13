@@ -390,14 +390,41 @@ class _BoardListScreenState extends State<BoardListScreen> {
       return _buildEmptyState();
     }
 
-    return ListView.builder(
-      // 아래쪽 여백을 크게 준 이유: 안 그러면 마지막 줄이
-      // 오른쪽 아래 떠 있는 버튼에 가려집니다.
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
-      itemCount: boards.length,
-      itemBuilder: (BuildContext context, int index) {
-        return _buildBoardTile(boards[index]);
-      },
+    // ── ListView가 아니라 CustomScrollView + Sliver인 이유 ──
+    // 칸이 몇 개 없으면 목록 아래에 빈 자리가 남는데, 그 빈 자리도
+    // 우클릭하면 "새 무드보드 만들기"가 뜨게 하고 싶습니다. 보통의
+    // ListView에는 "칸 다음에 남는 빈 자리"를 가리키는 위젯이 없어서
+    // 거기에 메뉴를 걸어둘 곳이 없습니다. SliverFillRemaining
+    // (hasScrollBody: false)이 정확히 그 남는 자리만큼 위젯을 만들어줘서
+    // 그 위젯에 메뉴를 걸 수 있습니다(app_sidebar.dart의
+    // _buildFolderList와 같은 방식).
+    return CustomScrollView(
+      slivers: <Widget>[
+        SliverPadding(
+          // 아래쪽 여백을 크게 준 이유: 안 그러면 마지막 줄이
+          // 오른쪽 아래 떠 있는 버튼에 가려집니다.
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
+          sliver: SliverList(
+            delegate: SliverChildBuilderDelegate(
+              (BuildContext context, int index) => _buildBoardTile(boards[index]),
+              childCount: boards.length,
+            ),
+          ),
+        ),
+        SliverFillRemaining(
+          hasScrollBody: false,
+          child: ContextMenuRegion(
+            buildActions: () => <ContextMenuAction>[
+              ContextMenuAction(
+                label: '새 무드보드 만들기',
+                icon: Icons.add_to_photos_outlined,
+                onSelected: _createBoard,
+              ),
+            ],
+            child: const SizedBox.expand(),
+          ),
+        ),
+      ],
     );
   }
 
