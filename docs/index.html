@@ -1,0 +1,861 @@
+<title>레퍼런스 아카이브</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  @font-face {
+    font-family: 'Pretendard';
+    src: url('fonts/Pretendard-Regular.ttf') format('truetype');
+    font-weight: 400;
+    font-display: swap;
+  }
+  @font-face {
+    font-family: 'Pretendard';
+    src: url('fonts/Pretendard-SemiBold.ttf') format('truetype');
+    font-weight: 600;
+    font-display: swap;
+  }
+
+  :root {
+    --bg: #F1FAF5;
+    --surface: #FFFFFF;
+    --glass: rgba(255, 255, 255, 0.72);
+    --border: rgba(15, 61, 46, 0.16);
+    --border-strong: rgba(15, 61, 46, 0.28);
+    --text: #10281F;
+    --text-dim: #5C7A6C;
+    --accent: #059669;
+    --accent-2: #0891B2;
+    --accent-3: #65A30D;
+    --accent-soft: #DCF3E8;
+    --accent-text: #F2FBF7;
+    --mesh-1: #6EE7B7;
+    --mesh-2: #67E8F9;
+    --mesh-3: #D9F99D;
+    --mesh-4: #5EEAD4;
+    --shadow-1: 0 1px 2px rgba(15, 61, 46, 0.06), 0 8px 24px rgba(15, 61, 46, 0.08);
+    --shadow-2: 0 4px 10px rgba(15, 61, 46, 0.10), 0 20px 48px rgba(15, 61, 46, 0.14);
+    --font-display: 'Gowun Batang', 'Noto Serif KR', serif;
+    --font-body: 'Pretendard', 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #070F0C;
+      --surface: #10221C;
+      --glass: rgba(255, 255, 255, 0.07);
+      --border: rgba(216, 255, 239, 0.14);
+      --border-strong: rgba(216, 255, 239, 0.24);
+      --text: #EAFBF2;
+      --text-dim: #8FB6A4;
+      --accent: #34D399;
+      --accent-2: #22D3EE;
+      --accent-3: #A3E635;
+      --accent-soft: #15352B;
+      --accent-text: #07130F;
+      --mesh-1: #0F6D4F;
+      --mesh-2: #0E5A66;
+      --mesh-3: #5B6E1D;
+      --mesh-4: #0E6D63;
+      --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.35);
+      --shadow-2: 0 4px 12px rgba(0, 0, 0, 0.4), 0 24px 56px rgba(0, 0, 0, 0.5);
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --bg: #070F0C;
+    --surface: #10221C;
+    --glass: rgba(255, 255, 255, 0.07);
+    --border: rgba(216, 255, 239, 0.14);
+    --border-strong: rgba(216, 255, 239, 0.24);
+    --text: #EAFBF2;
+    --text-dim: #8FB6A4;
+    --accent: #34D399;
+    --accent-2: #22D3EE;
+    --accent-3: #A3E635;
+    --accent-soft: #15352B;
+    --accent-text: #07130F;
+    --mesh-1: #0F6D4F;
+    --mesh-2: #0E5A66;
+    --mesh-3: #5B6E1D;
+    --mesh-4: #0E6D63;
+    --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.35);
+    --shadow-2: 0 4px 12px rgba(0, 0, 0, 0.4), 0 24px 56px rgba(0, 0, 0, 0.5);
+  }
+
+  * { box-sizing: border-box; }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-body);
+    font-size: 16px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+  }
+
+  a { color: inherit; }
+
+  h1, h2, h3 { text-wrap: balance; margin: 0; }
+
+  .wrap {
+    max-width: 1080px;
+    margin: 0 auto;
+    padding: 0 28px;
+  }
+
+  /* ── 안개 배경 (앱의 MeshBackground와 같은 방식) ── */
+  .mesh {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    z-index: 0;
+    pointer-events: none;
+  }
+  .mesh-blur {
+    position: absolute;
+    inset: -10%;
+    filter: blur(90px);
+  }
+  .blob {
+    position: absolute;
+    border-radius: 50%;
+  }
+  .blob.b1 { left: 2%;  top: -8%;  width: 46%; aspect-ratio: 1; background: radial-gradient(circle, color-mix(in srgb, var(--mesh-1) 55%, transparent), transparent 70%); }
+  .blob.b2 { left: 52%; top: 0%;   width: 44%; aspect-ratio: 1; background: radial-gradient(circle, color-mix(in srgb, var(--mesh-2) 55%, transparent), transparent 70%); }
+  .blob.b3 { left: 26%; top: 46%;  width: 50%; aspect-ratio: 1; background: radial-gradient(circle, color-mix(in srgb, var(--mesh-3) 55%, transparent), transparent 70%); }
+  .blob.b4 { left: -10%; top: 40%; width: 34%; aspect-ratio: 1; background: radial-gradient(circle, color-mix(in srgb, var(--mesh-4) 55%, transparent), transparent 70%); }
+
+  /* ── 상단 바 ── */
+  .topbar {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    background: var(--glass);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-bottom: 1px solid var(--border);
+  }
+  .topbar .wrap {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 60px;
+  }
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    font-family: var(--font-body);
+    font-weight: 600;
+    font-size: 15px;
+    letter-spacing: -0.01em;
+    text-decoration: none;
+  }
+  .brand-mark {
+    width: 22px; height: 22px;
+    border-radius: 6px;
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    flex-shrink: 0;
+  }
+  .topnav { display: flex; align-items: center; gap: 22px; }
+  .topnav a.navlink {
+    font-size: 14px;
+    color: var(--text-dim);
+    text-decoration: none;
+  }
+  .topnav a.navlink:hover { color: var(--text); }
+
+  /* ── 버튼 ── */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 11px 20px;
+    border-radius: 11px;
+    font-family: var(--font-body);
+    font-weight: 600;
+    font-size: 14.5px;
+    text-decoration: none;
+    border: 1px solid transparent;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .btn-primary {
+    background: var(--accent);
+    color: var(--accent-text);
+    box-shadow: var(--shadow-1);
+  }
+  .btn-primary:hover { filter: brightness(1.06); }
+  .btn-ghost {
+    background: transparent;
+    border-color: var(--border-strong);
+    color: var(--text);
+  }
+  .btn-ghost:hover { background: var(--glass); }
+  .btn-sm { padding: 8px 14px; font-size: 13px; border-radius: 9px; }
+
+  /* ── 히어로 ── */
+  .hero { position: relative; padding: 88px 0 64px; }
+  .hero .wrap { position: relative; z-index: 1; }
+  .eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12.5px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    color: var(--accent);
+    background: var(--accent-soft);
+    border: 1px solid var(--border);
+    padding: 6px 12px;
+    border-radius: 999px;
+    margin-bottom: 22px;
+  }
+  .eyebrow .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+
+  .hero-grid {
+    display: grid;
+    grid-template-columns: 1.05fr 0.95fr;
+    gap: 56px;
+    align-items: center;
+  }
+  h1.headline {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: clamp(34px, 4.4vw, 54px);
+    line-height: 1.28;
+    letter-spacing: -0.01em;
+  }
+  h1.headline em {
+    font-style: normal;
+    background: linear-gradient(100deg, var(--accent), var(--accent-2));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .lede {
+    margin-top: 22px;
+    font-size: 17px;
+    line-height: 1.75;
+    color: var(--text-dim);
+    max-width: 46ch;
+  }
+  .hero-cta {
+    margin-top: 32px;
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .hero-meta {
+    margin-top: 18px;
+    font-size: 13px;
+    color: var(--text-dim);
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  .hero-meta span { display: inline-flex; align-items: center; gap: 6px; }
+
+  /* ── 히어로 목업: 무드보드 미니 창 ── */
+  .mockup {
+    position: relative;
+    border-radius: 20px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow-2);
+    overflow: hidden;
+  }
+  .mockup-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    background: var(--glass);
+  }
+  .mockup-dots { display: flex; gap: 6px; }
+  .mockup-dots span { width: 8px; height: 8px; border-radius: 50%; background: var(--border-strong); }
+  .mockup-pin {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--accent);
+    background: var(--accent-soft);
+    padding: 4px 9px;
+    border-radius: 999px;
+  }
+  .mockup-canvas {
+    position: relative;
+    height: 320px;
+    background:
+      radial-gradient(circle at 15% 20%, color-mix(in srgb, var(--mesh-1) 40%, transparent), transparent 55%),
+      radial-gradient(circle at 85% 15%, color-mix(in srgb, var(--mesh-2) 35%, transparent), transparent 55%),
+      radial-gradient(circle at 70% 85%, color-mix(in srgb, var(--mesh-3) 35%, transparent), transparent 55%),
+      var(--bg);
+  }
+  .mcard {
+    position: absolute;
+    border-radius: 10px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow-1);
+    overflow: hidden;
+  }
+  .mcard .swatch { position: absolute; inset: 0; }
+  .mcard .tag {
+    position: absolute;
+    left: 6px; bottom: 6px;
+    font-size: 9.5px;
+    font-weight: 600;
+    color: var(--accent-text);
+    background: rgba(0,0,0,0.35);
+    padding: 2px 6px;
+    border-radius: 999px;
+    letter-spacing: 0.01em;
+  }
+  .mc1 { width: 108px; height: 82px; left: 24px; top: 34px; transform: rotate(-4deg); }
+  .mc1 .swatch { background: linear-gradient(155deg, #F2B5B5, #E88A8A); }
+  .mc2 { width: 92px; height: 92px; left: 150px; top: 20px; transform: rotate(3deg); }
+  .mc2 .swatch { background: linear-gradient(155deg, #8FCBEF, #4F9BCF); }
+  .mc3 { width: 118px; height: 70px; left: 250px; top: 70px; transform: rotate(-2deg); }
+  .mc3 .swatch { background: linear-gradient(155deg, #C9C2F0, #948AD9); }
+  .mc4 { width: 96px; height: 96px; left: 44px; top: 150px; transform: rotate(5deg); }
+  .mc4 .swatch { background: linear-gradient(155deg, #F4D9A0, #E0AE55); }
+  .mc5 { width: 130px; height: 88px; left: 168px; top: 158px; transform: rotate(-3deg); }
+  .mc5 .swatch { background: linear-gradient(155deg, #A9E0C6, #63BE93); }
+  .mc-note {
+    width: 118px; min-height: 74px; left: 306px; top: 176px; transform: rotate(2deg);
+    padding: 8px 9px;
+    font-size: 9.5px;
+    line-height: 1.5;
+    color: var(--text-dim);
+  }
+  .mc-note b { color: var(--text); display: block; font-size: 10px; margin-bottom: 3px; }
+
+  /* ── 섹션 공통 ── */
+  section { position: relative; padding: 76px 0; }
+  .section-head { max-width: 620px; margin-bottom: 44px; }
+  .section-head .k {
+    font-size: 12.5px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    color: var(--accent-2);
+    text-transform: uppercase;
+    margin-bottom: 10px;
+    display: block;
+  }
+  .section-head h2 {
+    font-family: var(--font-display);
+    font-size: clamp(24px, 2.6vw, 32px);
+    line-height: 1.4;
+  }
+  .section-head p {
+    margin-top: 12px;
+    color: var(--text-dim);
+    font-size: 15.5px;
+    line-height: 1.75;
+  }
+
+  hr.rule { border: none; border-top: 1px solid var(--border); margin: 0; }
+
+  /* ── 흐름 4단계 ── */
+  .flow {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1px;
+    background: var(--border);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    overflow: hidden;
+  }
+  .flow-step {
+    background: var(--surface);
+    padding: 26px 22px 24px;
+  }
+  .flow-step .num {
+    font-family: var(--font-body);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-dim);
+    letter-spacing: 0.04em;
+  }
+  .flow-step h3 {
+    margin-top: 14px;
+    font-size: 17px;
+    font-weight: 600;
+  }
+  .flow-step ul {
+    margin: 14px 0 0;
+    padding: 0;
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .flow-step li {
+    font-size: 13.5px;
+    color: var(--text-dim);
+    line-height: 1.6;
+    padding-left: 14px;
+    position: relative;
+  }
+  .flow-step li::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 8px;
+    width: 5px; height: 5px;
+    border-radius: 50%;
+    background: var(--accent);
+  }
+
+  @media (max-width: 860px) {
+    .flow { grid-template-columns: 1fr 1fr; }
+  }
+  @media (max-width: 560px) {
+    .flow { grid-template-columns: 1fr; }
+  }
+
+  /* ── 무드보드 스포트라이트 ── */
+  .spotlight {
+    display: grid;
+    grid-template-columns: 0.95fr 1.05fr;
+    gap: 48px;
+    align-items: center;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 22px;
+    padding: 6px;
+  }
+  .spotlight-copy { padding: 34px 12px 34px 34px; }
+  .spotlight-copy h3 {
+    font-family: var(--font-display);
+    font-size: 24px;
+    line-height: 1.45;
+  }
+  .spotlight-copy p { margin-top: 14px; color: var(--text-dim); font-size: 15px; line-height: 1.75; }
+  .pill-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; }
+  .pill {
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--text);
+    background: var(--accent-soft);
+    border: 1px solid var(--border);
+    padding: 6px 11px;
+    border-radius: 999px;
+  }
+  .spotlight-visual {
+    position: relative;
+    height: 320px;
+    border-radius: 18px;
+    margin: 6px;
+    overflow: hidden;
+    background:
+      radial-gradient(circle at 20% 30%, color-mix(in srgb, var(--mesh-2) 35%, transparent), transparent 55%),
+      radial-gradient(circle at 80% 70%, color-mix(in srgb, var(--mesh-4) 35%, transparent), transparent 55%),
+      var(--bg);
+    border: 1px solid var(--border);
+  }
+  .sv-window {
+    position: absolute;
+    left: 16px; top: 16px; right: 16px; bottom: 16px;
+    border-radius: 12px;
+    background: var(--glass);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid var(--border);
+  }
+  .sv-titlebar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 12px; border-bottom: 1px solid var(--border);
+    font-size: 11px; font-weight: 600; color: var(--text-dim);
+  }
+  .sv-alwaystop {
+    font-size: 10px; font-weight: 700; color: var(--accent);
+    background: var(--accent-soft); padding: 3px 8px; border-radius: 999px;
+  }
+  .sv-cards { position: relative; height: calc(100% - 34px); }
+  .sv-card { position: absolute; border-radius: 8px; box-shadow: var(--shadow-1); }
+  .sv-card.g { border: 2px solid var(--accent-2); }
+  .sv1 { width: 74px; height: 60px; left: 22px; top: 26px; background: linear-gradient(155deg,#F2B5B5,#E88A8A); }
+  .sv2 { width: 74px; height: 60px; left: 104px; top: 20px; background: linear-gradient(155deg,#8FCBEF,#4F9BCF); }
+  .sv3 { width: 96px; height: 60px; left: 22px; top: 96px; background: linear-gradient(155deg,#C9C2F0,#948AD9); }
+  .sv4 { width: 70px; height: 70px; left: 128px; top: 92px; background: linear-gradient(155deg,#F4D9A0,#E0AE55); }
+  .sv5 { width: 108px; height: 46px; left: 208px; top: 30px; background: var(--surface); border: 1px solid var(--border); }
+  .sv6 { width: 90px; height: 88px; left: 208px; top: 86px; background: linear-gradient(155deg,#A9E0C6,#63BE93); }
+
+  /* ── 유사도 데모 ── */
+  .sim-demo {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 10px;
+  }
+  .sim-card {
+    border-radius: 12px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    background: var(--surface);
+  }
+  .sim-swatch { height: 74px; }
+  .sim-score {
+    padding: 8px 10px;
+    font-size: 11.5px;
+    color: var(--text-dim);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-variant-numeric: tabular-nums;
+  }
+  .sim-score b { color: var(--text); font-weight: 600; }
+  .sim-card.main { border-color: var(--accent); }
+  .sim-card.main .sim-score { color: var(--accent); font-weight: 600; }
+  .s1 .sim-swatch { background: linear-gradient(155deg,#63BE93,#3E9C74); }
+  .s2 .sim-swatch { background: linear-gradient(155deg,#7FCBA6,#4FAE82); }
+  .s3 .sim-swatch { background: linear-gradient(155deg,#8FCBEF,#4F9BCF); }
+  .s4 .sim-swatch { background: linear-gradient(155deg,#9AD4B8,#5FB98C); }
+  .s5 .sim-swatch { background: linear-gradient(155deg,#E88A8A,#D46767); }
+
+  /* ── 원칙 인용 ── */
+  .quote-block {
+    background: linear-gradient(155deg, var(--accent-soft), transparent 70%), var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 22px;
+    padding: 46px 44px;
+  }
+  .quote-block .qmark {
+    font-family: var(--font-display);
+    font-size: 52px;
+    line-height: 1;
+    color: var(--accent);
+    opacity: 0.55;
+  }
+  .quote-block p.q {
+    font-family: var(--font-display);
+    font-size: clamp(20px, 2.4vw, 27px);
+    line-height: 1.55;
+    margin-top: 4px;
+  }
+  .quote-block .cite {
+    margin-top: 20px;
+    font-size: 14px;
+    color: var(--text-dim);
+  }
+
+  /* ── 다운로드 ── */
+  .download-panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 22px;
+    padding: 44px;
+    display: grid;
+    grid-template-columns: 1.1fr 0.9fr;
+    gap: 40px;
+  }
+  .dl-specs {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px 24px;
+    margin-top: 26px;
+  }
+  .dl-spec .k { font-size: 11.5px; color: var(--text-dim); letter-spacing: 0.03em; text-transform: uppercase; }
+  .dl-spec .v { font-size: 14.5px; font-weight: 600; margin-top: 3px; }
+  .dl-side {
+    border-left: 1px solid var(--border);
+    padding-left: 40px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 14px;
+  }
+  .dl-side .step {
+    display: flex; gap: 12px; align-items: flex-start;
+    font-size: 13.5px; color: var(--text-dim); line-height: 1.6;
+  }
+  .dl-side .step b { color: var(--text); }
+  .dl-side .stepnum {
+    flex-shrink: 0;
+    width: 20px; height: 20px; border-radius: 50%;
+    background: var(--accent-soft); color: var(--accent);
+    font-size: 11px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+    margin-top: 1px;
+  }
+
+  @media (max-width: 860px) {
+    .hero-grid { grid-template-columns: 1fr; }
+    .spotlight { grid-template-columns: 1fr; }
+    .spotlight-copy { padding: 28px; }
+    .download-panel { grid-template-columns: 1fr; }
+    .dl-side { border-left: none; border-top: 1px solid var(--border); padding-left: 0; padding-top: 26px; }
+    .sim-demo { grid-template-columns: repeat(2, 1fr); }
+  }
+
+  /* ── 푸터 ── */
+  footer {
+    border-top: 1px solid var(--border);
+    padding: 30px 0 40px;
+  }
+  footer .wrap {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+    font-size: 13px;
+    color: var(--text-dim);
+  }
+  footer a { text-decoration: none; color: var(--text-dim); }
+  footer a:hover { color: var(--text); }
+
+  ::selection { background: var(--accent-soft); }
+</style>
+
+<div class="mesh">
+  <div class="mesh-blur">
+    <div class="blob b1"></div>
+    <div class="blob b2"></div>
+    <div class="blob b3"></div>
+    <div class="blob b4"></div>
+  </div>
+</div>
+
+<header class="topbar">
+  <div class="wrap">
+    <a class="brand" href="#top">
+      <span class="brand-mark"></span>
+      레퍼런스 아카이브
+    </a>
+    <nav class="topnav">
+      <a class="navlink" href="#flow">쓰는 흐름</a>
+      <a class="navlink" href="#moodboard">무드보드</a>
+      <a class="navlink" href="#why">왜 만들었나</a>
+      <a class="btn btn-primary btn-sm" href="#download">다운로드</a>
+    </nav>
+  </div>
+</header>
+
+<main id="top">
+
+  <section class="hero">
+    <div class="wrap">
+      <div class="hero-grid">
+        <div>
+          <span class="eyebrow"><span class="dot"></span>Windows · 개인용 로컬 아카이브</span>
+          <h1 class="headline">모아둔 레퍼런스를,<br><em>펼쳐놓고 작업</em>합니다</h1>
+          <p class="lede">
+            이미지·유튜브 레퍼런스를 폴더·태그로 정리하고, 무한 캔버스
+            무드보드에 늘어놓은 뒤, 그 판을 따로 띄워 작업 창 옆에
+            두는 개인용 아카이브 앱입니다. 서버 없이 이 컴퓨터
+            안에서만 동작합니다.
+          </p>
+          <div class="hero-cta">
+            <a class="btn btn-primary" href="#download">Windows용 다운로드</a>
+            <a class="btn btn-ghost" href="#flow">쓰는 방법 보기</a>
+          </div>
+          <div class="hero-meta">
+            <span>⬇ v1.0.0 · 16MB</span>
+            <span>🔒 관리자 권한 불필요</span>
+            <span>🗂 전부 로컬 저장</span>
+          </div>
+        </div>
+
+        <div class="mockup" aria-hidden="true">
+          <div class="mockup-bar">
+            <div class="mockup-dots"><span></span><span></span><span></span></div>
+            <span class="mockup-pin">📌 항상 위</span>
+          </div>
+          <div class="mockup-canvas">
+            <div class="mcard mc1"><div class="swatch"></div></div>
+            <div class="mcard mc2"><div class="swatch"></div><span class="tag">캐릭터</span></div>
+            <div class="mcard mc3"><div class="swatch"></div></div>
+            <div class="mcard mc4"><div class="swatch"></div><span class="tag">색감</span></div>
+            <div class="mcard mc5"><div class="swatch"></div></div>
+            <div class="mcard mc-note"><b>노트</b>0:12 컷 참고 &middot; 색감 더 차갑게</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="flow">
+    <div class="wrap">
+      <div class="section-head">
+        <span class="k">쓰는 흐름</span>
+        <h2>모으고 → 펼치고 → 다시 찾고 → 지킵니다</h2>
+        <p>넷 다 이 앱 하나 안에서 끝납니다. 사진첩 따로, 참고 폴더 따로,
+          무드보드 도구 따로 켤 필요가 없습니다.</p>
+      </div>
+
+      <div class="flow">
+        <div class="flow-step">
+          <span class="num">01 · 모으기</span>
+          <h3>어디서든 던져 넣기</h3>
+          <ul>
+            <li>이미지 드래그 앤 드롭, 클립보드 붙여넣기</li>
+            <li>유튜브 링크만 넣으면 제목·썸네일 자동 수집</li>
+            <li>폴더(하위 폴더 포함)·카테고리·태그·프로젝트로 분류</li>
+          </ul>
+        </div>
+        <div class="flow-step">
+          <span class="num">02 · 펼치기</span>
+          <h3>무한 캔버스 무드보드</h3>
+          <ul>
+            <li>끝이 없는 판에 자유 배치, 그룹으로 묶어 함께 이동</li>
+            <li>텍스트 노트를 카드처럼 올려 메모</li>
+            <li>정렬·분배 툴바로 줄 맞추기</li>
+          </ul>
+        </div>
+        <div class="flow-step">
+          <span class="num">03 · 다시 찾기</span>
+          <h3>비슷한 것끼리</h3>
+          <ul>
+            <li>태그 유사도 + 이미지 색·구도 유사도로 정렬</li>
+            <li>레퍼런스 상세 화면에 "비슷한 레퍼런스" 자동 추천</li>
+            <li>검색·즐겨찾기·핀 고정</li>
+          </ul>
+        </div>
+        <div class="flow-step">
+          <span class="num">04 · 지키기</span>
+          <h3>실수해도 괜찮게</h3>
+          <ul>
+            <li>지운 레퍼런스는 휴지통에서 되살리기</li>
+            <li>zip 백업 · 다른 컴퓨터와 합치기</li>
+            <li>무드보드 조작은 Ctrl+Z로 여러 단계 되돌리기</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="moodboard">
+    <div class="wrap">
+      <div class="spotlight">
+        <div class="spotlight-copy">
+          <span class="eyebrow" style="margin-bottom:16px;"><span class="dot"></span>핵심 기능</span>
+          <h3>무드보드를 <em style="font-style:normal;color:var(--accent)">별도 창</em>으로 띄워둡니다</h3>
+          <p>
+            에프터이펙트나 포토샵을 켜놓은 채로, 무드보드만 따로 떠 있는
+            창으로 꺼내 항상 위에 고정할 수 있습니다. 작업 화면을
+            가리지 않고 옆에 두고 보는, PureRef가 하던 일을 이 아카이브
+            안에서 그대로 이어갑니다.
+          </p>
+          <div class="pill-row">
+            <span class="pill">항상 위 고정</span>
+            <span class="pill">끝없는 캔버스</span>
+            <span class="pill">카드 그룹화</span>
+            <span class="pill">판 통째로 이미지 내보내기</span>
+          </div>
+        </div>
+        <div class="spotlight-visual">
+          <div class="sv-window">
+            <div class="sv-titlebar">
+              <span>겨울 프로젝트 무드보드</span>
+              <span class="sv-alwaystop">항상 위</span>
+            </div>
+            <div class="sv-cards">
+              <div class="sv-card sv1"></div>
+              <div class="sv-card sv2"></div>
+              <div class="sv-card sv3"></div>
+              <div class="sv-card g sv4"></div>
+              <div class="sv-card g sv5"></div>
+              <div class="sv-card sv6"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <div class="section-head">
+        <span class="k">유사도 엔진</span>
+        <h2>태그도, 색감도 비슷한 것끼리</h2>
+        <p>태그가 겹치는 정도(자카드 유사도)와 사진 자체의 색·명암
+          구조(퍼셉추얼 해시)를 함께 봐서 점수를 매깁니다. 기준
+          레퍼런스 하나를 고르면 나머지가 그 점수 순으로 늘어섭니다.</p>
+      </div>
+      <div class="sim-demo">
+        <div class="sim-card main s1">
+          <div class="sim-swatch"></div>
+          <div class="sim-score">기준<b>—</b></div>
+        </div>
+        <div class="sim-card s2">
+          <div class="sim-swatch"></div>
+          <div class="sim-score">유사도<b>0.81</b></div>
+        </div>
+        <div class="sim-card s3">
+          <div class="sim-swatch"></div>
+          <div class="sim-score">유사도<b>0.64</b></div>
+        </div>
+        <div class="sim-card s4">
+          <div class="sim-swatch"></div>
+          <div class="sim-score">유사도<b>0.52</b></div>
+        </div>
+        <div class="sim-card s5">
+          <div class="sim-swatch"></div>
+          <div class="sim-score">유사도<b>0.19</b></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="why">
+    <div class="wrap">
+      <div class="quote-block">
+        <span class="qmark">“</span>
+        <p class="q">이 판이 있으면, PureRef를 안 켜도 될까?</p>
+        <p class="cite">
+          무드보드 기능을 넣을지 고민이 될 때마다 이 질문 하나로
+          정했습니다. 끝없는 캔버스와 항상 위 창은 여기서 나왔고,
+          그 기준에 안 맞는 기능은 뒤로 미뤘습니다.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <section id="download">
+    <div class="wrap">
+      <div class="section-head">
+        <span class="k">다운로드</span>
+        <h2>지금 컴퓨터에 설치하기</h2>
+        <p>설치 파일 하나로 끝납니다. 관리자 권한도, 다른 프로그램
+          설치도 필요 없습니다.</p>
+      </div>
+
+      <div class="download-panel">
+        <div>
+          <a class="btn btn-primary" style="padding:15px 26px; font-size:16px;"
+             href="https://github.com/luseuss/reference-archive-app/releases/download/v1.0.0/ReferenceArchive-Setup-v1.0.0.exe">
+            ⬇ Windows용 설치 파일 받기 (v1.0.0)
+          </a>
+          <div class="dl-specs">
+            <div class="dl-spec"><div class="k">지원 환경</div><div class="v">Windows 10 / 11 (64bit)</div></div>
+            <div class="dl-spec"><div class="k">파일 크기</div><div class="v">약 16MB</div></div>
+            <div class="dl-spec"><div class="k">권한</div><div class="v">관리자 권한 불필요</div></div>
+            <div class="dl-spec"><div class="k">데이터</div><div class="v">전부 이 컴퓨터에만 저장</div></div>
+          </div>
+        </div>
+        <div class="dl-side">
+          <div class="step"><span class="stepnum">1</span><span>설치 파일을 열고 <b>다음 → 다음 → 설치</b>만 누르면 됩니다.</span></div>
+          <div class="step"><span class="stepnum">2</span><span>시작 메뉴와 바탕화면에 바로가기가 생깁니다.</span></div>
+          <div class="step"><span class="stepnum">3</span><span>지우고 싶으면 Windows 설정의 앱 목록에서 제거하면 됩니다.</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>레퍼런스 아카이브 · 개인 프로젝트</span>
+    <a href="https://github.com/luseuss/reference-archive-app" target="_blank" rel="noopener">GitHub에서 소스 보기 ↗</a>
+  </div>
+</footer>
