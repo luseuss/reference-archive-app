@@ -196,12 +196,17 @@ class BoardViewport extends StatefulWidget {
   /// 빈 캔버스를 우클릭했을 때 보여줄 메뉴 항목을 만듭니다. null이거나
   /// 빈 목록을 돌려주면 메뉴가 안 뜹니다.
   ///
-  /// 이 위젯은 "판이 뭔지 모릅니다"는 원칙(맨 위 설명 참고)을 지키느라
-  /// 항목의 뜻은 전혀 모르고, board_screen.dart가 만들어 넘긴 목록을
-  /// 그대로 보여주기만 합니다. 길게 누르기는 일부러 안 받습니다 — 빈
-  /// 곳의 드래그(마퀴·판 이동) 인식기와 같은 자리에서 경쟁시키고
-  /// 싶지 않아서, 데스크톱 우클릭 전용으로 뒀습니다.
-  final List<ContextMenuAction> Function()? emptyCanvasActions;
+  /// [canvasPosition]은 우클릭한 자리를 **판 좌표**로 이미 바꿔서
+  /// 넘겨줍니다 — "텍스트 추가"처럼 누른 자리에 무언가를 놓아야 하는
+  /// 메뉴가 좌표 변환을 다시 하지 않아도 되게 하려는 것입니다(이
+  /// 위젯이 이미 onReferenceDropped 등에서 같은 변환을 하고 있습니다).
+  /// 그 밖의 항목의 뜻은 이 위젯이 몰라도 됩니다 — "판이 뭔지
+  /// 모릅니다"는 원칙(맨 위 설명 참고)은 좌표 변환에는 해당하지
+  /// 않습니다. 길게 누르기는 일부러 안 받습니다 — 빈 곳의 드래그
+  /// (마퀴·판 이동) 인식기와 같은 자리에서 경쟁시키고 싶지 않아서,
+  /// 데스크톱 우클릭 전용으로 뒀습니다.
+  final List<ContextMenuAction> Function(Offset canvasPosition)?
+  emptyCanvasActions;
 
   @override
   State<BoardViewport> createState() => _BoardViewportState();
@@ -608,8 +613,16 @@ class _BoardViewportState extends State<BoardViewport> {
 
                       child: ContextMenuRegion(
                         enableLongPress: false,
-                        buildActions: widget.emptyCanvasActions ??
-                            () => const <ContextMenuAction>[],
+                        buildActions: (Offset localPosition) {
+                          final List<ContextMenuAction> Function(Offset)?
+                          actionsBuilder = widget.emptyCanvasActions;
+                          if (actionsBuilder == null) {
+                            return const <ContextMenuAction>[];
+                          }
+                          return actionsBuilder(
+                            _toCanvasPoint(localPosition, viewport),
+                          );
+                        },
                         child: ColoredBox(color: palette.background),
                       ),
                     ),

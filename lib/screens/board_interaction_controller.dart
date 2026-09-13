@@ -325,6 +325,55 @@ class BoardInteractionController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// 빈 텍스트 카드 하나를 [position](판 좌표)에 만들어 판에 담고
+  /// 저장합니다. (빈 캔버스 우클릭 메뉴의 "텍스트 추가")
+  ///
+  /// addCardAt()과 거의 같지만 레퍼런스가 없고, 처음부터 정해진
+  /// 높이를 가집니다 — 텍스트는 사진과 달리 "원본 비율"이 없어서
+  /// height를 비워두면(=자동) 편집기가 스스로 크기를 정할 방법이
+  /// 없습니다(board_card_view.dart의 _buildTextCard 설명 참고).
+  Future<BoardCard> addTextCardAt(Offset position) async {
+    _pushUndoSnapshot();
+
+    final DateTime now = DateTime.now().toUtc();
+    final BoardCard newCard = BoardCard(
+      id: newId(),
+      boardId: boardId,
+      x: position.dx,
+      y: position.dy,
+      height: defaultTextCardHeight,
+      zOrder: topZOrderOf(_cards) + 1,
+      createdAt: now,
+      updatedAt: now,
+    );
+
+    await boardRepository.addCards(<BoardCard>[newCard]);
+    onSaved?.call();
+
+    _cards = <BoardCard>[..._cards, newCard];
+    notifyListeners();
+    return newCard;
+  }
+
+  /// 텍스트 카드의 내용을 저장합니다. (board_card_view.dart의
+  /// "완료" 버튼 → board_canvas.dart의 onTextContentChanged)
+  ///
+  /// 옮기기·크기 조절과 달리 되돌리기 스냅샷을 안 찍습니다 — 편집기
+  /// 자체가 이미 flutter_quill의 undo/redo(Ctrl+Z)를 갖고 있어서,
+  /// 여기서 또 스냅샷을 찍으면 "글자 하나 지운 것"까지 판의 실행취소
+  /// 스택에 쌓여 옮기기·크기 조절 실행취소와 뒤섞입니다.
+  Future<void> saveTextContent(BoardCard card, String newContent) async {
+    final BoardCard updated = card.copyWithText(textContent: newContent);
+    await boardRepository.saveCard(updated);
+    onSaved?.call();
+
+    _cards = <BoardCard>[
+      for (final BoardCard existing in _cards)
+        if (existing.id == card.id) updated else existing,
+    ];
+    notifyListeners();
+  }
+
   /// 레퍼런스 여러 개를 [basePosition](판 좌표)을 기준으로 늘어놓아
   /// 판에 담고 저장합니다.
   ///

@@ -198,8 +198,10 @@ class BoardCards extends Table {
   /// 어느 무드보드에 놓였는지
   TextColumn get boardId => text()();
 
-  /// 어느 레퍼런스인지
-  TextColumn get referenceId => text()();
+  /// 어느 레퍼런스인지입니다. **텍스트 카드는 이 칸이 비어 있습니다**
+  /// (schemaVersion 9) — "레퍼런스 카드"와 "텍스트 카드"를 가르는
+  /// 기준이 이 칸입니다. `textContent`도 함께 참고하세요.
+  TextColumn get referenceId => text().nullable()();
 
   /// 판 위에서의 가로 위치입니다. 판의 왼쪽 끝이 0입니다.
   ///
@@ -251,6 +253,28 @@ class BoardCards extends Table {
   /// 같은 값을 들고 있으면 한 그룹입니다. 그룹을 풀면 이 칸을 다시
   /// null로 되돌립니다 — 값 자체를 어디서도 다시 쓰지 않으므로 안전합니다.
   TextColumn get groupId => text().nullable()();
+
+  /// **텍스트 카드**의 내용입니다(schemaVersion 9). 레퍼런스 카드는 이
+  /// 칸이 비어 있습니다.
+  ///
+  /// 저장 형식은 레퍼런스 메모(`References.memo`)와 똑같은 서식 있는
+  /// Delta(JSON) 문자열입니다 — `lib/utils/rich_text_memo.dart`의
+  /// 변환 함수를 그대로 재사용합니다. 새 형식을 또 만들지 않아도
+  /// 굵게·기울임·밑줄·목록·정렬 같은 서식을 그대로 쓸 수 있습니다.
+  TextColumn get textContent => text().nullable()();
+
+  /// 텍스트 카드의 글꼴입니다(schemaVersion 9). 비어 있으면 앱 기본
+  /// 글꼴(Pretendard)입니다.
+  ///
+  /// ── 왜 이름(문자열)만 저장하나 ──
+  /// 앱에 미리 담아둔 글꼴(`Pretendard`, `Gowun Batang`)이면 이름만으로
+  /// 충분합니다. 컴퓨터에 설치된 글꼴을 골랐다면, 이름과 함께 그 글꼴
+  /// 파일을 다시 등록해야 실제로 그 모양이 보입니다 — 그 등록 절차는
+  /// `lib/services/system_fonts.dart`가 앱을 켤 때마다 다시 해줍니다
+  /// (파일 경로 자체는 저장하지 않습니다 — 컴퓨터마다 설치된 글꼴이
+  /// 다르고 경로도 다를 수 있어서, 이름으로 다시 찾는 편이 안전합니다).
+  /// 이 컴퓨터에 그 글꼴이 없으면 조용히 앱 기본 글꼴로 보입니다.
+  TextColumn get fontFamily => text().nullable()();
 
   @override
   Set<Column> get primaryKey => <Column>{id};

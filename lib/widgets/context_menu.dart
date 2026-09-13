@@ -51,7 +51,12 @@ class ContextMenuRegion extends StatelessWidget {
   });
 
   /// 메뉴를 열 때 보여줄 항목들을 만듭니다. 빈 목록을 돌려주면 메뉴가 안 뜹니다.
-  final List<ContextMenuAction> Function() buildActions;
+  ///
+  /// [localPosition]은 이 위젯 기준으로 우클릭(또는 길게 누른)한 자리입니다.
+  /// 대부분의 메뉴는 이 값이 필요 없지만(예: "새 폴더 만들기"), 빈
+  /// 캔버스의 "텍스트 추가"처럼 **누른 자리에 무언가를 놓아야 하는**
+  /// 메뉴는 이 값으로 판 좌표를 구합니다(board_viewport.dart 참고).
+  final List<ContextMenuAction> Function(Offset localPosition) buildActions;
 
   /// 메뉴를 씌울 실제 내용입니다.
   final Widget child;
@@ -77,9 +82,14 @@ class ContextMenuRegion extends StatelessWidget {
   /// 모드에서는 데스크톱 우클릭만 지원합니다).
   final bool avoidGestureArena;
 
-  /// [position] 자리에 메뉴를 띄우고, 고른 항목의 동작을 실행합니다.
-  Future<void> _open(BuildContext context, Offset position) async {
-    final List<ContextMenuAction> actions = buildActions();
+  /// [position](화면 기준) 자리에 메뉴를 띄우고, 고른 항목의 동작을
+  /// 실행합니다. [localPosition]은 [buildActions]에 그대로 넘겨줍니다.
+  Future<void> _open(
+    BuildContext context,
+    Offset position,
+    Offset localPosition,
+  ) async {
+    final List<ContextMenuAction> actions = buildActions(localPosition);
     if (actions.isEmpty) {
       return;
     }
@@ -147,7 +157,7 @@ class ContextMenuRegion extends StatelessWidget {
         onPointerDown: (PointerDownEvent event) {
           if (event.kind == PointerDeviceKind.mouse &&
               event.buttons == kSecondaryMouseButton) {
-            _open(context, event.position);
+            _open(context, event.position, event.localPosition);
           }
         },
         child: child,
@@ -158,10 +168,13 @@ class ContextMenuRegion extends StatelessWidget {
       // 위 Listener 분기와 같은 이유로 opaque를 씁니다.
       behavior: HitTestBehavior.opaque,
       onSecondaryTapUp: (TapUpDetails details) =>
-          _open(context, details.globalPosition),
+          _open(context, details.globalPosition, details.localPosition),
       onLongPressStart: enableLongPress
-          ? (LongPressStartDetails details) =>
-              _open(context, details.globalPosition)
+          ? (LongPressStartDetails details) => _open(
+              context,
+              details.globalPosition,
+              details.localPosition,
+            )
           : null,
       child: child,
     );

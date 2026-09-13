@@ -297,4 +297,52 @@ void main() {
       expect(savedCount, 1, reason: '상대 창(팝업)도 되돌린 결과를 알아야 합니다');
     });
   });
+
+  group('텍스트 카드 (schemaVersion 9)', () {
+    testWidgets('addTextCardAt으로 만든 카드는 referenceId가 없고 isText가 참이다', (
+      WidgetTester tester,
+    ) async {
+      final BoardCard card = await controller.addTextCardAt(
+        const Offset(10, 20),
+      );
+
+      expect(card.referenceId, isNull);
+      expect(card.isText, isTrue);
+      expect(card.x, 10);
+      expect(card.y, 20);
+      expect(card.height, isNotNull, reason: '텍스트는 원본 비율이 없어 높이가 항상 있어야 합니다');
+    });
+
+    testWidgets('텍스트 카드를 만들면 onSaved가 한 번 불리고 저장소에 남는다', (
+      WidgetTester tester,
+    ) async {
+      await controller.addTextCardAt(const Offset(0, 0));
+      expect(savedCount, 1);
+
+      final List<BoardCard> reloaded = await repository.getCards('board-1');
+      expect(reloaded.single.isText, isTrue);
+    });
+
+    testWidgets('saveTextContent로 내용을 바꾸면 저장소와 목록 둘 다 반영된다', (
+      WidgetTester tester,
+    ) async {
+      final BoardCard card = await controller.addTextCardAt(
+        const Offset(0, 0),
+      );
+      savedCount = 0;
+
+      const String newContent = '[{"insert":"안녕하세요\\n"}]';
+      await controller.saveTextContent(card, newContent);
+
+      expect(savedCount, 1);
+      expect(
+        controller.cards.single.textContent,
+        newContent,
+        reason: '화면이 다시 읽지 않아도 즉시 바뀐 내용이 보여야 합니다',
+      );
+
+      final List<BoardCard> reloaded = await repository.getCards('board-1');
+      expect(reloaded.single.textContent, newContent);
+    });
+  });
 }

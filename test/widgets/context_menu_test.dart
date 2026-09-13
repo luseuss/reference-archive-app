@@ -29,7 +29,7 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: ContextMenuRegion(
-            buildActions: () => <ContextMenuAction>[
+            buildActions: (_) => <ContextMenuAction>[
               ContextMenuAction(
                 label: '테스트 동작',
                 onSelected: () => pressed = true,
@@ -65,7 +65,7 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: ContextMenuRegion(
-            buildActions: () => <ContextMenuAction>[
+            buildActions: (_) => <ContextMenuAction>[
               ContextMenuAction(label: '롱프레스 동작', onSelected: () {}),
             ],
             child: const SizedBox(width: 100, height: 100, key: Key('target')),
@@ -95,7 +95,7 @@ void main() {
         home: Scaffold(
           body: ContextMenuRegion(
             enableLongPress: false,
-            buildActions: () => <ContextMenuAction>[
+            buildActions: (_) => <ContextMenuAction>[
               ContextMenuAction(label: '안 뜨는 동작', onSelected: () {}),
             ],
             child: const SizedBox(width: 100, height: 100, key: Key('target')),
@@ -120,7 +120,7 @@ void main() {
           home: Scaffold(
             body: ContextMenuRegion(
               avoidGestureArena: true,
-              buildActions: () => <ContextMenuAction>[
+              buildActions: (_) => <ContextMenuAction>[
                 ContextMenuAction(
                   label: '아레나 회피 동작',
                   onSelected: () => pressed = true,
@@ -165,7 +165,7 @@ void main() {
           home: Scaffold(
             body: ContextMenuRegion(
               avoidGestureArena: true,
-              buildActions: () => <ContextMenuAction>[
+              buildActions: (_) => <ContextMenuAction>[
                 ContextMenuAction(label: '안 뜨는 동작', onSelected: () {}),
               ],
               child: const SizedBox(
@@ -199,7 +199,7 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: ContextMenuRegion(
-            buildActions: () => const <ContextMenuAction>[],
+            buildActions: (_) => const <ContextMenuAction>[],
             child: const SizedBox(width: 100, height: 100, key: Key('target')),
           ),
         ),

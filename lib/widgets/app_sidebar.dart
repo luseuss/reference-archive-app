@@ -271,7 +271,7 @@ class _AppSidebarState extends State<AppSidebar> {
     // "전체 레퍼런스" 줄의 "새 폴더 만들기"와 같은 결로, 우클릭(또는
     // 길게 누르기)하면 "새 무드보드 만들기"가 바로 뜹니다.
     return ContextMenuRegion(
-      buildActions: () => <ContextMenuAction>[
+      buildActions: (_) => <ContextMenuAction>[
         ContextMenuAction(
           label: '새 무드보드 만들기',
           icon: Icons.add_to_photos_outlined,
@@ -321,7 +321,7 @@ class _AppSidebarState extends State<AppSidebar> {
         SliverFillRemaining(
           hasScrollBody: false,
           child: ContextMenuRegion(
-            buildActions: () => <ContextMenuAction>[
+            buildActions: (_) => <ContextMenuAction>[
               ContextMenuAction(
                 label: '새 폴더 만들기',
                 icon: Icons.create_new_folder_outlined,
@@ -374,7 +374,7 @@ class _AppSidebarState extends State<AppSidebar> {
         List<Object?> rejectedData,
       ) {
         return ContextMenuRegion(
-          buildActions: () => <ContextMenuAction>[
+          buildActions: (_) => <ContextMenuAction>[
             ContextMenuAction(
               label: '새 폴더 만들기',
               icon: Icons.create_new_folder_outlined,
@@ -432,7 +432,7 @@ class _AppSidebarState extends State<AppSidebar> {
     // 평소 동작은 그대로입니다 — 이 메뉴는 오른쪽 버튼(또는 길게
     // 누르기)에만 반응하기 때문입니다.
     final Widget row = ContextMenuRegion(
-      buildActions: () => <ContextMenuAction>[
+      buildActions: (_) => <ContextMenuAction>[
         ContextMenuAction(
           label: '하위 폴더 만들기',
           icon: Icons.create_new_folder_outlined,

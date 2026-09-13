@@ -414,7 +414,7 @@ class _BoardListScreenState extends State<BoardListScreen> {
         SliverFillRemaining(
           hasScrollBody: false,
           child: ContextMenuRegion(
-            buildActions: () => <ContextMenuAction>[
+            buildActions: (_) => <ContextMenuAction>[
               ContextMenuAction(
                 label: '새 무드보드 만들기',
                 icon: Icons.add_to_photos_outlined,
@@ -456,7 +456,7 @@ class _BoardListScreenState extends State<BoardListScreen> {
     return ContextMenuRegion(
       // 오른쪽 "⋮" 메뉴와 똑같은 세 가지를 우클릭(또는 길게 누르기)으로도
       // 열어줍니다 — app_sidebar.dart의 폴더 줄과 같은 방식입니다.
-      buildActions: () => <ContextMenuAction>[
+      buildActions: (_) => <ContextMenuAction>[
         ContextMenuAction(
           label: '이름 바꾸기',
           icon: Icons.edit_outlined,

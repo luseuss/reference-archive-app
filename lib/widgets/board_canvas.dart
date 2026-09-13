@@ -47,6 +47,10 @@ class BoardCanvas extends StatelessWidget {
     required this.onRemoveCard,
     required this.onOpenDetail,
     required this.onUngroupCard,
+    required this.onTextContentChanged,
+    required this.onTextFocusNodeCreated,
+    required this.onTextFocusNodeDisposed,
+    required this.onRequestBoardFocus,
     this.playingCardId,
     this.playerUrl,
     this.onPlayPressed,
@@ -145,6 +149,28 @@ class BoardCanvas extends StatelessWidget {
   /// 카드 우클릭 메뉴의 "그룹 해제"를 눌렀을 때 실행할 동작입니다.
   final ValueChanged<BoardCard> onUngroupCard;
 
+  /// 텍스트 카드의 내용이 바뀌었을 때(편집을 끝내고 "완료"를 눌렀을 때)
+  /// 실행할 동작입니다. 새 Delta(JSON) 문자열을 함께 넘겨줍니다.
+  final void Function(BoardCard card, String newContent) onTextContentChanged;
+
+  /// 텍스트 카드 편집기의 키보드 초점 노드가 만들어지거나 없어질 때
+  /// **어느 카드의 것인지와 함께** board_screen.dart로 알립니다.
+  /// (board_card_view.dart의 onTextFocusNodeCreated/onTextFocusNodeDisposed
+  /// 설명 참고 — 판의 Delete·Ctrl+V·Ctrl+Z 단축키가 글자 편집과 부딪히지
+  /// 않게 하는 용도) **카드 번호가 필요한 이유**: 다른 카드를 누르는
+  /// 순간(onCardPressed) "지금 편집 중이던 카드가 아니라 다른 걸
+  /// 눌렀으니 편집에서 벗어난 것"이라고 판단하려면, 초점 노드가 어느
+  /// 카드 것인지 알아야 합니다.
+  final void Function(BoardCard card, FocusNode node) onTextFocusNodeCreated;
+
+  /// 위 [onTextFocusNodeCreated]의 짝입니다.
+  final void Function(BoardCard card, FocusNode node) onTextFocusNodeDisposed;
+
+  /// "완료"를 눌러 텍스트 편집을 끝낼 때 판 자신에게 초점을
+  /// 돌려달라는 요청을 board_screen.dart로 그대로 전달합니다.
+  /// (board_card_view.dart의 onRequestBoardFocus 설명 참고)
+  final VoidCallback onRequestBoardFocus;
+
   /// 지금 이 판에서 그 자리에 바로 재생 중인 카드의 번호입니다. 재생 중인
   /// 카드가 없으면 null입니다. (board_video_playback_controller.dart 참고)
   final String? playingCardId;
@@ -193,6 +219,12 @@ class BoardCanvas extends StatelessWidget {
   /// 이름표를 붙이면 순서가 바뀌어도 "번호가 같은 것끼리" 짝지어집니다.
   /// (test/screens/board_screen_test.dart의 '여러 장이 놓여 있어도...' 참고)
   Widget _buildPositionedCard(BoardCard card) {
+    // 텍스트 카드는 레퍼런스를 안 가리키므로(schemaVersion 9) 아래
+    // "짝이 안 맞으면 안 그린다" 판정을 거치지 않고 곧바로 그립니다.
+    if (card.isText) {
+      return _buildPositionedTextCard(card);
+    }
+
     final ReferenceItem? item = itemsById[card.referenceId];
 
     // 짝이 되는 레퍼런스를 못 찾으면 아무것도 그리지 않습니다.
@@ -211,6 +243,80 @@ class BoardCanvas extends StatelessWidget {
         youtubeVideoId != null &&
         onPlayPressed != null;
 
+    return _wrapPositioned(
+      card,
+      BoardCardView(
+        item: item,
+        imagePath: imagePaths[card.referenceId],
+        isActive: activeCardId == card.id,
+        isSelected: selectedCardIds.contains(card.id),
+        isGrouped: card.groupId != null,
+        isPlaying: playingCardId == card.id,
+        playerUrl: playingCardId == card.id ? playerUrl : null,
+        onPlayPressed: canPlayThisCard
+            ? () => onPlayPressed!(card, youtubeVideoId)
+            : null,
+        onStopPlaying: onStopPlaying == null
+            ? null
+            : () => onStopPlaying!(card),
+        onRemove: () => onRemoveCard(card),
+        onOpenDetail: () => onOpenDetail(item),
+        onUngroupSelected: card.groupId != null
+            ? () => onUngroupCard(card)
+            : null,
+        onMeasured: (Size size) => onMeasured(card, size),
+        onResizeStart: (Size currentSize, BoardResizeCorner corner) =>
+            onResizeStart(card, currentSize, corner),
+        onResizeUpdate: (Offset delta) => onResizeUpdate(card, delta),
+        onResizeEnd: () => onResizeEnd(card),
+      ),
+    );
+  }
+
+  /// 텍스트 카드 한 장을 제자리에 놓고, 끌 수 있게 감싸 돌려줍니다.
+  /// 위 [_buildPositionedCard]와 같은 자리매김·끌기 방식을 씁니다 —
+  /// [_wrapPositioned]로 그 부분을 함께 씁니다.
+  Widget _buildPositionedTextCard(BoardCard card) {
+    return _wrapPositioned(
+      card,
+      BoardCardView(
+        item: null,
+        imagePath: null,
+        textContent: card.textContent,
+        fontFamily: card.fontFamily,
+        onTextChanged: (String newContent) =>
+            onTextContentChanged(card, newContent),
+        onTextFocusNodeCreated: (FocusNode node) =>
+            onTextFocusNodeCreated(card, node),
+        onTextFocusNodeDisposed: (FocusNode node) =>
+            onTextFocusNodeDisposed(card, node),
+        onRequestBoardFocus: onRequestBoardFocus,
+        isActive: activeCardId == card.id,
+        isSelected: selectedCardIds.contains(card.id),
+        isGrouped: card.groupId != null,
+        onRemove: () => onRemoveCard(card),
+        onUngroupSelected: card.groupId != null
+            ? () => onUngroupCard(card)
+            : null,
+        onMeasured: (Size size) => onMeasured(card, size),
+        onResizeStart: (Size currentSize, BoardResizeCorner corner) =>
+            onResizeStart(card, currentSize, corner),
+        onResizeUpdate: (Offset delta) => onResizeUpdate(card, delta),
+        onResizeEnd: () => onResizeEnd(card),
+      ),
+    );
+  }
+
+  /// 카드(레퍼런스든 텍스트든) 하나를 판 좌표에 자리매김하고, 누르기·
+  /// 끌기를 알아채게 감싸줍니다. 두 종류의 카드가 자리·끌기 방식은
+  /// 완전히 같고 안에 무엇을 그리는지만 달라서, 이 부분만 한 번 씁니다.
+  ///
+  /// ── 카드마다 이름표(Key)를 꼭 붙입니다 ──
+  /// 카드를 잡으면 그 카드가 목록 맨 뒤로 옮겨집니다(맨 위에 그리려고).
+  /// 이름표가 없으면 Flutter는 화면 조각을 **순서(몇 번째)로만** 짝지어서,
+  /// 순서가 바뀌는 순간 **끌기를 붙잡고 있던 자리에 다른 카드가 들어옵니다.**
+  /// 그러면 잡은 카드는 가만히 있고 엉뚱한 카드가 커서를 따라다닙니다.
+  Widget _wrapPositioned(BoardCard card, Widget cardView) {
     return Positioned(
       key: ValueKey<String>(card.id),
 
@@ -222,7 +328,9 @@ class BoardCanvas extends StatelessWidget {
       // ── height에 null이 들어가는 경우가 있습니다 ──
       // card.height가 null이면 카드의 높이를 **그림이 정하게** 됩니다.
       // 세로 사진은 길쭉하게, 가로 사진은 납작하게 원본 비율 그대로 놓입니다.
-      // 사용자가 크기를 조절하면 그때 값이 채워집니다.
+      // 사용자가 크기를 조절하면 그때 값이 채워집니다. 텍스트 카드는
+      // 처음 만들 때부터 항상 값이 채워져 있습니다(board_interaction_controller.dart의
+      // addTextCardAt 참고).
       height: card.height,
 
       // ── 선택은 Listener로 알아챕니다(GestureDetector가 아닙니다) ──
@@ -253,31 +361,7 @@ class BoardCanvas extends StatelessWidget {
 
           onPanEnd: (DragEndDetails details) => onDragEnd(card),
 
-          child: BoardCardView(
-            item: item,
-            imagePath: imagePaths[card.referenceId],
-            isActive: activeCardId == card.id,
-            isSelected: selectedCardIds.contains(card.id),
-            isGrouped: card.groupId != null,
-            isPlaying: playingCardId == card.id,
-            playerUrl: playingCardId == card.id ? playerUrl : null,
-            onPlayPressed: canPlayThisCard
-                ? () => onPlayPressed!(card, youtubeVideoId)
-                : null,
-            onStopPlaying: onStopPlaying == null
-                ? null
-                : () => onStopPlaying!(card),
-            onRemove: () => onRemoveCard(card),
-            onOpenDetail: () => onOpenDetail(item),
-            onUngroupSelected: card.groupId != null
-                ? () => onUngroupCard(card)
-                : null,
-            onMeasured: (Size size) => onMeasured(card, size),
-            onResizeStart: (Size currentSize, BoardResizeCorner corner) =>
-                onResizeStart(card, currentSize, corner),
-            onResizeUpdate: (Offset delta) => onResizeUpdate(card, delta),
-            onResizeEnd: () => onResizeEnd(card),
-          ),
+          child: cardView,
         ),
       ),
     );

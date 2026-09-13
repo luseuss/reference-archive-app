@@ -265,6 +265,25 @@ BoardCardsUpdate resizeCard(
 
   final BoardCard current = cards[index];
 
+  // 텍스트 카드는 지켜야 할 그림 비율이 없습니다. 가로·세로를 각각
+  // 손잡이를 끈 만큼 그대로 늘리고 줄이는 별도 계산으로 넘깁니다
+  // (의뢰인 요청 — "위아래 좌우 자유롭게 한도 없이"). 아래의 나머지
+  // 코드는 사진처럼 비율을 지켜야 하는 카드만 탑니다.
+  if (current.isText) {
+    return _resizeTextCard(
+      cards,
+      index,
+      current,
+      startSize: startSize,
+      startPosition: startPosition,
+      corner: corner,
+      movedSoFar: movedSoFar,
+      snap: snap,
+      useGrid: useGrid,
+      measuredHeights: measuredHeights,
+    );
+  }
+
   // 세로 ÷ 가로. 크기를 바꾸는 내내 이 비율을 그대로 지킵니다.
   final double heightPerWidth = startSize.height / startSize.width;
 
@@ -331,6 +350,95 @@ BoardCardsUpdate resizeCard(
     ],
     guideX: guideX,
   );
+}
+
+/// 텍스트 카드 전용 크기 조절입니다. 사진과 달리 지켜야 할 그림
+/// 비율이 없어서, 손잡이를 잡은 모서리 기준으로 가로·세로를 각각
+/// 끈 만큼 그대로 늘리고 줄입니다. **위쪽 한도가 없습니다** —
+/// [clampResizedCardWidth]는 사진 카드에 쓰는 [maxBoardCardWidth]로
+/// 위를 막지만, 텍스트 카드는 그 한도를 안 받습니다. 최소 크기만
+/// [minBoardCardWidth]로 지킵니다(그보다 작아지면 안의 글자·손잡이가
+/// 겹칩니다).
+///
+/// ── 세로 스냅이 없는 이유 ──
+/// 스냅은 지금 가로(왼쪽/오른쪽 모서리)만 봅니다 — 사진 카드도 원래
+/// 세로는 안 봤습니다(비율이 알아서 따라왔기 때문). 텍스트 카드는
+/// 세로도 자유롭게 늘어나지만, 위/아래 모서리 스냅은 이번에 새로
+/// 만들지 않았습니다. 나중에 필요해지면 board_snap.dart의
+/// `snapResizingCard`에 `onLeftEdge`와 짝을 이루는 `onTopEdge` 같은
+/// 옵션을 추가해야 합니다.
+BoardCardsUpdate _resizeTextCard(
+  List<BoardCard> cards,
+  int index,
+  BoardCard current, {
+  required Size startSize,
+  required Offset startPosition,
+  required BoardResizeCorner corner,
+  required Offset movedSoFar,
+  required bool snap,
+  required bool useGrid,
+  required Map<String, double> measuredHeights,
+}) {
+  // 고정돼야 할 반대쪽 모서리의 판 좌표입니다. resizeCard의 같은 계산과
+  // 똑같습니다 — 여기서도 손잡이 반대쪽은 그대로 있어야 합니다.
+  final double anchorX = corner.isLeft
+      ? startPosition.dx + startSize.width
+      : startPosition.dx;
+  final double anchorY = corner.isTop
+      ? startPosition.dy + startSize.height
+      : startPosition.dy;
+
+  final double rawWidth = corner.isLeft
+      ? startSize.width - movedSoFar.dx
+      : startSize.width + movedSoFar.dx;
+  double width = _clampFreeformCardSize(rawWidth);
+
+  double? guideX;
+  if (snap) {
+    final double movingEdgeX = corner.isLeft ? anchorX - width : anchorX + width;
+    final BoardSnapResult result = snapResizingCard(
+      resizing: Rect.fromLTWH(
+        corner.isLeft ? movingEdgeX : anchorX,
+        // 세로는 스냅 대상이 아니라서, 스냅 계산용 네모에는 시작
+        // 높이를 그대로 씁니다 — 실제로 적용되는 높이(아래의 height)와는
+        // 별개입니다.
+        corner.isTop ? anchorY - startSize.height : anchorY,
+        width,
+        startSize.height,
+      ),
+      others: _rectsExcept(cards, current.id, measuredHeights),
+      useGrid: useGrid,
+      onLeftEdge: corner.isLeft,
+    );
+    final double widthOffset = corner.isLeft
+        ? -result.offset.dx
+        : result.offset.dx;
+    width = _clampFreeformCardSize(width + widthOffset);
+    guideX = result.guideX;
+  }
+
+  final double rawHeight = corner.isTop
+      ? startSize.height - movedSoFar.dy
+      : startSize.height + movedSoFar.dy;
+  final double height = _clampFreeformCardSize(rawHeight);
+
+  final double x = corner.isLeft ? anchorX - width : anchorX;
+  final double y = corner.isTop ? anchorY - height : anchorY;
+
+  return BoardCardsUpdate(
+    <BoardCard>[
+      ...cards.sublist(0, index),
+      current.copyWith(x: x, y: y, width: width, height: height),
+      ...cards.sublist(index + 1),
+    ],
+    guideX: guideX,
+  );
+}
+
+/// 텍스트 카드 크기의 아래 한계만 지킵니다. 위쪽은 한도가 없습니다
+/// (사진 카드의 [clampResizedCardWidth]와 다른 점입니다).
+double _clampFreeformCardSize(double value) {
+  return value < minBoardCardWidth ? minBoardCardWidth : value;
 }
 
 /// 이 카드를 뺀 나머지 카드들의 네모를 모읍니다. 스냅 후보로 씁니다.

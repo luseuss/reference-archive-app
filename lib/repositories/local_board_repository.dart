@@ -236,6 +236,8 @@ class LocalBoardRepository implements BoardRepository {
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
       groupId: row.groupId,
+      textContent: row.textContent,
+      fontFamily: row.fontFamily,
     );
   }
 
@@ -248,7 +250,11 @@ class LocalBoardRepository implements BoardRepository {
     return BoardCardsCompanion.insert(
       id: card.id,
       boardId: card.boardId,
-      referenceId: card.referenceId,
+
+      // Value로 명시적으로 감싸야 null도 그대로 저장됩니다(텍스트 카드는
+      // referenceId가 null입니다) — 안 감싸면 "이 칸은 안 건드린다"로
+      // 해석돼 조용히 무시됩니다(Boards.folderId와 같은 사정).
+      referenceId: Value<String?>(card.referenceId),
       x: card.x,
       y: card.y,
       width: Value<double>(card.width),
@@ -264,6 +270,8 @@ class LocalBoardRepository implements BoardRepository {
       // folderId와 같은 이유 — local_board_repository.dart의 saveBoard 참고)
       // 안 감싸면 그룹에서 뺀 것(null로 바꾼 것)이 저장되지 않습니다.
       groupId: Value<String?>(card.groupId),
+      textContent: Value<String?>(card.textContent),
+      fontFamily: Value<String?>(card.fontFamily),
     );
   }
 }
