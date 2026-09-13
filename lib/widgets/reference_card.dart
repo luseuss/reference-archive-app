@@ -183,7 +183,11 @@ class ReferenceCard extends StatelessWidget {
       transform: Matrix4.translationValues(0, isHovered ? -2 : 0, 0),
 
       decoration: BoxDecoration(
-        color: palette.surface,
+        // glassSurface(반투명)를 씁니다 — 이 카드는 home_screen.dart의
+        // MeshBackground(색 안개) 위에서만 그려지므로, 안개가 비쳐야
+        // "유리" 느낌이 납니다. 다른 화면의 카드(무드보드 목록 등)는
+        // 안개가 없어서 surface(불투명)를 그대로 씁니다.
+        color: palette.glassSurface,
         borderRadius: BorderRadius.circular(appCornerRadius),
 
         // 골라둔 카드는 강조색 테두리로 한눈에 구분되게 합니다.

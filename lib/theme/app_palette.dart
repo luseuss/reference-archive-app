@@ -9,9 +9,8 @@
 // ── 컨셉: "에메랄드 글래스" ──
 //   - 바탕 위로 에메랄드·시안·라임이 흐릿하게 번지는 "색 안개"가 깔립니다
 //     (`meshColors` + `lib/widgets/mesh_background.dart`).
-//   - 사이드바·머리줄·카드 아래쪽 글자 부분은 **반투명**입니다 — 안개가
-//     비쳐 보여야 "유리" 느낌이 납니다. `surface`가 이제 불투명이 아니라
-//     알파(투명도)가 있는 색입니다.
+//   - 메인 화면의 카드·머리줄 글자 부분은 **반투명**입니다(`glassSurface`)
+//     — 안개가 비쳐 보여야 "유리" 느낌이 납니다.
 //   - **사진(썸네일) 자체는 그대로 불투명합니다.** 반투명은 글자가 있는
 //     자리에만 씁니다 — 사진 위까지 유리로 덮으면 사진이 흐려 보이고
 //     가독성도 떨어집니다(실제로 시안을 비교하며 의뢰인과 확인한 부분).
@@ -20,6 +19,18 @@
 //     또렷한 경계가 없어서, 위에 알파색만 얹어도 "뿌옇게 비치는" 느낌이
 //     그대로 납니다. (BackdropFilter를 카드마다 따로 쓰면 카드 수만큼
 //     블러 연산이 늘어나 느려질 수 있는데, 이 방식은 그 비용이 없습니다)
+//
+// ── 실제로 겪은 문제: 대화상자·다른 화면까지 투명해졌었습니다 (2026-09-14) ──
+// 처음엔 `surface`(카드·대화상자·설정 화면 등 거의 모든 곳이 쓰는 색)
+// 자체를 반투명으로 바꿨습니다. 메인 화면(안개가 있는 곳)에서는
+// 의도대로 "유리"로 보였지만, **안개가 없는 다른 화면**(레퍼런스 편집
+// 대화상자, 설정, 분류 관리, 무드보드 목록 등)에서는 그냥 뒤에 있던
+// 아무 화면이나 얼비쳐서 글자를 거의 못 읽는 상태가 됐습니다 — 의뢰인이
+// 스크린샷으로 직접 보여준 실제 버그입니다. 그래서 `surface`는
+// **다시 불투명으로 되돌리고**, "안개 위에서만" 쓰는 반투명 색은
+// `glassSurface`라는 별도 이름으로 뺐습니다. `glassSurface`는
+// `MeshBackground`가 뒤에 있는 자리(메인 화면의 카드·머리줄)에서만
+// 골라 씁니다 — 안개가 없는 화면은 전부 그대로 `surface`(불투명)를 씁니다.
 //
 // ── 왜 Flutter가 색을 자동으로 만들게 두지 않았나 ──
 // Flutter에는 대표색 하나만 주면 나머지를 알아서 만들어주는 기능이 있습니다
@@ -41,6 +52,7 @@ class AppPalette {
     required this.border,
     required this.text,
     required this.textDim,
+    required this.glassSurface,
     required this.accent,
     required this.accentSecondary,
     required this.accentTertiary,
@@ -57,13 +69,18 @@ class AppPalette {
   /// 화면 전체 바탕색입니다. 안개(mesh)를 그리는 기준 바탕이기도 합니다.
   final Color background;
 
-  /// 카드·머리줄·사이드바·대화상자처럼 바탕 위에 얹히는 것들의 색입니다.
-  ///
-  /// **에메랄드 글래스에서는 이 색이 반투명입니다.** 그래서 뒤에 있는
-  /// 색 안개(mesh)나 사진이 살짝 비쳐 보입니다. `Color`의 알파값이 곧
-  /// "유리가 얼마나 뿌연가"입니다 — 다크 모드는 아주 옅게(진한 안개 위),
-  /// 라이트 모드는 더 짙게(옅은 안개 위, 글자가 안 묻히도록) 잡았습니다.
+  /// 카드·대화상자·설정 화면 등 바탕 위에 얹히는 대부분의 것들의
+  /// 색입니다. **불투명합니다** — 뒤에 안개(mesh)가 없는 화면에서도
+  /// 항상 또렷하게 읽혀야 하기 때문입니다(위 "실제로 겪은 문제" 참고).
   final Color surface;
+
+  /// 메인 화면에서, `MeshBackground`(색 안개)가 뒤에 깔린 자리에만
+  /// 쓰는 **반투명** 유리색입니다. 지금은 `reference_card.dart`(카드
+  /// 아래쪽 글자 부분)와 `main_header.dart`(머리줄)만 이 색을 씁니다.
+  /// 안개가 없는 화면(대화상자, 설정, 무드보드 목록 등)에서는 절대
+  /// 쓰지 마세요 — 뒤에 아무 안개도 없이 반투명이면 그냥 다른 화면이
+  /// 얼비쳐서 글자를 읽기 어려워집니다.
+  final Color glassSurface;
 
   /// 카드 테두리와 구분선 색입니다. 유리 가장자리처럼 아주 옅습니다.
   final Color border;
@@ -124,11 +141,12 @@ class AppPalette {
   }
 
   /// 밝은 모드 색입니다. 옅은 민트빛 바탕 위에 파스텔 안개, 그 위에
-  /// 짙은 흰색(70%) 유리 패널을 얹습니다 — 라이트 모드는 안개가 옅어서
-  /// 유리를 너무 투명하게 두면 글자가 안개에 묻힙니다.
+  /// 대부분은 불투명한 흰색 패널(`surface`)을, 메인 화면 카드·머리줄만
+  /// 짙은 흰색(70%) 유리(`glassSurface`)를 얹습니다.
   static const AppPalette light = AppPalette(
     background: Color(0xFFF1FAF5),
-    surface: Color(0xB3FFFFFF),
+    surface: Color(0xFFFFFFFF),
+    glassSurface: Color(0xB3FFFFFF),
     border: Color(0x330F3D2E),
     text: Color(0xFF10281F),
     textDim: Color(0xFF5C7A6C),
@@ -173,10 +191,13 @@ class AppPalette {
   );
 
   /// 어두운 모드 색입니다. 거의 검정에 가까운 짙은 초록-검정 바탕 위에
-  /// 진한 안개, 그 위에 아주 옅은 흰색(약 8%) 유리 패널을 얹습니다.
+  /// 진한 안개, 그 위에 대부분은 불투명한 짙은 패널(`surface`)을,
+  /// 메인 화면 카드·머리줄만 아주 옅은 흰색(약 8%) 유리(`glassSurface`)를
+  /// 얹습니다.
   static const AppPalette dark = AppPalette(
     background: Color(0xFF070F0C),
-    surface: Color(0x14FFFFFF),
+    surface: Color(0xFF10221C),
+    glassSurface: Color(0x14FFFFFF),
     border: Color(0x26D8FFEF),
     text: Color(0xFFEAFBF2),
     textDim: Color(0xFF8FB6A4),
