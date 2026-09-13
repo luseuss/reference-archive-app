@@ -813,6 +813,7 @@ class _HomeScreenState extends State<HomeScreen> {
       onMoveFolder: _moveFolder,
       onCreateFolder: _createFolder,
       onOpenBoards: _openBoards,
+      onCreateBoard: _createBoardFromSidebar,
       onOpenTrash: _openTrash,
       onOpenSettings: _openSettings,
       onLogInOut: _showLoginNotReady,
@@ -1014,7 +1015,7 @@ class _HomeScreenState extends State<HomeScreen> {
   /// 유튜브 미리보기가 도는 채로 다른 화면을 덮으면, 안 보이는 곳에서 영상이
   /// 계속 재생됩니다. 소리는 꺼져 있지만 자원을 계속 씁니다.
   /// (호버 미리보기를 만들 때 앱이 꺼지던 문제도 이 자리와 관련이 있었습니다)
-  Future<void> _openBoards() async {
+  Future<void> _openBoards({bool autoCreate = false}) async {
     _hoverPreview.stopPreview();
 
     // 좁은 창이면 사이드바가 서랍으로 열려 있으므로 먼저 닫습니다.
@@ -1033,10 +1034,17 @@ class _HomeScreenState extends State<HomeScreen> {
           imageSource: widget.imageSource,
           youtubeInfoSource: widget.youtubeInfoSource,
           taxonomyRepository: widget.taxonomyRepository,
+          autoCreateOnOpen: autoCreate,
         ),
       ),
     );
   }
+
+  /// 사이드바 "무드보드" 줄의 우클릭 메뉴 "새 무드보드 만들기"를 실행합니다.
+  ///
+  /// "전체 레퍼런스" 줄의 "새 폴더 만들기"와 같은 결입니다 — 목록
+  /// 화면까지 가지 않고, 사이드바에서 바로 새로 만들기를 시작합니다.
+  Future<void> _createBoardFromSidebar() => _openBoards(autoCreate: true);
 
   /// "이 폴더(프로젝트)의 무드보드"로 넘어갑니다.
   /// (ReferenceFilterBar.onOpenFolderBoards)

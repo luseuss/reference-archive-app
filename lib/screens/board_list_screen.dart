@@ -32,6 +32,7 @@ import '../theme/app_text.dart';
 import '../utils/date_format.dart';
 import '../utils/id_generator.dart';
 import '../widgets/board_name_dialog.dart';
+import '../widgets/context_menu.dart';
 import '../widgets/empty_state_message.dart';
 import '../widgets/pick_taxonomy_dialog.dart';
 import 'board_popup_controller.dart';
@@ -49,6 +50,7 @@ class BoardListScreen extends StatefulWidget {
     required this.taxonomyRepository,
     this.filterFolderId,
     this.folderName,
+    this.autoCreateOnOpen = false,
   });
 
   /// 무드보드를 읽고 쓰는 통로입니다.
@@ -85,6 +87,14 @@ class BoardListScreen extends StatefulWidget {
   /// 이름입니다. filterFolderId가 없으면 안 씁니다.
   final String? folderName;
 
+  /// 참이면 이 화면이 뜨자마자 "새 무드보드 만들기"를 바로 엽니다.
+  ///
+  /// 사이드바의 "무드보드" 줄을 우클릭해서 "새 무드보드 만들기"를 고르면
+  /// 목록 화면을 거쳐야 하는데, 목록이 잠깐 보였다가 곧바로 이름 짓는
+  /// 대화상자가 뜨는 편이 "누른 즉시 만들기"라는 뜻에 맞습니다
+  /// (home_screen.dart의 _createBoardFromSidebar 참고).
+  final bool autoCreateOnOpen;
+
   @override
   State<BoardListScreen> createState() => _BoardListScreenState();
 }
@@ -107,6 +117,13 @@ class _BoardListScreenState extends State<BoardListScreen> {
   void initState() {
     super.initState();
     _loadBoards();
+
+    if (widget.autoCreateOnOpen) {
+      // 목록이 다 그려진 뒤(빌드 도중이 아니라)에 대화상자를 열어야
+      // 합니다. addPostFrameCallback 없이 바로 부르면 "아직 화면을
+      // 그리는 중에 다른 화면(대화상자)을 또 그리려 한다"는 오류가 납니다.
+      WidgetsBinding.instance.addPostFrameCallback((_) => _createBoard());
+    }
   }
 
   /// 무드보드 목록·카드 장수·폴더 목록을 읽어옵니다.
@@ -409,39 +426,61 @@ class _BoardListScreenState extends State<BoardListScreen> {
         ? ''
         : ' · ${_folderNameOf(board.folderId) ?? '미분류'}';
 
-    return Card(
-      margin: const EdgeInsets.only(bottom: 10),
-      child: ListTile(
-        onTap: () => _openBoard(board),
-        leading: const Icon(Icons.dashboard_outlined),
-        title: Text(board.name),
-        subtitle: Text(
-          '카드 $count장 · ${formatCardDate(board.updatedAt)} 수정$folderText',
-          style: AppText.meta.copyWith(color: palette.textDim),
+    return ContextMenuRegion(
+      // 오른쪽 "⋮" 메뉴와 똑같은 세 가지를 우클릭(또는 길게 누르기)으로도
+      // 열어줍니다 — app_sidebar.dart의 폴더 줄과 같은 방식입니다.
+      buildActions: () => <ContextMenuAction>[
+        ContextMenuAction(
+          label: '이름 바꾸기',
+          icon: Icons.edit_outlined,
+          onSelected: () => _renameBoard(board),
         ),
+        ContextMenuAction(
+          label: '폴더 정하기',
+          icon: Icons.folder_outlined,
+          onSelected: () => _setBoardFolder(board),
+        ),
+        ContextMenuAction(
+          label: '지우기',
+          icon: Icons.delete_outline,
+          isDestructive: true,
+          onSelected: () => _deleteBoard(board),
+        ),
+      ],
+      child: Card(
+        margin: const EdgeInsets.only(bottom: 10),
+        child: ListTile(
+          onTap: () => _openBoard(board),
+          leading: const Icon(Icons.dashboard_outlined),
+          title: Text(board.name),
+          subtitle: Text(
+            '카드 $count장 · ${formatCardDate(board.updatedAt)} 수정$folderText',
+            style: AppText.meta.copyWith(color: palette.textDim),
+          ),
 
-        // 이름 바꾸기·폴더 정하기·지우기는 자주 쓰지 않아서 메뉴 안에
-        // 넣습니다. 줄마다 버튼을 여러 개 늘어놓으면 정작 중요한
-        // "열기"가 묻힙니다. 팝업으로 여는 것도 이제 별도 버튼이
-        // 아니라 onTap 자체이므로(위 _openBoard 설명 참고), 여기
-        // 남는 것은 이 메뉴뿐입니다.
-        trailing: PopupMenuButton<String>(
-          onSelected: (String value) {
-            if (value == 'rename') {
-              _renameBoard(board);
-            } else if (value == 'folder') {
-              _setBoardFolder(board);
-            } else if (value == 'delete') {
-              _deleteBoard(board);
-            }
-          },
-          itemBuilder: (BuildContext context) {
-            return const <PopupMenuEntry<String>>[
-              PopupMenuItem<String>(value: 'rename', child: Text('이름 바꾸기')),
-              PopupMenuItem<String>(value: 'folder', child: Text('폴더 정하기')),
-              PopupMenuItem<String>(value: 'delete', child: Text('지우기')),
-            ];
-          },
+          // 이름 바꾸기·폴더 정하기·지우기는 자주 쓰지 않아서 메뉴 안에
+          // 넣습니다. 줄마다 버튼을 여러 개 늘어놓으면 정작 중요한
+          // "열기"가 묻힙니다. 팝업으로 여는 것도 이제 별도 버튼이
+          // 아니라 onTap 자체이므로(위 _openBoard 설명 참고), 여기
+          // 남는 것은 이 메뉴뿐입니다.
+          trailing: PopupMenuButton<String>(
+            onSelected: (String value) {
+              if (value == 'rename') {
+                _renameBoard(board);
+              } else if (value == 'folder') {
+                _setBoardFolder(board);
+              } else if (value == 'delete') {
+                _deleteBoard(board);
+              }
+            },
+            itemBuilder: (BuildContext context) {
+              return const <PopupMenuEntry<String>>[
+                PopupMenuItem<String>(value: 'rename', child: Text('이름 바꾸기')),
+                PopupMenuItem<String>(value: 'folder', child: Text('폴더 정하기')),
+                PopupMenuItem<String>(value: 'delete', child: Text('지우기')),
+              ];
+            },
+          ),
         ),
       ),
     );

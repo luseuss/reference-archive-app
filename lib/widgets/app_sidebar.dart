@@ -74,6 +74,7 @@ class AppSidebar extends StatefulWidget {
     required this.onMoveFolder,
     required this.onCreateFolder,
     required this.onOpenBoards,
+    required this.onCreateBoard,
     required this.onOpenTrash,
     required this.onOpenSettings,
     required this.onLogInOut,
@@ -111,6 +112,9 @@ class AppSidebar extends StatefulWidget {
 
   /// 무드보드 목록을 눌렀을 때 실행할 동작입니다.
   final VoidCallback onOpenBoards;
+
+  /// "무드보드" 줄의 우클릭 메뉴 "새 무드보드 만들기"를 눌렀을 때 실행합니다.
+  final VoidCallback onCreateBoard;
 
   /// 휴지통을 눌렀을 때 실행할 동작입니다.
   final VoidCallback onOpenTrash;
@@ -264,15 +268,26 @@ class _AppSidebarState extends State<AppSidebar> {
 
   /// 무드보드로 가는 줄입니다.
   Widget _buildBoardsBlock(AppPalette dark) {
-    return _buildNavItem(
-      dark,
-      icon: Icons.dashboard_outlined,
-      label: '무드보드',
+    // "전체 레퍼런스" 줄의 "새 폴더 만들기"와 같은 결로, 우클릭(또는
+    // 길게 누르기)하면 "새 무드보드 만들기"가 바로 뜹니다.
+    return ContextMenuRegion(
+      buildActions: () => <ContextMenuAction>[
+        ContextMenuAction(
+          label: '새 무드보드 만들기',
+          icon: Icons.add_to_photos_outlined,
+          onSelected: widget.onCreateBoard,
+        ),
+      ],
+      child: _buildNavItem(
+        dark,
+        icon: Icons.dashboard_outlined,
+        label: '무드보드',
 
-      // 고른 상태로 표시하지 않습니다. 여기는 "머무는 자리"가 아니라
-      // 다른 화면으로 가는 문이라, 켜져 있으면 지금 그 화면인 줄 오해합니다.
-      isSelected: false,
-      onTap: widget.onOpenBoards,
+        // 고른 상태로 표시하지 않습니다. 여기는 "머무는 자리"가 아니라
+        // 다른 화면으로 가는 문이라, 켜져 있으면 지금 그 화면인 줄 오해합니다.
+        isSelected: false,
+        onTap: widget.onOpenBoards,
+      ),
     );
   }
 
