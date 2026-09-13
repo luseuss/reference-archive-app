@@ -2116,9 +2116,9 @@ class $BoardCardsTable extends BoardCards
   late final GeneratedColumn<String> referenceId = GeneratedColumn<String>(
     'reference_id',
     aliasedName,
-    false,
+    true,
     type: DriftSqlType.string,
-    requiredDuringInsert: true,
+    requiredDuringInsert: false,
   );
   static const VerificationMeta _xMeta = const VerificationMeta('x');
   @override
@@ -2211,6 +2211,28 @@ class $BoardCardsTable extends BoardCards
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _textContentMeta = const VerificationMeta(
+    'textContent',
+  );
+  @override
+  late final GeneratedColumn<String> textContent = GeneratedColumn<String>(
+    'text_content',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _fontFamilyMeta = const VerificationMeta(
+    'fontFamily',
+  );
+  @override
+  late final GeneratedColumn<String> fontFamily = GeneratedColumn<String>(
+    'font_family',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -2225,6 +2247,8 @@ class $BoardCardsTable extends BoardCards
     updatedAt,
     deletedAt,
     groupId,
+    textContent,
+    fontFamily,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -2259,8 +2283,6 @@ class $BoardCardsTable extends BoardCards
           _referenceIdMeta,
         ),
       );
-    } else if (isInserting) {
-      context.missing(_referenceIdMeta);
     }
     if (data.containsKey('x')) {
       context.handle(_xMeta, x.isAcceptableOrUnknown(data['x']!, _xMeta));
@@ -2318,6 +2340,21 @@ class $BoardCardsTable extends BoardCards
         groupId.isAcceptableOrUnknown(data['group_id']!, _groupIdMeta),
       );
     }
+    if (data.containsKey('text_content')) {
+      context.handle(
+        _textContentMeta,
+        textContent.isAcceptableOrUnknown(
+          data['text_content']!,
+          _textContentMeta,
+        ),
+      );
+    }
+    if (data.containsKey('font_family')) {
+      context.handle(
+        _fontFamilyMeta,
+        fontFamily.isAcceptableOrUnknown(data['font_family']!, _fontFamilyMeta),
+      );
+    }
     return context;
   }
 
@@ -2338,7 +2375,7 @@ class $BoardCardsTable extends BoardCards
       referenceId: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}reference_id'],
-      )!,
+      ),
       x: attachedDatabase.typeMapping.read(
         DriftSqlType.double,
         data['${effectivePrefix}x'],
@@ -2375,6 +2412,14 @@ class $BoardCardsTable extends BoardCards
         DriftSqlType.string,
         data['${effectivePrefix}group_id'],
       ),
+      textContent: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}text_content'],
+      ),
+      fontFamily: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}font_family'],
+      ),
     );
   }
 
@@ -2391,8 +2436,10 @@ class BoardCardRow extends DataClass implements Insertable<BoardCardRow> {
   /// 어느 무드보드에 놓였는지
   final String boardId;
 
-  /// 어느 레퍼런스인지
-  final String referenceId;
+  /// 어느 레퍼런스인지입니다. **텍스트 카드는 이 칸이 비어 있습니다**
+  /// (schemaVersion 9) — "레퍼런스 카드"와 "텍스트 카드"를 가르는
+  /// 기준이 이 칸입니다. `textContent`도 함께 참고하세요.
+  final String? referenceId;
 
   /// 판 위에서의 가로 위치입니다. 판의 왼쪽 끝이 0입니다.
   ///
@@ -2443,10 +2490,32 @@ class BoardCardRow extends DataClass implements Insertable<BoardCardRow> {
   /// 같은 값을 들고 있으면 한 그룹입니다. 그룹을 풀면 이 칸을 다시
   /// null로 되돌립니다 — 값 자체를 어디서도 다시 쓰지 않으므로 안전합니다.
   final String? groupId;
+
+  /// **텍스트 카드**의 내용입니다(schemaVersion 9). 레퍼런스 카드는 이
+  /// 칸이 비어 있습니다.
+  ///
+  /// 저장 형식은 레퍼런스 메모(`References.memo`)와 똑같은 서식 있는
+  /// Delta(JSON) 문자열입니다 — `lib/utils/rich_text_memo.dart`의
+  /// 변환 함수를 그대로 재사용합니다. 새 형식을 또 만들지 않아도
+  /// 굵게·기울임·밑줄·목록·정렬 같은 서식을 그대로 쓸 수 있습니다.
+  final String? textContent;
+
+  /// 텍스트 카드의 글꼴입니다(schemaVersion 9). 비어 있으면 앱 기본
+  /// 글꼴(Pretendard)입니다.
+  ///
+  /// ── 왜 이름(문자열)만 저장하나 ──
+  /// 앱에 미리 담아둔 글꼴(`Pretendard`, `Gowun Batang`)이면 이름만으로
+  /// 충분합니다. 컴퓨터에 설치된 글꼴을 골랐다면, 이름과 함께 그 글꼴
+  /// 파일을 다시 등록해야 실제로 그 모양이 보입니다 — 그 등록 절차는
+  /// `lib/services/system_fonts.dart`가 앱을 켤 때마다 다시 해줍니다
+  /// (파일 경로 자체는 저장하지 않습니다 — 컴퓨터마다 설치된 글꼴이
+  /// 다르고 경로도 다를 수 있어서, 이름으로 다시 찾는 편이 안전합니다).
+  /// 이 컴퓨터에 그 글꼴이 없으면 조용히 앱 기본 글꼴로 보입니다.
+  final String? fontFamily;
   const BoardCardRow({
     required this.id,
     required this.boardId,
-    required this.referenceId,
+    this.referenceId,
     required this.x,
     required this.y,
     required this.width,
@@ -2456,13 +2525,17 @@ class BoardCardRow extends DataClass implements Insertable<BoardCardRow> {
     required this.updatedAt,
     this.deletedAt,
     this.groupId,
+    this.textContent,
+    this.fontFamily,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
     map['id'] = Variable<String>(id);
     map['board_id'] = Variable<String>(boardId);
-    map['reference_id'] = Variable<String>(referenceId);
+    if (!nullToAbsent || referenceId != null) {
+      map['reference_id'] = Variable<String>(referenceId);
+    }
     map['x'] = Variable<double>(x);
     map['y'] = Variable<double>(y);
     map['width'] = Variable<double>(width);
@@ -2478,6 +2551,12 @@ class BoardCardRow extends DataClass implements Insertable<BoardCardRow> {
     if (!nullToAbsent || groupId != null) {
       map['group_id'] = Variable<String>(groupId);
     }
+    if (!nullToAbsent || textContent != null) {
+      map['text_content'] = Variable<String>(textContent);
+    }
+    if (!nullToAbsent || fontFamily != null) {
+      map['font_family'] = Variable<String>(fontFamily);
+    }
     return map;
   }
 
@@ -2485,7 +2564,9 @@ class BoardCardRow extends DataClass implements Insertable<BoardCardRow> {
     return BoardCardsCompanion(
       id: Value(id),
       boardId: Value(boardId),
-      referenceId: Value(referenceId),
+      referenceId: referenceId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(referenceId),
       x: Value(x),
       y: Value(y),
       width: Value(width),
@@ -2501,6 +2582,12 @@ class BoardCardRow extends DataClass implements Insertable<BoardCardRow> {
       groupId: groupId == null && nullToAbsent
           ? const Value.absent()
           : Value(groupId),
+      textContent: textContent == null && nullToAbsent
+          ? const Value.absent()
+          : Value(textContent),
+      fontFamily: fontFamily == null && nullToAbsent
+          ? const Value.absent()
+          : Value(fontFamily),
     );
   }
 
@@ -2512,7 +2599,7 @@ class BoardCardRow extends DataClass implements Insertable<BoardCardRow> {
     return BoardCardRow(
       id: serializer.fromJson<String>(json['id']),
       boardId: serializer.fromJson<String>(json['boardId']),
-      referenceId: serializer.fromJson<String>(json['referenceId']),
+      referenceId: serializer.fromJson<String?>(json['referenceId']),
       x: serializer.fromJson<double>(json['x']),
       y: serializer.fromJson<double>(json['y']),
       width: serializer.fromJson<double>(json['width']),
@@ -2522,6 +2609,8 @@ class BoardCardRow extends DataClass implements Insertable<BoardCardRow> {
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
       deletedAt: serializer.fromJson<DateTime?>(json['deletedAt']),
       groupId: serializer.fromJson<String?>(json['groupId']),
+      textContent: serializer.fromJson<String?>(json['textContent']),
+      fontFamily: serializer.fromJson<String?>(json['fontFamily']),
     );
   }
   @override
@@ -2530,7 +2619,7 @@ class BoardCardRow extends DataClass implements Insertable<BoardCardRow> {
     return <String, dynamic>{
       'id': serializer.toJson<String>(id),
       'boardId': serializer.toJson<String>(boardId),
-      'referenceId': serializer.toJson<String>(referenceId),
+      'referenceId': serializer.toJson<String?>(referenceId),
       'x': serializer.toJson<double>(x),
       'y': serializer.toJson<double>(y),
       'width': serializer.toJson<double>(width),
@@ -2540,13 +2629,15 @@ class BoardCardRow extends DataClass implements Insertable<BoardCardRow> {
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
       'deletedAt': serializer.toJson<DateTime?>(deletedAt),
       'groupId': serializer.toJson<String?>(groupId),
+      'textContent': serializer.toJson<String?>(textContent),
+      'fontFamily': serializer.toJson<String?>(fontFamily),
     };
   }
 
   BoardCardRow copyWith({
     String? id,
     String? boardId,
-    String? referenceId,
+    Value<String?> referenceId = const Value.absent(),
     double? x,
     double? y,
     double? width,
@@ -2556,10 +2647,12 @@ class BoardCardRow extends DataClass implements Insertable<BoardCardRow> {
     DateTime? updatedAt,
     Value<DateTime?> deletedAt = const Value.absent(),
     Value<String?> groupId = const Value.absent(),
+    Value<String?> textContent = const Value.absent(),
+    Value<String?> fontFamily = const Value.absent(),
   }) => BoardCardRow(
     id: id ?? this.id,
     boardId: boardId ?? this.boardId,
-    referenceId: referenceId ?? this.referenceId,
+    referenceId: referenceId.present ? referenceId.value : this.referenceId,
     x: x ?? this.x,
     y: y ?? this.y,
     width: width ?? this.width,
@@ -2569,6 +2662,8 @@ class BoardCardRow extends DataClass implements Insertable<BoardCardRow> {
     updatedAt: updatedAt ?? this.updatedAt,
     deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
     groupId: groupId.present ? groupId.value : this.groupId,
+    textContent: textContent.present ? textContent.value : this.textContent,
+    fontFamily: fontFamily.present ? fontFamily.value : this.fontFamily,
   );
   BoardCardRow copyWithCompanion(BoardCardsCompanion data) {
     return BoardCardRow(
@@ -2586,6 +2681,12 @@ class BoardCardRow extends DataClass implements Insertable<BoardCardRow> {
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
       deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
       groupId: data.groupId.present ? data.groupId.value : this.groupId,
+      textContent: data.textContent.present
+          ? data.textContent.value
+          : this.textContent,
+      fontFamily: data.fontFamily.present
+          ? data.fontFamily.value
+          : this.fontFamily,
     );
   }
 
@@ -2603,7 +2704,9 @@ class BoardCardRow extends DataClass implements Insertable<BoardCardRow> {
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('deletedAt: $deletedAt, ')
-          ..write('groupId: $groupId')
+          ..write('groupId: $groupId, ')
+          ..write('textContent: $textContent, ')
+          ..write('fontFamily: $fontFamily')
           ..write(')'))
         .toString();
   }
@@ -2622,6 +2725,8 @@ class BoardCardRow extends DataClass implements Insertable<BoardCardRow> {
     updatedAt,
     deletedAt,
     groupId,
+    textContent,
+    fontFamily,
   );
   @override
   bool operator ==(Object other) =>
@@ -2638,13 +2743,15 @@ class BoardCardRow extends DataClass implements Insertable<BoardCardRow> {
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt &&
           other.deletedAt == this.deletedAt &&
-          other.groupId == this.groupId);
+          other.groupId == this.groupId &&
+          other.textContent == this.textContent &&
+          other.fontFamily == this.fontFamily);
 }
 
 class BoardCardsCompanion extends UpdateCompanion<BoardCardRow> {
   final Value<String> id;
   final Value<String> boardId;
-  final Value<String> referenceId;
+  final Value<String?> referenceId;
   final Value<double> x;
   final Value<double> y;
   final Value<double> width;
@@ -2654,6 +2761,8 @@ class BoardCardsCompanion extends UpdateCompanion<BoardCardRow> {
   final Value<DateTime> updatedAt;
   final Value<DateTime?> deletedAt;
   final Value<String?> groupId;
+  final Value<String?> textContent;
+  final Value<String?> fontFamily;
   final Value<int> rowid;
   const BoardCardsCompanion({
     this.id = const Value.absent(),
@@ -2668,12 +2777,14 @@ class BoardCardsCompanion extends UpdateCompanion<BoardCardRow> {
     this.updatedAt = const Value.absent(),
     this.deletedAt = const Value.absent(),
     this.groupId = const Value.absent(),
+    this.textContent = const Value.absent(),
+    this.fontFamily = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   BoardCardsCompanion.insert({
     required String id,
     required String boardId,
-    required String referenceId,
+    this.referenceId = const Value.absent(),
     required double x,
     required double y,
     this.width = const Value.absent(),
@@ -2683,10 +2794,11 @@ class BoardCardsCompanion extends UpdateCompanion<BoardCardRow> {
     required DateTime updatedAt,
     this.deletedAt = const Value.absent(),
     this.groupId = const Value.absent(),
+    this.textContent = const Value.absent(),
+    this.fontFamily = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        boardId = Value(boardId),
-       referenceId = Value(referenceId),
        x = Value(x),
        y = Value(y),
        createdAt = Value(createdAt),
@@ -2704,6 +2816,8 @@ class BoardCardsCompanion extends UpdateCompanion<BoardCardRow> {
     Expression<DateTime>? updatedAt,
     Expression<DateTime>? deletedAt,
     Expression<String>? groupId,
+    Expression<String>? textContent,
+    Expression<String>? fontFamily,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -2719,6 +2833,8 @@ class BoardCardsCompanion extends UpdateCompanion<BoardCardRow> {
       if (updatedAt != null) 'updated_at': updatedAt,
       if (deletedAt != null) 'deleted_at': deletedAt,
       if (groupId != null) 'group_id': groupId,
+      if (textContent != null) 'text_content': textContent,
+      if (fontFamily != null) 'font_family': fontFamily,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -2726,7 +2842,7 @@ class BoardCardsCompanion extends UpdateCompanion<BoardCardRow> {
   BoardCardsCompanion copyWith({
     Value<String>? id,
     Value<String>? boardId,
-    Value<String>? referenceId,
+    Value<String?>? referenceId,
     Value<double>? x,
     Value<double>? y,
     Value<double>? width,
@@ -2736,6 +2852,8 @@ class BoardCardsCompanion extends UpdateCompanion<BoardCardRow> {
     Value<DateTime>? updatedAt,
     Value<DateTime?>? deletedAt,
     Value<String?>? groupId,
+    Value<String?>? textContent,
+    Value<String?>? fontFamily,
     Value<int>? rowid,
   }) {
     return BoardCardsCompanion(
@@ -2751,6 +2869,8 @@ class BoardCardsCompanion extends UpdateCompanion<BoardCardRow> {
       updatedAt: updatedAt ?? this.updatedAt,
       deletedAt: deletedAt ?? this.deletedAt,
       groupId: groupId ?? this.groupId,
+      textContent: textContent ?? this.textContent,
+      fontFamily: fontFamily ?? this.fontFamily,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -2794,6 +2914,12 @@ class BoardCardsCompanion extends UpdateCompanion<BoardCardRow> {
     if (groupId.present) {
       map['group_id'] = Variable<String>(groupId.value);
     }
+    if (textContent.present) {
+      map['text_content'] = Variable<String>(textContent.value);
+    }
+    if (fontFamily.present) {
+      map['font_family'] = Variable<String>(fontFamily.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -2815,6 +2941,8 @@ class BoardCardsCompanion extends UpdateCompanion<BoardCardRow> {
           ..write('updatedAt: $updatedAt, ')
           ..write('deletedAt: $deletedAt, ')
           ..write('groupId: $groupId, ')
+          ..write('textContent: $textContent, ')
+          ..write('fontFamily: $fontFamily, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -3877,7 +4005,7 @@ typedef $$BoardsTableProcessedTableManager =
 typedef $$BoardCardsTableCreateCompanionBuilder = BoardCardsCompanion Function({
   required String id,
   required String boardId,
-  required String referenceId,
+  Value<String?> referenceId,
   required double x,
   required double y,
   Value<double> width,
@@ -3887,12 +4015,14 @@ typedef $$BoardCardsTableCreateCompanionBuilder = BoardCardsCompanion Function({
   required DateTime updatedAt,
   Value<DateTime?> deletedAt,
   Value<String?> groupId,
+  Value<String?> textContent,
+  Value<String?> fontFamily,
   Value<int> rowid,
 });
 typedef $$BoardCardsTableUpdateCompanionBuilder = BoardCardsCompanion Function({
   Value<String> id,
   Value<String> boardId,
-  Value<String> referenceId,
+  Value<String?> referenceId,
   Value<double> x,
   Value<double> y,
   Value<double> width,
@@ -3902,6 +4032,8 @@ typedef $$BoardCardsTableUpdateCompanionBuilder = BoardCardsCompanion Function({
   Value<DateTime> updatedAt,
   Value<DateTime?> deletedAt,
   Value<String?> groupId,
+  Value<String?> textContent,
+  Value<String?> fontFamily,
   Value<int> rowid,
 });
 
@@ -3971,6 +4103,16 @@ class $$BoardCardsTableFilterComposer
 
   ColumnFilters<String> get groupId => $composableBuilder(
     column: $table.groupId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get textContent => $composableBuilder(
+    column: $table.textContent,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get fontFamily => $composableBuilder(
+    column: $table.fontFamily,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -4043,6 +4185,16 @@ class $$BoardCardsTableOrderingComposer
     column: $table.groupId,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get textContent => $composableBuilder(
+    column: $table.textContent,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get fontFamily => $composableBuilder(
+    column: $table.fontFamily,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$BoardCardsTableAnnotationComposer
@@ -4091,6 +4243,16 @@ class $$BoardCardsTableAnnotationComposer
 
   GeneratedColumn<String> get groupId =>
       $composableBuilder(column: $table.groupId, builder: (column) => column);
+
+  GeneratedColumn<String> get textContent => $composableBuilder(
+    column: $table.textContent,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get fontFamily => $composableBuilder(
+    column: $table.fontFamily,
+    builder: (column) => column,
+  );
 }
 
 class $$BoardCardsTableTableManager
@@ -4126,7 +4288,7 @@ class $$BoardCardsTableTableManager
               ({
                 Value<String> id = const Value.absent(),
                 Value<String> boardId = const Value.absent(),
-                Value<String> referenceId = const Value.absent(),
+                Value<String?> referenceId = const Value.absent(),
                 Value<double> x = const Value.absent(),
                 Value<double> y = const Value.absent(),
                 Value<double> width = const Value.absent(),
@@ -4136,6 +4298,8 @@ class $$BoardCardsTableTableManager
                 Value<DateTime> updatedAt = const Value.absent(),
                 Value<DateTime?> deletedAt = const Value.absent(),
                 Value<String?> groupId = const Value.absent(),
+                Value<String?> textContent = const Value.absent(),
+                Value<String?> fontFamily = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => BoardCardsCompanion(
                 id: id,
@@ -4150,13 +4314,15 @@ class $$BoardCardsTableTableManager
                 updatedAt: updatedAt,
                 deletedAt: deletedAt,
                 groupId: groupId,
+                textContent: textContent,
+                fontFamily: fontFamily,
                 rowid: rowid,
               ),
           createCompanionCallback:
               ({
                 required String id,
                 required String boardId,
-                required String referenceId,
+                Value<String?> referenceId = const Value.absent(),
                 required double x,
                 required double y,
                 Value<double> width = const Value.absent(),
@@ -4166,6 +4332,8 @@ class $$BoardCardsTableTableManager
                 required DateTime updatedAt,
                 Value<DateTime?> deletedAt = const Value.absent(),
                 Value<String?> groupId = const Value.absent(),
+                Value<String?> textContent = const Value.absent(),
+                Value<String?> fontFamily = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => BoardCardsCompanion.insert(
                 id: id,
@@ -4180,6 +4348,8 @@ class $$BoardCardsTableTableManager
                 updatedAt: updatedAt,
                 deletedAt: deletedAt,
                 groupId: groupId,
+                textContent: textContent,
+                fontFamily: fontFamily,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0

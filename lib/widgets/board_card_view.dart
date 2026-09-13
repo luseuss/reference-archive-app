@@ -15,13 +15,18 @@ import 'dart:io';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
+import 'package:flutter_quill/flutter_quill.dart';
 
 import '../models/reference_item.dart';
+import '../services/system_fonts.dart';
 import '../theme/app_metrics.dart';
 import '../theme/app_palette.dart';
 import '../theme/app_text.dart';
 import '../utils/board_card_actions.dart' show BoardResizeCorner;
+import '../utils/rich_text_memo.dart';
 import 'context_menu.dart';
+import 'font_picker_popup.dart';
+import 'font_size_stepper.dart';
 
 /// 크기 조절 손잡이의 한 변 길이입니다.
 ///
@@ -49,10 +54,67 @@ class BoardCardView extends StatefulWidget {
     this.onStopPlaying,
     this.onOpenDetail,
     this.onUngroupSelected,
+    this.textContent,
+    this.fontFamily,
+    this.onTextChanged,
+    this.onTextFocusNodeCreated,
+    this.onTextFocusNodeDisposed,
+    this.onRequestBoardFocus,
   });
 
-  /// 이 카드가 보여주는 레퍼런스입니다.
-  final ReferenceItem item;
+  /// 이 카드가 보여주는 레퍼런스입니다. **텍스트 카드는 null입니다** —
+  /// 그때는 [textContent]를 대신 봅니다(schemaVersion 9).
+  final ReferenceItem? item;
+
+  /// 텍스트 카드의 내용(서식 있는 Delta JSON)입니다. [item]이 null일
+  /// 때만 뜻이 있습니다.
+  final String? textContent;
+
+  /// 텍스트 카드의 기본 글꼴입니다. null이면 앱 기본 글꼴입니다.
+  final String? fontFamily;
+
+  /// 텍스트 카드의 내용이 바뀔 때마다(글자를 치거나 서식을 바꿀 때마다)
+  /// 새 Delta(JSON) 문자열을 알려줍니다. 저장은 이 카드가 아니라
+  /// board_screen.dart가 합니다 — reference_card.dart의 onDelete와
+  /// 같은 원칙입니다.
+  final ValueChanged<String>? onTextChanged;
+
+  /// 텍스트 카드 편집기의 키보드 초점 노드([_textFocusNode])가 **만들어지는
+  /// 순간** 한 번 알려줍니다(카드 하나가 사는 동안 딱 한 번 — 편집을
+  /// 시작·종료할 때마다가 아닙니다). board_screen.dart가 "이 노드는
+  /// 텍스트 편집기의 것"이라고 기억해뒀다가, 판의 단축키(아래
+  /// [onTextFocusNodeDisposed] 설명 참고)를 지금 실행해도 되는지 판단할
+  /// 때 씁니다.
+  final ValueChanged<FocusNode>? onTextFocusNodeCreated;
+
+  /// 이 카드가 없어질 때(dispose) [_textFocusNode]를 잊어달라고 알립니다.
+  ///
+  /// ── 왜 이런 방식으로 만들었나 ──
+  /// 판 화면 전체를 감싼 단축키(Delete·Ctrl+V·Ctrl+Z, board_screen.dart의
+  /// `_handleBoardKeyEvent`)는 지금 초점이 어디 있는지와 상관없이 키를
+  /// 그대로 가로챕니다. 텍스트 카드 편집기가 안에서 Ctrl+V(글자
+  /// 붙여넣기)나 Backspace(글자 지우기)를 자기 것으로 처리하기 **전에**
+  /// 판의 단축키가 먼저 채가서, "글을 붙여넣으려 했는데 판이 새
+  /// 레퍼런스를 만들려 하고, 글자를 지우려 했는데 카드 자체가
+  /// 삭제되는" 문제가 실제로 있었습니다.
+  ///
+  /// **처음에는 "지금 편집 중"이라는 참/거짓 값을 직접 알리는 방식으로
+  /// 고쳤는데, 그러면 "완료" 버튼을 누르지 않고 그냥 다른 곳을 클릭해
+  /// 편집을 벗어나면 값이 거짓으로 안 바뀌어 판의 단축키가 계속 꺼진
+  /// 채로 남는** 새 버그가 생겼습니다(의뢰인 보고 — 텍스트도 이미지도
+  /// 붙여넣기가 안 됨). 그래서 지금은 참/거짓을 직접 들고 있지 않고,
+  /// board_screen.dart가 **키를 누르는 바로 그 순간** `FocusManager`에게
+  /// "지금 실제로 초점이 잡힌 위젯이 이 카드의 편집기인가"를 직접
+  /// 물어봅니다(`_isTextEditorFocused` 참고) — 초점은 클릭 한 번으로
+  /// 다른 곳으로 자연스럽게 옮겨가므로, "완료"를 누르든 그냥 클릭해서
+  /// 벗어나든 항상 정확합니다.
+  final ValueChanged<FocusNode>? onTextFocusNodeDisposed;
+
+  /// "완료"를 눌러 편집을 끝낼 때, 키보드 초점을 판 자신에게 돌려달라고
+  /// board_screen.dart에 부탁합니다. (자세한 이유는 `_finishEditingText()`
+  /// 안의 설명 참고 — `FocusNode.unfocus()`만으로는 초점이 엉뚱한
+  /// 곳(앱 뿌리 쪽 스코프)으로 가버려서 판의 단축키가 먹통이 됩니다)
+  final VoidCallback? onRequestBoardFocus;
 
   /// 이미지 파일의 전체 경로입니다. 아직 못 구했으면 null입니다.
   ///
@@ -155,6 +217,177 @@ class _BoardCardViewState extends State<BoardCardView> {
   /// 카드마다 따로 기억합니다. 판 전체가 기억하면 카드 하나에 마우스가 스칠 때마다
   /// 판에 놓인 카드를 전부 다시 그리게 됩니다.
   bool _isHovered = false;
+
+  /// **텍스트 카드**([widget.item]이 null)일 때만 씁니다. 편집기의
+  /// 내용과 커서 위치를 관리합니다 — rich_memo_editor.dart의
+  /// `_RichMemoEditorState`와 같은 패턴입니다.
+  QuillController? _textController;
+
+  /// 텍스트 편집기의 키보드 초점입니다. 편집 모드로 들어갈 때 여기로
+  /// 초점을 옮겨서 곧바로 타이핑할 수 있게 합니다.
+  final FocusNode _textFocusNode = FocusNode();
+
+  /// 지금 이 텍스트 카드를 고쳐 쓰는 중인지 여부입니다. 참일 때만
+  /// 서식 툴바가 뜨고, 안의 글자를 고칠 수 있습니다. 평소에는
+  /// 읽기 전용으로 보여서 판을 옮기거나 크기를 바꿀 때 실수로
+  /// 글자를 건드리지 않습니다.
+  bool _isEditingText = false;
+
+  /// 이 컴퓨터에 설치된 글꼴 목록입니다. 텍스트 카드일 때만 한 번
+  /// 읽어옵니다(레지스트리를 읽는 일이라 카드마다 매번 다시 읽을
+  /// 필요가 없습니다 — initState에서 한 번만 부릅니다).
+  List<SystemFontInfo> _systemFonts = const <SystemFontInfo>[];
+
+  /// 서식 툴바를 카드에 붙이지 않고 **떠 있는 팝업**으로 보여주기
+  /// 위한 자리입니다. 열려 있으면 값이 있고, 닫혀 있으면 null입니다.
+  /// (자세한 이유는 아래 [_openFloatingToolbar] 설명 참고)
+  OverlayEntry? _toolbarEntry;
+
+  /// 마지막으로 두 번 누른 자리(화면 기준)입니다. 편집 모드로 들어가는
+  /// 순간 그 자리 근처에 서식 툴바를 띄우려고 기억해둡니다.
+  Offset? _lastDoubleTapPosition;
+
+  @override
+  void initState() {
+    super.initState();
+
+    if (widget.item == null) {
+      _textController = QuillController(
+        document: documentFromMemo(widget.textContent),
+        selection: const TextSelection.collapsed(offset: 0),
+        // 이 카드는 순수 리치텍스트 서식만 다룹니다. 그림은 이미
+        // "레퍼런스 카드"라는 자기 자리가 있어서, 텍스트 카드 안에
+        // 따로 박아 넣는 기능은 없습니다. enableExternalRichPaste(기본값
+        // 참)를 켜두면 브라우저·워드 등에서 복사한 서식 있는 글(HTML)을
+        // 붙여넣을 때 그 안의 <img> 태그가 그림 삽입 서식(embed)으로
+        // 바뀌어 들어가는데, 이 앱은 그걸 그릴 방법(embedBuilders)이
+        // 없어서 "UnimplementedError: Embeddable type image is not
+        // supported..."로 앱이 죽습니다(의뢰인이 실제로 겪은 크래시 —
+        // rich_memo_editor.dart도 같은 이유로 같이 고쳤습니다). 그래서
+        // 서식 있는 붙여넣기 자체를 꺼서, 무엇을 붙여넣든 항상 순수
+        // 글자로만 들어오게 합니다.
+        config: const QuillControllerConfig(
+          clipboardConfig: QuillClipboardConfig(
+            enableExternalRichPaste: false,
+          ),
+        ),
+      );
+      _systemFonts = loadInstalledFontFamilies();
+      // board_screen.dart에게 "이 초점 노드는 텍스트 편집기 것"이라고
+      // 알려둡니다. 편집을 시작·종료할 때마다가 아니라 카드가 살아있는
+      // 동안 딱 한 번입니다(onTextFocusNodeDisposed 설명 참고).
+      widget.onTextFocusNodeCreated?.call(_textFocusNode);
+    }
+  }
+
+  @override
+  void dispose() {
+    _closeFloatingToolbar();
+    if (widget.item == null) {
+      widget.onTextFocusNodeDisposed?.call(_textFocusNode);
+    }
+    _textController?.dispose();
+    _textFocusNode.dispose();
+    super.dispose();
+  }
+
+  /// 텍스트 카드를 편집 모드로 들어갑니다. 서식 툴바(떠 있는 팝업)를
+  /// 두 번 누른 자리 근처에 띄우고, 바로 타이핑할 수 있게 초점을 옮깁니다.
+  void _startEditingText() {
+    setState(() {
+      _isEditingText = true;
+    });
+    _textFocusNode.requestFocus();
+    _openFloatingToolbar(_lastDoubleTapPosition ?? Offset.zero);
+  }
+
+  /// 텍스트 카드 편집을 끝내고 읽기 전용으로 돌아갑니다. 뜬 서식
+  /// 팝업을 닫고, 바뀐 내용을 저장하라고 바깥에 알립니다.
+  void _finishEditingText() {
+    if (!_isEditingText) {
+      return;
+    }
+    _closeFloatingToolbar();
+    setState(() {
+      _isEditingText = false;
+    });
+    // 키보드 초점을 판 자신에게 돌려줍니다. **`_textFocusNode.unfocus()`만
+    // 부르면 안 됩니다** — `unfocus()`는 "가장 가까운 FocusScope로
+    // 초점을 올려보낼 뿐"이라, 이 판의 자체 단축키 처리
+    // (board_screen.dart의 `_handleBoardKeyEvent`)가 있는 자리로
+    // 돌아온다는 보장이 없습니다(실제로는 훨씬 위 스코프로 가버려서,
+    // 그 뒤로 Ctrl+V·Delete·Ctrl+Z가 전부 어디에도 안 가고 사라지는
+    // 문제가 있었습니다). `onRequestBoardFocus`는 board_screen.dart가
+    // "판 자신의 초점 노드"에 직접 `requestFocus()`를 불러서, 도착지가
+    // 확실합니다.
+    widget.onRequestBoardFocus?.call();
+    widget.onTextChanged?.call(memoFromDocument(_textController!.document));
+  }
+
+  /// [globalPosition](화면 기준) 근처에 서식 툴바 팝업을 띄웁니다.
+  ///
+  /// ── 왜 카드에 붙이지 않고 떠 있는 팝업으로 만들었나 ──
+  /// 처음에는 편집 모드에 들어가면 카드 위쪽에 툴바가 항상 붙어
+  /// 그려졌는데, 의뢰인이 "떨어져 있도록, 우클릭하면 뜨는 선택창처럼"
+  /// 만들어달라고 요청했습니다. 그래서 지금은 `Overlay`(이 앱
+  /// 화면 전체를 덮는 맨 위층 — 카드가 속한 판의 확대·이동과
+  /// 무관하게 항상 화면 기준 자리에 그려집니다)에 팝업을 끼워
+  /// 넣습니다. 이미 열려 있으면 먼저 닫고 새 자리에 다시 엽니다.
+  ///
+  /// ── 왜 바깥을 눌러도 안 닫히나 ──
+  /// 보통 컨텍스트 메뉴(context_menu.dart)는 바깥을 누르면 닫히는
+  /// 투명한 배경이 전체 화면을 덮습니다. 그런데 이 팝업은 "메뉴"가
+  /// 아니라 "계속 글을 고치면서 곁에 두고 쓰는 도구"라, 전체 화면을
+  /// 덮는 배경을 두면 편집기 안 글자를 클릭해 커서를 옮기는 것조차
+  /// 막혀버립니다. 그래서 우클릭으로 다시 토글하거나(_toggleFloatingToolbar)
+  /// "완료"를 눌러야만 닫힙니다.
+  void _openFloatingToolbar(Offset globalPosition) {
+    _closeFloatingToolbar();
+
+    final OverlayState overlay = Overlay.of(context);
+    final RenderBox overlayBox =
+        overlay.context.findRenderObject()! as RenderBox;
+    final Size overlaySize = overlayBox.size;
+
+    const double panelWidth = 420;
+    const double panelHeight = 48;
+    final double left = globalPosition.dx.clamp(
+      0.0,
+      (overlaySize.width - panelWidth).clamp(0.0, double.infinity),
+    );
+    final double top = globalPosition.dy.clamp(
+      0.0,
+      (overlaySize.height - panelHeight).clamp(0.0, double.infinity),
+    );
+
+    final OverlayEntry entry = OverlayEntry(
+      builder: (BuildContext context) {
+        return Positioned(
+          left: left,
+          top: top,
+          child: _buildFloatingToolbarPanel(),
+        );
+      },
+    );
+    _toolbarEntry = entry;
+    overlay.insert(entry);
+  }
+
+  /// 떠 있는 서식 팝업을 닫습니다. 이미 닫혀 있으면 아무 일도 안 합니다.
+  void _closeFloatingToolbar() {
+    _toolbarEntry?.remove();
+    _toolbarEntry = null;
+  }
+
+  /// 우클릭한 자리에 팝업이 닫혀 있으면 열고, 열려 있으면 닫습니다.
+  /// (컨텍스트 메뉴를 다시 우클릭하면 닫히는 것과 같은 손맛입니다)
+  void _toggleFloatingToolbar(Offset globalPosition) {
+    if (_toolbarEntry != null) {
+      _closeFloatingToolbar();
+    } else {
+      _openFloatingToolbar(globalPosition);
+    }
+  }
 
   /// 손잡이를 잡는 순간 카드의 실제 크기를 재서 바깥에 알려줍니다.
   ///
@@ -276,7 +509,7 @@ class _BoardCardViewState extends State<BoardCardView> {
       // avoidGestureArena 설명 참고). 그래서 이 카드만은 아레나에
       // 안 끼는 방식을 씁니다.
       avoidGestureArena: true,
-      buildActions: () => <ContextMenuAction>[
+      buildActions: (_) => <ContextMenuAction>[
         if (widget.onOpenDetail != null)
           ContextMenuAction(
             label: '레퍼런스 상세 열기',
@@ -310,6 +543,11 @@ class _BoardCardViewState extends State<BoardCardView> {
   /// 크기 조절이 **가로세로 비율을 고정한 채** 이뤄지기 때문입니다
   /// (board_screen.dart의 `_onResizeUpdate` 설명 참고).
   Widget _buildImage(ColorScheme colors) {
+    // 텍스트 카드는 그림이 아니라 글자를 보여줍니다.
+    if (widget.item == null) {
+      return _buildTextCard();
+    }
+
     // 재생 중이면 썸네일 대신 진짜 재생기(웹뷰)를 보여줍니다.
     if (widget.isPlaying && widget.playerUrl != null) {
       return _buildSizedPlayer(widget.playerUrl!);
@@ -353,6 +591,203 @@ class _BoardCardViewState extends State<BoardCardView> {
         return AspectRatio(
           aspectRatio: 4 / 3,
           child: _buildPlaceholder(colors, Icons.broken_image_outlined),
+        );
+      },
+    );
+  }
+
+  /// 텍스트 카드의 내용을 그립니다.
+  ///
+  /// ── 왜 사진과 달리 SizedBox.expand로 채우나 ──
+  /// 사진은 원본 비율대로 스스로 높이를 정합니다(card.height가 비어
+  /// 있을 수 있음). 텍스트 카드는 그런 "자연스러운 높이"가 없어서,
+  /// 처음 만들 때부터 항상 정해진 높이를 갖습니다(board_interaction_controller.dart의
+  /// addTextCardAt 참고). 그래서 위(Positioned)에서 내려주는 높이를
+  /// 그대로 다 채우면 됩니다 — 재생기 웹뷰가 겪은 것과 같은 "무한
+  /// 높이" 문제(위 _buildSizedPlayer 설명 참고)를 애초에 피합니다.
+  ///
+  /// ── 평소엔 읽기 전용, 두 번 눌러야 고칠 수 있음 ──
+  /// 판 위 카드는 대부분의 시간 동안 "옮기거나 크기를 바꾸는" 대상이지
+  /// "타이핑하는" 대상이 아닙니다. 한 번 누르면 바로 편집기로 들어가면
+  /// 카드를 옮기려고 누른 손짓과 부딪힙니다. 두 번 눌러야 편집 모드로
+  /// 들어가게 해서, 평소 끌기는 방해받지 않습니다.
+  Widget _buildTextCard() {
+    final AppPalette palette = AppPalette.of(context);
+    final QuillController controller = _textController!;
+    controller.readOnly = !_isEditingText;
+
+    final TextStyle baseStyle = AppText.cardMemo.copyWith(
+      color: palette.text,
+      fontFamily: widget.fontFamily,
+    );
+
+    final Widget editor = QuillEditor.basic(
+      controller: controller,
+      focusNode: _textFocusNode,
+      config: QuillEditorConfig(
+        padding: const EdgeInsets.all(12),
+        expands: true,
+        scrollable: true,
+        customStyles: DefaultStyles(
+          paragraph: DefaultTextBlockStyle(
+            baseStyle,
+            HorizontalSpacing.zero,
+            VerticalSpacing.zero,
+            VerticalSpacing.zero,
+            null,
+          ),
+        ),
+      ),
+    );
+
+    if (!_isEditingText) {
+      // 편집 중이 아닐 때는 두 번 눌러야 편집기로 들어갑니다. 평소
+      // 끌기(카드 옮기기)는 이 GestureDetector를 그냥 지나갑니다 —
+      // onDoubleTap만 반응하고 onPanStart 같은 건 안 걸었으므로
+      // board_canvas.dart의 끌기 인식기와 부딪히지 않습니다.
+      // onDoubleTapDown으로 누른 자리를 기억해뒀다가, 편집 모드로
+      // 들어가는 순간(_startEditingText) 그 근처에 서식 팝업을 띄웁니다.
+      return SizedBox.expand(
+        child: GestureDetector(
+          onDoubleTapDown: (TapDownDetails details) {
+            _lastDoubleTapPosition = details.globalPosition;
+          },
+          onDoubleTap: _startEditingText,
+          child: AbsorbPointer(child: editor),
+        ),
+      );
+    }
+
+    // 편집 중에는 서식 툴바를 카드에 붙이지 않습니다 — 우클릭으로
+    // 여닫는 떠 있는 팝업(_openFloatingToolbar)이 대신합니다. 그래서
+    // 여기는 편집기만 그리고, `Listener`로 우클릭(마우스 오른쪽 버튼)만
+    // 원시 신호로 잡습니다. `Listener`는 제스처 아레나에 안 끼어서
+    // 편집기 자신의 클릭·드래그(글자 선택, 커서 옮기기) 인식과 전혀
+    // 안 부딪힙니다 — context_menu.dart의 `avoidGestureArena`와 같은
+    // 이유입니다.
+    return SizedBox.expand(
+      child: Listener(
+        onPointerDown: (PointerDownEvent event) {
+          if (event.kind == PointerDeviceKind.mouse &&
+              event.buttons == kSecondaryMouseButton) {
+            _toggleFloatingToolbar(event.position);
+          }
+        },
+        child: editor,
+      ),
+    );
+  }
+
+  /// 편집 중일 때 우클릭으로 여닫는 떠 있는 서식 팝업의 내용물입니다.
+  /// 굵게·기울임·밑줄·목록·정렬·글자 크기·링크는 flutter_quill의 기본
+  /// 툴바를 그대로 쓰고, 글꼴만은 [_buildFontPickerButton]으로 직접
+  /// 만든 버튼으로 바꿨습니다(font_picker_popup.dart 설명 참고).
+  /// 맨 끝의 "완료" 버튼을 누르면 저장하고 읽기 전용으로 돌아갑니다.
+  Widget _buildFloatingToolbarPanel() {
+    final AppPalette palette = AppPalette.of(context);
+    final QuillController controller = _textController!;
+
+    return Material(
+      elevation: 8,
+      borderRadius: BorderRadius.circular(8),
+      color: palette.surface,
+      child: Container(
+        constraints: const BoxConstraints(maxWidth: 420),
+        decoration: BoxDecoration(
+          border: Border.all(color: palette.border),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 4),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            _buildFontPickerButton(controller, palette),
+            FontSizeStepper(controller: controller),
+            Flexible(
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: QuillSimpleToolbar(
+                  controller: controller,
+                  config: const QuillSimpleToolbarConfig(
+                    showAlignmentButtons: true,
+                    showJustifyAlignment: false,
+                    // 글꼴 선택은 우리가 만든 _buildFontPickerButton이
+                    // 대신합니다 — 기본 드롭다운은 끕니다.
+                    showFontFamily: false,
+                    // 글자 크기도 FontSizeStepper(px 단위 직접 입력)로
+                    // 대신합니다 — 기본 버튼은 작게/보통/크게/아주 크게
+                    // 네 단계뿐입니다.
+                    showFontSize: false,
+                    showUndo: false,
+                    showRedo: false,
+                    showClearFormat: false,
+                    showSearchButton: false,
+                    showSubscript: false,
+                    showSuperscript: false,
+                    showInlineCode: false,
+                    showCodeBlock: false,
+                    showQuote: false,
+                    showIndent: false,
+                    showHeaderStyle: false,
+                    showDividers: false,
+                  ),
+                ),
+              ),
+            ),
+            IconButton(
+              tooltip: '완료',
+              icon: const Icon(Icons.check_circle, size: 20),
+              color: palette.accent,
+              onPressed: _finishEditingText,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 글꼴을 고르는 버튼입니다. 누르면 그 자리 아래에 작은 글꼴 목록
+  /// 팝업(font_picker_popup.dart)을 띄우고, 하나를 고르면 지금 선택된
+  /// 글자(또는 커서 위치부터 새로 입력할 글자)에 그 글꼴을 적용합니다.
+  ///
+  /// ── 왜 flutter_quill 기본 버튼을 안 쓰나 ──
+  /// 기본 버튼은 한 줄짜리 드롭다운이라 설치된 글꼴이 많으면 찾기
+  /// 어렵고 미리보기도 없습니다. 대신 여기서는 우리가 만든 팝업을
+  /// 띄우되, 실제로 글자에 적용하는 방식(`Attribute.font` 서식을
+  /// 지금 선택 범위에 입힘)은 flutter_quill 기본 버튼과 똑같이
+  /// 맞췄습니다(설치된 flutter_quill 소스의 font_family_button.dart를
+  /// 직접 읽고 확인했습니다) — 그래야 굵게·기울임 같은 다른 서식과
+  /// 동일하게 "선택한 글자에만" 또는 "커서부터 새로 입력할 글자에"
+  /// 자연스럽게 적용됩니다.
+  Widget _buildFontPickerButton(QuillController controller, AppPalette palette) {
+    return Builder(
+      builder: (BuildContext buttonContext) {
+        return IconButton(
+          tooltip: '글꼴',
+          icon: const Icon(Icons.font_download_outlined, size: 20),
+          color: palette.text,
+          onPressed: () {
+            final RenderBox box =
+                buttonContext.findRenderObject()! as RenderBox;
+            final Offset anchor = box.localToGlobal(
+              Offset(0, box.size.height),
+            );
+            final String? currentFamily =
+                controller.getSelectionStyle().attributes[Attribute.font.key]
+                        ?.value
+                    as String?;
+            showFontPickerPopup(
+              context: buttonContext,
+              anchorGlobalPosition: anchor,
+              systemFonts: _systemFonts,
+              currentFamily: currentFamily,
+              onSelected: (String family) {
+                controller.formatSelection(
+                  Attribute.fromKeyValue(Attribute.font.key, family),
+                );
+              },
+            );
+          },
         );
       },
     );
@@ -461,6 +896,18 @@ class _BoardCardViewState extends State<BoardCardView> {
     );
   }
 
+  /// 제목 띠에 보여줄 글자입니다. 레퍼런스 카드는 제목을, 텍스트
+  /// 카드는 안의 글자 첫 부분을 보여줍니다(둘 다 없으면 "(제목 없음)"/
+  /// "텍스트").
+  String _titleBarLabel() {
+    final ReferenceItem? item = widget.item;
+    if (item != null) {
+      return item.title.isEmpty ? '(제목 없음)' : item.title;
+    }
+    final String plain = plainTextFromMemo(widget.textContent).trim();
+    return plain.isEmpty ? '텍스트' : plain;
+  }
+
   /// 마우스를 올렸을 때 카드 아래쪽에 뜨는 제목 띠입니다.
   ///
   /// **내리기(×) 버튼도 여기에 들어있습니다.** 손잡이가 네 모서리 전부로
@@ -496,7 +943,7 @@ class _BoardCardViewState extends State<BoardCardView> {
 
             Expanded(
               child: Text(
-                widget.item.title.isEmpty ? '(제목 없음)' : widget.item.title,
+                _titleBarLabel(),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: AppText.meta.copyWith(color: Colors.white),

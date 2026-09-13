@@ -82,7 +82,7 @@ class BoardCard {
   BoardCard({
     required this.id,
     required this.boardId,
-    required this.referenceId,
+    this.referenceId,
     required this.x,
     required this.y,
     required this.createdAt,
@@ -91,6 +91,8 @@ class BoardCard {
     this.height,
     this.zOrder = 0,
     this.groupId,
+    this.textContent,
+    this.fontFamily,
   });
 
   /// 이 배치의 고유 번호(UUID v4)
@@ -102,8 +104,23 @@ class BoardCard {
   /// 어느 판에 놓였는지
   final String boardId;
 
-  /// 어느 레퍼런스인지
-  final String referenceId;
+  /// 어느 레퍼런스인지입니다. **텍스트 카드는 null입니다**(schemaVersion 9)
+  /// — [isText]가 이 값을 보고 판단합니다.
+  final String? referenceId;
+
+  /// 텍스트 카드의 내용(서식 있는 Delta JSON 문자열)입니다. 레퍼런스
+  /// 카드는 null입니다(schemaVersion 9). `lib/utils/rich_text_memo.dart`의
+  /// 변환 함수로 다룹니다 — 레퍼런스 메모와 저장 형식이 같습니다.
+  final String? textContent;
+
+  /// 텍스트 카드의 글꼴 이름입니다. null이면 앱 기본 글꼴(Pretendard)
+  /// 입니다(schemaVersion 9). `lib/services/system_fonts.dart` 설명 참고.
+  final String? fontFamily;
+
+  /// 이 카드가 텍스트 카드인지 여부입니다. `referenceId`가 없으면
+  /// 텍스트 카드입니다 — 둘 중 하나는 반드시 있어야 하므로(생성자의
+  /// assert 참고) 이 값만 보면 됩니다.
+  bool get isText => referenceId == null;
 
   /// 판 왼쪽 끝에서부터의 가로 위치
   final double x;
@@ -165,6 +182,37 @@ class BoardCard {
       createdAt: createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       groupId: groupId ?? this.groupId,
+      textContent: textContent,
+      fontFamily: fontFamily,
+    );
+  }
+
+  /// 텍스트 카드의 내용·글꼴만 바꾼 사본을 만들어 돌려줍니다.
+  ///
+  /// 일반 copyWith와 따로 둔 이유: 글꼴을 "안 정한 상태(null, 기본
+  /// 글꼴)"로 되돌리는 것도 뜻이 있는 변경이라, "안 넘겼다"와 "null로
+  /// 넘겼다"를 구분해야 합니다(height의 clearHeight()와 같은 사정).
+  /// 이 메서드는 [fontFamily]를 넘기지 않으면 지금 값을 그대로 두고,
+  /// [clearFontFamily]를 참으로 주면 기본 글꼴로 되돌립니다.
+  BoardCard copyWithText({
+    required String textContent,
+    String? fontFamily,
+    bool clearFontFamily = false,
+    DateTime? updatedAt,
+  }) {
+    return BoardCard(
+      id: id,
+      boardId: boardId,
+      x: x,
+      y: y,
+      width: width,
+      height: height,
+      zOrder: zOrder,
+      createdAt: createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      groupId: groupId,
+      textContent: textContent,
+      fontFamily: clearFontFamily ? null : (fontFamily ?? this.fontFamily),
     );
   }
 
@@ -188,6 +236,8 @@ class BoardCard {
       createdAt: createdAt,
       updatedAt: updatedAt,
       groupId: groupId,
+      textContent: textContent,
+      fontFamily: fontFamily,
     );
   }
 
@@ -208,6 +258,8 @@ class BoardCard {
       zOrder: zOrder,
       createdAt: createdAt,
       updatedAt: updatedAt,
+      textContent: textContent,
+      fontFamily: fontFamily,
     );
   }
 }
@@ -221,6 +273,14 @@ class BoardCard {
 /// 220으로 정한 이유: 목록 카드(최대 300)보다 조금 작습니다. 무드보드는
 /// 여러 장을 한눈에 늘어놓고 보는 곳이라 한 장이 너무 크면 비교가 안 됩니다.
 const double defaultBoardCardWidth = 220;
+
+/// 텍스트 카드를 처음 만들 때의 세로 크기입니다(schemaVersion 9).
+///
+/// 사진 카드와 달리 텍스트에는 "원본 비율"이 없어서 height를 비워둘
+/// 수 없습니다(board_card_view.dart의 _buildTextCard 설명 참고). 메모
+/// 몇 줄이 넉넉히 들어가는 높이로 잡았습니다 — 부족하면 다른 카드처럼
+/// 손잡이로 늘리면 됩니다.
+const double defaultTextCardHeight = 140;
 
 /// 카드를 줄일 수 있는 가장 작은 가로 크기입니다.
 ///

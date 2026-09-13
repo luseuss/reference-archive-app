@@ -38,6 +38,25 @@ void main() {
     return cards.firstWhere((BoardCard card) => card.id == id);
   }
 
+  /// 테스트용 텍스트 카드를 하나 만들어 돌려줍니다. `referenceId`가
+  /// 없어야(`isText == true`) 크기 조절이 비율 고정 없이 자유롭게
+  /// 동작하는 경로를 탑니다.
+  BoardCard makeTextCard(String id, {double x = 0, double y = 0}) {
+    final DateTime now = DateTime.now().toUtc();
+    return BoardCard(
+      id: id,
+      boardId: 'board-1',
+      textContent: '텍스트',
+      x: x,
+      y: y,
+      width: 200,
+      height: 150,
+      zOrder: 0,
+      createdAt: now,
+      updatedAt: now,
+    );
+  }
+
   group('맨 위로 올리기', () {
     test('겹침 순서가 가장 큰 값보다 하나 커진다', () {
       final List<BoardCard> cards = <BoardCard>[
@@ -457,6 +476,130 @@ void main() {
       ).cards;
 
       expect(result, cards);
+    });
+
+    group('텍스트 카드는 비율 없이 자유롭게 늘어난다', () {
+      test('가로만 끌어도 세로는 그대로다', () {
+        final List<BoardCard> cards = <BoardCard>[makeTextCard('a')];
+
+        final BoardCard result = cardOf(
+          resizeCard(
+            cards,
+            'a',
+            startSize: const Size(200, 150),
+            startPosition: Offset.zero,
+            corner: BoardResizeCorner.bottomRight,
+            movedSoFar: const Offset(100, 0),
+          ).cards,
+          'a',
+        );
+
+        expect(result.width, 300);
+        expect(result.height, 150);
+      });
+
+      test('세로만 끌어도 가로는 그대로다', () {
+        // 사진 카드였다면 이 테스트의 '세로로 끈 거리는 무시한다'처럼
+        // 세로가 그대로 무시됐겠지만, 텍스트 카드는 세로도 그대로 반영됩니다.
+        final List<BoardCard> cards = <BoardCard>[makeTextCard('a')];
+
+        final BoardCard result = cardOf(
+          resizeCard(
+            cards,
+            'a',
+            startSize: const Size(200, 150),
+            startPosition: Offset.zero,
+            corner: BoardResizeCorner.bottomRight,
+            movedSoFar: const Offset(0, 80),
+          ).cards,
+          'a',
+        );
+
+        expect(result.width, 200);
+        expect(result.height, 230);
+      });
+
+      test('가로세로를 동시에 끌면 둘 다 각자 늘어난다', () {
+        final List<BoardCard> cards = <BoardCard>[makeTextCard('a')];
+
+        final BoardCard result = cardOf(
+          resizeCard(
+            cards,
+            'a',
+            startSize: const Size(200, 150),
+            startPosition: Offset.zero,
+            corner: BoardResizeCorner.bottomRight,
+            movedSoFar: const Offset(100, 80),
+          ).cards,
+          'a',
+        );
+
+        expect(result.width, 300);
+        expect(result.height, 230);
+      });
+
+      test('사진 카드의 최대 크기(960)를 넘어서도 계속 커진다', () {
+        // "위아래 좌우 자유롭게 한도 없이" 요청 — 텍스트 카드는
+        // maxBoardCardWidth의 적용을 안 받습니다.
+        final List<BoardCard> cards = <BoardCard>[makeTextCard('a')];
+
+        final BoardCard result = cardOf(
+          resizeCard(
+            cards,
+            'a',
+            startSize: const Size(200, 150),
+            startPosition: Offset.zero,
+            corner: BoardResizeCorner.bottomRight,
+            movedSoFar: const Offset(2000, 2000),
+          ).cards,
+          'a',
+        );
+
+        expect(result.width, greaterThan(maxBoardCardWidth));
+        expect(result.height, greaterThan(maxBoardCardWidth));
+      });
+
+      test('최소 크기 아래로는 못 줄어든다', () {
+        final List<BoardCard> cards = <BoardCard>[makeTextCard('a')];
+
+        final BoardCard result = cardOf(
+          resizeCard(
+            cards,
+            'a',
+            startSize: const Size(200, 150),
+            startPosition: Offset.zero,
+            corner: BoardResizeCorner.bottomRight,
+            movedSoFar: const Offset(-9999, -9999),
+          ).cards,
+          'a',
+        );
+
+        expect(result.width, minBoardCardWidth);
+        expect(result.height, minBoardCardWidth);
+      });
+
+      test('반대쪽(왼쪽 위) 모서리는 그대로 고정된다', () {
+        final List<BoardCard> cards = <BoardCard>[
+          makeTextCard('a', x: 100, y: 100),
+        ];
+
+        final BoardCard result = cardOf(
+          resizeCard(
+            cards,
+            'a',
+            startSize: const Size(200, 150),
+            startPosition: const Offset(100, 100),
+            corner: BoardResizeCorner.bottomRight,
+            movedSoFar: const Offset(50, 40),
+          ).cards,
+          'a',
+        );
+
+        expect(result.x, 100);
+        expect(result.y, 100);
+        expect(result.width, 250);
+        expect(result.height, 190);
+      });
     });
   });
 

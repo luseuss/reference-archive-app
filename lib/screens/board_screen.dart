@@ -161,6 +161,164 @@ class _BoardScreenState extends State<BoardScreen> {
   /// 아직 읽어오는 중인지 여부입니다.
   bool _isLoading = true;
 
+  /// 판 위 텍스트 카드들의 편집기 키보드 초점 노드입니다. 카드 번호로
+  /// 찾아볼 수 있게 표로 들고 있습니다. 카드가 살아있는 동안 등록돼
+  /// 있고, 카드가 없어지면 빠집니다
+  /// (board_card_view.dart의 onTextFocusNodeCreated/onTextFocusNodeDisposed
+  /// 설명 참고). **카드 번호가 왜 필요한지, "지금 편집 중인지"를 왜
+  /// 직접 저장해두지 않는지**는 아래 [_isTextEditorFocused]와
+  /// [_releaseTextFocusUnlessEditing] 설명에 있습니다.
+  final Map<String, FocusNode> _textEditorFocusNodesByCardId =
+      <String, FocusNode>{};
+
+  /// 지금 실제로 초점이 잡혀 있는 위젯이 텍스트 카드 편집기인지
+  /// **그 순간 다시 물어봐서** 확인합니다.
+  ///
+  /// ── 왜 "편집 중" 값을 미리 저장해두지 않나 ──
+  /// 처음에는 텍스트 카드가 "편집을 시작했다/끝냈다"를 직접 알려주는
+  /// 참/거짓 값으로 만들었습니다. 그런데 "끝냈다"는 오직 "완료" 버튼을
+  /// 눌러야만 알려지는 신호였어서, **사용자가 "완료"를 안 누르고 그냥
+  /// 다른 곳을 클릭해 편집에서 벗어나면** 그 값이 계속 참으로 남아
+  /// 판의 단축키(아래 [_handleBoardKeyEvent])가 영영 꺼진 채로 있는
+  /// 새 버그가 생겼습니다(의뢰인 보고).
+  ///
+  /// `FocusManager.instance.primaryFocus`(지금 실제로 초점을 쥔 위젯)를
+  /// 키를 누르는 바로 그 순간 직접 확인하면 값이 어긋날 일이 없습니다.
+  /// **다만 이것만으로는 부족했습니다** — Flutter는 텍스트칸 바깥을
+  /// 클릭한다고 저절로 초점을 놓지 않습니다(무언가 다른 위젯이 초점을
+  /// **직접 가져가야만** 옮겨갑니다). 이 판의 카드·빈 캔버스는 대부분
+  /// 초점을 요구하지 않는 raw `Listener`로 되어 있어서, 그냥 클릭만
+  /// 해서는 아무 일도 안 일어나 텍스트 편집기가 계속 초점을 쥔 채로
+  /// 남아있었습니다(의뢰인이 실제로 "2번(클릭해서 벗어나기)이 안 된다"고
+  /// 보고). 그래서 [_releaseTextFocusUnlessEditing]을 다른 카드를 누르거나
+  /// 빈 곳을 누르는 시점에 직접 불러 초점을 내려놓습니다.
+  bool get _isTextEditorFocused {
+    final FocusNode? primary = FocusManager.instance.primaryFocus;
+    return primary != null &&
+        _textEditorFocusNodesByCardId.values.contains(primary);
+  }
+
+  /// 판 화면 자신의 키보드 초점입니다. 아래 [_releaseTextFocusUnlessEditing]에서
+  /// 텍스트 편집기로부터 초점을 되찾아올 때 씁니다.
+  ///
+  /// ── 왜 `FocusNode.unfocus()`만으로는 안 됐나 ──
+  /// 처음에는 텍스트 편집기의 초점 노드에 그냥 `unfocus()`만 불렀습니다.
+  /// 그런데 `unfocus()`의 기본 동작(`UnfocusDisposition.scope`)은 **가장
+  /// 가까운 FocusScope로 초점을 올려보낼 뿐**, 이 판의 `Focus` 위젯으로
+  /// 돌아온다는 보장이 없습니다 — 실제로는 이 판보다 훨씬 위(앱
+  /// 뿌리 쪽)의 스코프로 가버려서, 그 뒤로는 이 판의 `_handleBoardKeyEvent`가
+  /// **초점이 잡힌 위젯의 조상 사슬 안에 있지도 않게** 됩니다. 그러면
+  /// Ctrl+V·Delete·Ctrl+Z **전부** 어디에도 안 가고 사라집니다 —
+  /// "텍스트 창만 들어갔다 나오면 이미지 붙여넣기까지 안 된다"는
+  /// 의뢰인 보고가 정확히 이 증상이었습니다.
+  ///
+  /// 그래서 지금은 "초점을 놓는다"가 아니라 **"이 판 자신에게 초점을
+  /// 도로 넘긴다"**로 고쳤습니다. 어떤 노드가 초점을 갖고 있든, 다른
+  /// 노드에 `requestFocus()`를 부르면 이전 노드는 자동으로 초점을
+  /// 잃습니다 — 그 도착지가 확실한 이 판 자신이라는 점이 다릅니다.
+  final FocusNode _boardFocusNode = FocusNode();
+
+  /// 텍스트 카드 편집기의 초점 노드가 만들어졌을 때 기억해둡니다.
+  void _handleTextFocusNodeCreated(BoardCard card, FocusNode node) {
+    _textEditorFocusNodesByCardId[card.id] = node;
+  }
+
+  /// 텍스트 카드가 없어질 때 그 초점 노드를 잊습니다.
+  void _handleTextFocusNodeDisposed(BoardCard card, FocusNode node) {
+    _textEditorFocusNodesByCardId.remove(card.id);
+  }
+
+  /// 지금 텍스트 편집기에 초점이 있는데, 그게 [editingCardId](지금
+  /// 누른 카드)가 **아니면** 판 자신에게 초점을 돌려줍니다.
+  /// [editingCardId]가 null이면(빈 캔버스를 눌렀을 때) 무조건 돌려줍니다.
+  ///
+  /// **지금 편집 중인 바로 그 카드를 다시 누른 것이면 아무 일도 안
+  /// 합니다** — 안 그러면 텍스트 안에서 커서를 옮기려고 클릭할 때마다
+  /// 편집기에서 초점이 빠져나가 버립니다. 다른 카드를 누르거나
+  /// 빈 캔버스를 누르는 것만 "이제 텍스트 편집이 아닌 다른 걸
+  /// 하려는 것"으로 봅니다.
+  void _releaseTextFocusUnlessEditing(String? editingCardId) {
+    final FocusNode? focused = FocusManager.instance.primaryFocus;
+    if (focused == null || !_textEditorFocusNodesByCardId.values.contains(focused)) {
+      // 텍스트 편집기가 아닌 다른 것에 이미 초점이 있거나(예: 서식
+      // 팝업의 글자 크기 입력칸), 아무 데도 초점이 없으면 손대지 않습니다.
+      return;
+    }
+    if (editingCardId != null &&
+        _textEditorFocusNodesByCardId[editingCardId] == focused) {
+      return;
+    }
+    _boardFocusNode.requestFocus();
+  }
+
+  /// 판 전체에 걸리는 단축키(Delete·Backspace·Ctrl+V·Ctrl+Z)입니다.
+  /// [_handleBoardKeyEvent]가 이 표를 보고 직접 처리합니다.
+  late final Map<ShortcutActivator, VoidCallback> _boardShortcutBindings =
+      <ShortcutActivator, VoidCallback>{
+        // 골라둔 카드를 판에서 내립니다. 선택 툴바의 "선택 삭제" 버튼과
+        // 똑같은 동작입니다. 아무것도 안 골랐으면 조용히 아무 일도 안
+        // 합니다(removeSelectedCards의 빈 선택 처리).
+        const SingleActivator(LogicalKeyboardKey.delete):
+            _interaction.removeSelectedCards,
+        const SingleActivator(LogicalKeyboardKey.backspace):
+            _interaction.removeSelectedCards,
+
+        // 클립보드의 사진·이미지 주소를 새 레퍼런스로 저장하며 판에도
+        // 곧바로 담습니다.
+        const SingleActivator(LogicalKeyboardKey.keyV, control: true):
+            _onPasteFromClipboard,
+        // macOS는 Ctrl 대신 Command를 씁니다.
+        const SingleActivator(LogicalKeyboardKey.keyV, meta: true):
+            _onPasteFromClipboard,
+
+        // 가장 최근 조작(옮기기·크기 조절·추가·내리기·정렬·크기 맞추기)을
+        // 되돌립니다. 되돌릴 게 없으면 조용히 넘어갑니다.
+        const SingleActivator(LogicalKeyboardKey.keyZ, control: true):
+            _interaction.undo,
+        const SingleActivator(LogicalKeyboardKey.keyZ, meta: true):
+            _interaction.undo,
+      };
+
+  /// 판 전체에 걸리는 단축키를 직접 처리합니다.
+  ///
+  /// ── 왜 `CallbackShortcuts`를 안 쓰나 ──
+  /// 원래는 `CallbackShortcuts`(Flutter 기본 위젯)를 썼습니다. 그런데
+  /// `CallbackShortcuts`는 키가 매칭되면 그 콜백이 실제로 무엇을 하든
+  /// 상관없이 **항상** `KeyEventResult.handled`를 돌려줍니다(설치된
+  /// `flutter/widgets/shortcuts.dart`의 `CallbackShortcuts._applyKeyEventBinding`을
+  /// 직접 읽고 확인했습니다). 그래서 콜백 안에서 "지금은 아무 일도
+  /// 하지 마라"고 막아도(예전의 `_guardTextEditing`), 키 이벤트 자체는
+  /// 이미 여기서 "처리 끝"으로 멈춰버려서, **더 위(앱 뿌리)에 있는
+  /// "지금 초점 잡힌 글자칸에 붙여넣기/지우기" 같은 기본 동작으로
+  /// 넘어가지 못합니다.**
+  ///
+  /// 실제로 이 문제 때문에 텍스트 카드를 편집하는 중 Ctrl+V로 글을
+  /// 붙여넣으려 하면 이 판이 먼저 채가서 "클립보드의 사진을 새
+  /// 레퍼런스로 담으려" 시도하고, 정작 편집기에는 아무 글자도 안
+  /// 붙여지는 문제가 있었습니다(의뢰인 보고).
+  ///
+  /// 그래서 지금은 텍스트 편집기에 실제로 초점이 있으면([_isTextEditorFocused])
+  /// 아예 `ignored`를 돌려줍니다 — 이 판이 가로채지 않고 그대로
+  /// 흘려보내서, 더 안쪽에 있는 편집기(flutter_quill)의 자체
+  /// 붙여넣기·글자 지우기 처리가 대신 받게 합니다.
+  KeyEventResult _handleBoardKeyEvent(FocusNode node, KeyEvent event) {
+    if (_isTextEditorFocused) {
+      return KeyEventResult.ignored;
+    }
+
+    // CallbackShortcuts의 원래 동작과 똑같이, 매칭되는 모든 항목을
+    // 실행하고 하나라도 매칭됐으면 handled를 돌려줍니다.
+    KeyEventResult result = KeyEventResult.ignored;
+    for (final MapEntry<ShortcutActivator, VoidCallback> entry
+        in _boardShortcutBindings.entries) {
+      if (entry.key.accepts(event, HardwareKeyboard.instance)) {
+        entry.value();
+        result = KeyEventResult.handled;
+      }
+    }
+    return result;
+  }
+
   /// 화면이 만들어질 때 컨트롤러를 준비하고 판의 내용을 읽어옵니다.
   @override
   void initState() {
@@ -206,6 +364,7 @@ class _BoardScreenState extends State<BoardScreen> {
     _export.dispose();
     _window.dispose();
     _videoPlayback.dispose();
+    _boardFocusNode.dispose();
     super.dispose();
   }
 
@@ -309,8 +468,15 @@ class _BoardScreenState extends State<BoardScreen> {
   }
 
   /// 빈 캔버스 우클릭 메뉴 항목을 만듭니다. (BoardViewport.emptyCanvasActions)
-  List<ContextMenuAction> _emptyCanvasMenuActions() {
+  /// [canvasPosition]은 우클릭한 자리(판 좌표)입니다 — "텍스트 추가"가
+  /// 바로 그 자리에 새 카드를 놓는 데 씁니다.
+  List<ContextMenuAction> _emptyCanvasMenuActions(Offset canvasPosition) {
     return <ContextMenuAction>[
+      ContextMenuAction(
+        label: '텍스트 추가',
+        icon: Icons.text_fields,
+        onSelected: () => _interaction.addTextCardAt(canvasPosition),
+      ),
       ContextMenuAction(
         label: '레퍼런스 담기',
         icon: Icons.photo_library_outlined,
@@ -353,8 +519,11 @@ class _BoardScreenState extends State<BoardScreen> {
       context: context,
       repository: widget.referenceRepository,
       imageStorage: widget.imageStorage,
+      // 텍스트 카드는 referenceId가 없어서(schemaVersion 9) 뺍니다 —
+      // "이미 판에 있는 레퍼런스"에 해당하지 않습니다.
       alreadyOnBoard: _interaction.cards
           .map((BoardCard card) => card.referenceId)
+          .whereType<String>()
           .toSet(),
     );
 
@@ -561,36 +730,16 @@ class _BoardScreenState extends State<BoardScreen> {
           ),
         ],
       ),
-      // CallbackShortcuts는 지정한 키 조합이 눌리면 함수를 실행합니다.
-      // home_screen.dart의 Ctrl+V와 같은 방식입니다.
-      // Focus(autofocus: true)로 감싸야 화면이 키 입력을 받습니다 —
-      // 안 감싸면 아무 데도 초점이 없어서 키를 눌러도 무시됩니다.
-      body: CallbackShortcuts(
-        bindings: <ShortcutActivator, VoidCallback>{
-          // 골라둔 카드를 판에서 내립니다. 선택 툴바의 "선택 삭제"
-          // 버튼과 똑같은 동작입니다. 아무것도 안 골랐으면 조용히
-          // 아무 일도 안 합니다(removeSelectedCards의 빈 선택 처리).
-          const SingleActivator(LogicalKeyboardKey.delete):
-              _interaction.removeSelectedCards,
-          const SingleActivator(LogicalKeyboardKey.backspace):
-              _interaction.removeSelectedCards,
-
-          // 클립보드의 사진·이미지 주소를 새 레퍼런스로 저장하며
-          // 판에도 곧바로 담습니다.
-          const SingleActivator(LogicalKeyboardKey.keyV, control: true):
-              _onPasteFromClipboard,
-          // macOS는 Ctrl 대신 Command를 씁니다.
-          const SingleActivator(LogicalKeyboardKey.keyV, meta: true):
-              _onPasteFromClipboard,
-
-          // 가장 최근 조작(옮기기·크기 조절·추가·내리기·정렬·크기
-          // 맞추기)을 되돌립니다. 되돌릴 게 없으면 조용히 넘어갑니다.
-          const SingleActivator(LogicalKeyboardKey.keyZ, control: true):
-              _interaction.undo,
-          const SingleActivator(LogicalKeyboardKey.keyZ, meta: true):
-              _interaction.undo,
-        },
-        child: Focus(autofocus: true, child: _buildBody()),
+      // 판 전체에 걸리는 단축키(Delete·Ctrl+V·Ctrl+Z)를
+      // _handleBoardKeyEvent가 직접 처리합니다 — 그 함수 설명에
+      // 왜 Flutter 기본 CallbackShortcuts를 안 쓰는지 적어뒀습니다.
+      // autofocus: true로 감싸야 화면이 키 입력을 받습니다 — 안 감싸면
+      // 아무 데도 초점이 없어서 키를 눌러도 무시됩니다.
+      body: Focus(
+        focusNode: _boardFocusNode,
+        autofocus: true,
+        onKeyEvent: _handleBoardKeyEvent,
+        child: _buildBody(),
       ),
     );
   }
@@ -639,12 +788,19 @@ class _BoardScreenState extends State<BoardScreen> {
               onViewReset: _clearViewState,
               emptyCanvasActions: _emptyCanvasMenuActions,
 
-              onMarqueeBegin: ({required bool additive}) =>
-                  _interaction.beginMarquee(additive: additive),
+              onMarqueeBegin: ({required bool additive}) {
+                // 빈 캔버스를 끌기 시작한 것도 "이제 텍스트 편집이 아닌
+                // 다른 걸 하려는 것"입니다 — 클릭(onEmptyTap)뿐 아니라
+                // 마퀴 끌기 시작 순간에도 놓아줘야 합니다.
+                _releaseTextFocusUnlessEditing(null);
+                _interaction.beginMarquee(additive: additive);
+              },
               onMarqueeUpdate: _interaction.updateMarquee,
               onMarqueeEnd: _interaction.endMarquee,
-              onEmptyTap: ({required bool shiftHeld}) =>
-                  _interaction.handleEmptyTap(shiftHeld: shiftHeld),
+              onEmptyTap: ({required bool shiftHeld}) {
+                _releaseTextFocusUnlessEditing(null);
+                _interaction.handleEmptyTap(shiftHeld: shiftHeld);
+              },
 
               // 메인 화면에서 레퍼런스를 끌어다 놓으면 그 자리에 담습니다.
               // 좌표 변환(화면→판)은 BoardViewport가 이미 해서 넘겨줍니다.
@@ -665,8 +821,12 @@ class _BoardScreenState extends State<BoardScreen> {
                 imagePaths: _lookup.imagePaths,
                 activeCardId: _interaction.activeCardId,
                 selectedCardIds: _interaction.selectedCardIds,
-                onCardPressed: (BoardCard card, {required bool shiftHeld}) =>
-                    _interaction.onCardPressed(card, shiftHeld: shiftHeld),
+                onCardPressed: (BoardCard card, {required bool shiftHeld}) {
+                  // 지금 편집 중이던 카드가 아니라 다른 카드를 누른
+                  // 것이면 텍스트 편집기의 초점을 내려놓습니다.
+                  _releaseTextFocusUnlessEditing(card.id);
+                  _interaction.onCardPressed(card, shiftHeld: shiftHeld);
+                },
                 onDragStart: _interaction.onDragStart,
                 onDragUpdate: _interaction.onDragUpdate,
                 onDragEnd: _interaction.onDragEnd,
@@ -677,6 +837,11 @@ class _BoardScreenState extends State<BoardScreen> {
                 onRemoveCard: _removeCard,
                 onOpenDetail: _openCardDetail,
                 onUngroupCard: _ungroupCard,
+                onTextContentChanged: (BoardCard card, String newContent) =>
+                    _interaction.saveTextContent(card, newContent),
+                onTextFocusNodeCreated: _handleTextFocusNodeCreated,
+                onTextFocusNodeDisposed: _handleTextFocusNodeDisposed,
+                onRequestBoardFocus: _boardFocusNode.requestFocus,
 
                 // 웹뷰가 없는 환경(리눅스 등)에서는 재생 버튼 자체를
                 // 안 보여줍니다. InAppWebViewPlatform.instance가 그

@@ -58,6 +58,14 @@ dependencies:
   desktop_multi_window: ^0.3.1
   archive: ^4.2.0
 
+  # 무드보드 텍스트 카드의 "글꼴 바꾸기"가 Windows에 설치된 글꼴
+  # 목록을 읽는 데 씁니다(lib/services/system_fonts.dart). window_manager가
+  # 이미 이 패키지를 간접적으로 물어와서 실제로는 새로 받는 파일이
+  # 없지만, 직접 가져다 쓰는 코드가 있으니 명시적으로 적어둡니다 —
+  # 간접 의존성에만 기대면 다른 패키지가 버전을 바꿀 때 조용히
+  # 깨질 수 있습니다.
+  win32_registry: ^2.1.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -105,12 +113,12 @@ flutter:
   # 한글을 제대로 지원하는 두 글꼴로 바꿨습니다.
   #
   # ── 세리프(Noto Serif KR → Gowun Batang)로 한 번 바꿨다가, 2026-09-13에
-  #    다시 뺐습니다 ──
+  #    화면 글자에서는 뺐습니다 ──
   # 화면 제목·카드 제목만 세리프로 다르게 보이게 했었는데, 의뢰인이
-  # "전부 Pretendard로 통일해달라"고 해서 그 예외를 없앴습니다. 이제
-  # Gowun Batang 파일은 코드 어디서도 안 씁니다 — 앱 용량만 차지하므로
-  # fonts 목록에서도 뺐습니다. 폰트 파일 자체(assets/fonts/GowunBatang-*)는
-  # 나중에 다시 쓸 수도 있어 지우지 않고 남겨뒀습니다.
+  # "전부 Pretendard로 통일해달라"고 해서 그 예외를 없앴습니다. 앱
+  # 기본 글꼴 자리에서는 안 쓰지만, 무드보드 텍스트 카드의 "글꼴
+  # 바꾸기" 선택지 중 하나로 다시 등록했습니다(2026-09-14) — 폰트
+  # 파일은 그때도 안 지우고 남겨뒀던 것을 그대로 씁니다.
   #
   # ── 본문 글꼴은 Pretendard입니다 (의뢰인 요청) ──
   # IBM Plex Sans KR도 나쁘지 않았지만, 의뢰인이 한국 웹·앱에서 가장
@@ -125,6 +133,10 @@ flutter:
         - asset: assets/fonts/Pretendard-SemiBold.ttf
           weight: 600
         - asset: assets/fonts/Pretendard-Bold.ttf
+          weight: 700
+    - family: Gowun Batang
+      fonts:
+        - asset: assets/fonts/GowunBatang-Bold.ttf
           weight: 700
 
   # To add assets to your application, add an assets section, like this:

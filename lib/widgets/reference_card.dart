@@ -137,7 +137,7 @@ class ReferenceCard extends StatelessWidget {
 
     return ContextMenuRegion(
       enableLongPress: false,
-      buildActions: () => <ContextMenuAction>[
+      buildActions: (_) => <ContextMenuAction>[
         ContextMenuAction(label: '열기', icon: Icons.open_in_new, onSelected: onTap),
         ContextMenuAction(
           label: item.isFavorite ? '즐겨찾기 끄기' : '즐겨찾기 켜기',

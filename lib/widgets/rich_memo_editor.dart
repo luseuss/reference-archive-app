@@ -51,6 +51,20 @@ class _RichMemoEditorState extends State<RichMemoEditor> {
     _controller = QuillController(
       document: documentFromMemo(widget.initialMemo),
       selection: const TextSelection.collapsed(offset: 0),
+      // 이 편집기는 순수 리치텍스트 서식(글자색·굵게·목록 등)만 다룹니다.
+      // 그림은 이미 이 앱의 "레퍼런스 카드"라는 자기 자리가 있어서,
+      // 메모 안에 따로 박아 넣는 기능은 없습니다. 그런데
+      // enableExternalRichPaste(기본값 참)를 켜두면, 브라우저·워드 같은
+      // 곳에서 복사한 서식 있는 글(HTML)을 붙여넣을 때 그 안에 있는
+      // <img> 태그까지 그림 삽입 서식(embed)으로 바뀌어 문서에 들어갑니다.
+      // 이 앱은 그 서식을 그릴 방법(embedBuilders)을 안 만들어뒀으므로,
+      // 그런 글을 붙여넣는 순간
+      // "UnimplementedError: Embeddable type image is not supported..."로
+      // 앱이 죽습니다(실제로 겪은 크래시). 그래서 서식 있는 붙여넣기
+      // 자체를 꺼서, 무엇을 붙여넣든 항상 순수 글자로만 들어오게 합니다.
+      config: const QuillControllerConfig(
+        clipboardConfig: QuillClipboardConfig(enableExternalRichPaste: false),
+      ),
     );
     _controller.addListener(_handleChanged);
   }

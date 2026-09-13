@@ -61,8 +61,10 @@ class AppDatabase extends _$AppDatabase {
   ///       taxonomy_items의 kind='part' 행 삭제
   ///   7 — TaxonomyItems에 parentId 추가 (폴더 중첩)
   ///   8 — BoardCards에 groupId 추가 (무드보드 카드 그룹화)
+  ///   9 — BoardCards.referenceId를 nullable로, textContent·fontFamily
+  ///       추가 (무드보드 텍스트 카드)
   @override
-  int get schemaVersion => 8;
+  int get schemaVersion => 9;
 
   /// 데이터베이스를 처음 만들 때, 그리고 구조가 바뀌었을 때 무엇을 할지 정합니다.
   @override
@@ -136,6 +138,18 @@ class AppDatabase extends _$AppDatabase {
         // 이 칸을 추가해야 합니다.
         if (from >= 3 && from < 8) {
           await _upgradeToVersion8(m);
+        }
+
+        // ── 여기도 v5·v8과 같은 이유로 `from >= 3`이 붙습니다 ──
+        // board_cards 표는 여전히 _upgradeToVersion3의 createTable로
+        // **지금 이 시점의 tables.dart**를 기준으로 만들어집니다. v1이나
+        // v2에서 곧장 v9로 건너뛰는 사용자는 그 createTable 단계에서
+        // 이미 referenceId가 nullable이고 textContent·fontFamily가
+        // 포함된 board_cards 표를 받으므로, 여기서 또 alterTable을
+        // 하면 어긋납니다. board_cards 표가 **이번 업데이트 전부터
+        // 실제로 있던**(버전 3~8) 사용자만 이 마이그레이션이 필요합니다.
+        if (from >= 3 && from < 9) {
+          await _upgradeToVersion9(m);
         }
       },
 
@@ -379,6 +393,40 @@ class AppDatabase extends _$AppDatabase {
   /// createTable/addColumn 함정입니다.
   Future<void> _upgradeToVersion8(Migrator m) async {
     await m.addColumn(boardCards, boardCards.groupId);
+  }
+
+  /// 버전 8 → 9. 무드보드에 텍스트 카드를 놓을 수 있게 합니다.
+  ///
+  /// ── 왜 addColumn이 아니라 alterTable(TableMigration)인가 ──
+  /// 새 칸(textContent, fontFamily)을 더하는 것뿐이라면 v8처럼
+  /// addColumn 두 번으로 끝났을 것입니다. 그런데 이번엔 **이미 있던
+  /// 칸의 제약도 함께 바꿔야 합니다** — `referenceId`가 지금까지는
+  /// "반드시 있어야 하는 값"(NOT NULL)이었는데, 텍스트 카드는 애초에
+  /// 레퍼런스를 안 가리키므로 이 칸이 비어 있어야 합니다.
+  ///
+  /// SQLite는 "이미 있는 칼럼의 NOT NULL을 없애기"를 ALTER TABLE로 직접
+  /// 못 합니다(추가·삭제·이름 바꾸기만 됩니다). 그래서 drift의
+  /// `alterTable(TableMigration(...))`을 씁니다 — 지금 tables.dart
+  /// 기준으로 새 임시 표를 만들고, 기존 값을 전부 옮겨 담은 뒤,
+  /// 옛 표를 지우고 이름을 바꿔치기하는 일을 대신 해줍니다.
+  /// `newColumns`에 적은 두 칸(둘 다 nullable이라 기본값이 필요 없습니다)
+  /// 말고 나머지 칸(id, boardId, referenceId, x, y, width, height,
+  /// zOrder, createdAt, updatedAt, deletedAt, groupId)은 이름이 같으면
+  /// 그대로 옮겨 담아줍니다 — referenceId도 여기 포함되므로, 기존 값은
+  /// 그대로 남고 제약(NOT NULL)만 새 표 정의를 따라 느슨해집니다.
+  ///
+  /// `from >= 3 && from < 9` 조건인 이유는 위 `onUpgrade`의 주석과
+  /// v5(boards.folderId)·v8(boardCards.groupId)의 설명과 같습니다.
+  Future<void> _upgradeToVersion9(Migrator m) async {
+    await m.alterTable(
+      TableMigration(
+        boardCards,
+        newColumns: <GeneratedColumn<Object>>[
+          boardCards.textContent,
+          boardCards.fontFamily,
+        ],
+      ),
+    );
   }
 }
 
