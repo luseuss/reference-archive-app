@@ -45,6 +45,8 @@ class BoardCanvas extends StatelessWidget {
     required this.onResizeUpdate,
     required this.onResizeEnd,
     required this.onRemoveCard,
+    required this.onOpenDetail,
+    required this.onUngroupCard,
     this.playingCardId,
     this.playerUrl,
     this.onPlayPressed,
@@ -136,6 +138,12 @@ class BoardCanvas extends StatelessWidget {
 
   /// 카드를 판에서 내릴 때 알려줍니다.
   final ValueChanged<BoardCard> onRemoveCard;
+
+  /// 카드 우클릭 메뉴의 "레퍼런스 상세 열기"를 눌렀을 때 실행할 동작입니다.
+  final ValueChanged<ReferenceItem> onOpenDetail;
+
+  /// 카드 우클릭 메뉴의 "그룹 해제"를 눌렀을 때 실행할 동작입니다.
+  final ValueChanged<BoardCard> onUngroupCard;
 
   /// 지금 이 판에서 그 자리에 바로 재생 중인 카드의 번호입니다. 재생 중인
   /// 카드가 없으면 null입니다. (board_video_playback_controller.dart 참고)
@@ -260,6 +268,10 @@ class BoardCanvas extends StatelessWidget {
                 ? null
                 : () => onStopPlaying!(card),
             onRemove: () => onRemoveCard(card),
+            onOpenDetail: () => onOpenDetail(item),
+            onUngroupSelected: card.groupId != null
+                ? () => onUngroupCard(card)
+                : null,
             onMeasured: (Size size) => onMeasured(card, size),
             onResizeStart: (Size currentSize, BoardResizeCorner corner) =>
                 onResizeStart(card, currentSize, corner),

@@ -203,6 +203,7 @@ class _BoardListScreenState extends State<BoardListScreen> {
           board: board,
           boardRepository: widget.boardRepository,
           referenceRepository: widget.referenceRepository,
+          taxonomyRepository: widget.taxonomyRepository,
           imageStorage: widget.imageStorage,
           imageSource: widget.imageSource,
           youtubeInfoSource: widget.youtubeInfoSource,

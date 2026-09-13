@@ -16,6 +16,7 @@ import '../services/board_window_sync.dart';
 import '../theme/app_metrics.dart';
 import '../theme/app_palette.dart';
 import '../utils/reference_drag_payload.dart';
+import 'context_menu.dart';
 import 'hover_lift.dart';
 import 'reference_card_body.dart';
 import 'reference_card_thumbnail.dart';
@@ -32,6 +33,9 @@ class ReferenceCard extends StatelessWidget {
     required this.isSelected,
     required this.onSelectToggle,
     required this.onPlay,
+    required this.onToggleFavorite,
+    required this.onTogglePin,
+    required this.onMoveToFolder,
     this.onHoverChanged,
     this.isPreviewPlaying = false,
     this.previewUrl,
@@ -77,6 +81,15 @@ class ReferenceCard extends StatelessWidget {
   /// 삭제 버튼이 카드 안에 있으면서 자기 동작을 갖는 것과 같은 방식입니다.
   final VoidCallback onPlay;
 
+  /// 우클릭 메뉴의 "즐겨찾기 켜기/끄기"를 눌렀을 때 실행할 동작입니다.
+  final VoidCallback onToggleFavorite;
+
+  /// 우클릭 메뉴의 "고정 켜기/끄기"를 눌렀을 때 실행할 동작입니다.
+  final VoidCallback onTogglePin;
+
+  /// 우클릭 메뉴의 "폴더로 이동"을 눌렀을 때 실행할 동작입니다.
+  final VoidCallback onMoveToFolder;
+
   /// 마우스가 이 카드에 올라오거나 벗어났을 때 알려줍니다.
   ///
   /// null이면 호버를 아예 살피지 않습니다. 폰·태블릿에는 마우스가 없어서
@@ -104,11 +117,51 @@ class ReferenceCard extends StatelessWidget {
   Widget build(BuildContext context) {
     // 마우스를 올렸는지는 카드마다 따로 기억합니다. 화면 전체가 기억하면
     // 카드 하나에 마우스가 스칠 때마다 목록 전체를 다시 그리게 됩니다.
-    return HoverLift(
+    final Widget card = HoverLift(
       onHoverChanged: onHoverChanged,
       builder: (BuildContext context, bool isHovered) {
         return _buildCard(context, isHovered);
       },
+    );
+
+    // 고르기 모드에서는 우클릭 메뉴를 안 엽니다. 그 모드에서는 카드를
+    // 누르는 것 자체가 "고르기"라는 뜻이라, 메뉴까지 끼면 헷갈립니다.
+    //
+    // enableLongPress를 끈 이유: 이 카드는 이미 길게 누르면 고르기
+    // 모드로 들어갑니다(_buildCard 안의 onLongPress). 우클릭 메뉴까지
+    // 길게 누르기에 얹으면 두 뜻이 부딪힙니다 — 그래서 이 메뉴는
+    // **데스크톱 우클릭 전용**입니다.
+    if (isSelectionMode) {
+      return card;
+    }
+
+    return ContextMenuRegion(
+      enableLongPress: false,
+      buildActions: () => <ContextMenuAction>[
+        ContextMenuAction(label: '열기', icon: Icons.open_in_new, onSelected: onTap),
+        ContextMenuAction(
+          label: item.isFavorite ? '즐겨찾기 끄기' : '즐겨찾기 켜기',
+          icon: item.isFavorite ? Icons.star : Icons.star_outline,
+          onSelected: onToggleFavorite,
+        ),
+        ContextMenuAction(
+          label: item.isPinned ? '고정 끄기' : '고정하기',
+          icon: item.isPinned ? Icons.push_pin : Icons.push_pin_outlined,
+          onSelected: onTogglePin,
+        ),
+        ContextMenuAction(
+          label: '폴더로 이동',
+          icon: Icons.drive_file_move_outline,
+          onSelected: onMoveToFolder,
+        ),
+        ContextMenuAction(
+          label: '삭제',
+          icon: Icons.delete_outline,
+          isDestructive: true,
+          onSelected: onDelete,
+        ),
+      ],
+      child: card,
     );
   }
 

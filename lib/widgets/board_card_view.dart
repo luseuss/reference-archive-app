@@ -21,6 +21,7 @@ import '../theme/app_metrics.dart';
 import '../theme/app_palette.dart';
 import '../theme/app_text.dart';
 import '../utils/board_card_actions.dart' show BoardResizeCorner;
+import 'context_menu.dart';
 
 /// 크기 조절 손잡이의 한 변 길이입니다.
 ///
@@ -46,6 +47,8 @@ class BoardCardView extends StatefulWidget {
     this.playerUrl,
     this.onPlayPressed,
     this.onStopPlaying,
+    this.onOpenDetail,
+    this.onUngroupSelected,
   });
 
   /// 이 카드가 보여주는 레퍼런스입니다.
@@ -127,6 +130,14 @@ class BoardCardView extends StatefulWidget {
   /// (리눅스 등)에서 board_screen.dart가 이렇게 넘깁니다.
   final VoidCallback? onPlayPressed;
 
+  /// 우클릭 메뉴의 "레퍼런스 상세 열기"를 눌렀을 때 실행할 동작입니다.
+  /// null이면 메뉴에서 이 항목이 안 보입니다.
+  final VoidCallback? onOpenDetail;
+
+  /// 우클릭 메뉴의 "그룹 해제"를 눌렀을 때 실행할 동작입니다.
+  /// null이면(그룹에 속하지 않은 카드) 메뉴에서 이 항목이 안 보입니다.
+  final VoidCallback? onUngroupSelected;
+
   /// 재생을 멈추고 다시 썸네일로 돌아갈 때 실행할 동작입니다.
   /// [isPlaying]이 참일 때만 보이는 버튼입니다.
   final VoidCallback? onStopPlaying;
@@ -199,7 +210,7 @@ class _BoardCardViewState extends State<BoardCardView> {
     // 마우스를 안 올려도 "무엇을 골라뒀는지"가 계속 보여야 하기 때문입니다.
     final bool isHighlighted = isRaised || widget.isSelected;
 
-    return MouseRegion(
+    final Widget cardBody = MouseRegion(
       // 손가락 터치로는 아무 일도 일어나지 않아서 폰에서는 저절로 조용합니다.
       onEnter: (PointerEnterEvent event) => setState(() => _isHovered = true),
       onExit: (PointerExitEvent event) => setState(() => _isHovered = false),
@@ -255,6 +266,37 @@ class _BoardCardViewState extends State<BoardCardView> {
           ],
         ),
       ),
+    );
+
+    return ContextMenuRegion(
+      // 이 카드는 이미 board_canvas.dart의 끌기 GestureDetector 안에
+      // 있습니다. 우클릭 인식기를 보통 방식(GestureDetector)으로 더하면
+      // 제스처 아레나에 경쟁자가 늘어 "살짝만 끌 때 끌기가 안 먹히는"
+      // 회귀가 생깁니다(실제로 겪었습니다 — context_menu.dart의
+      // avoidGestureArena 설명 참고). 그래서 이 카드만은 아레나에
+      // 안 끼는 방식을 씁니다.
+      avoidGestureArena: true,
+      buildActions: () => <ContextMenuAction>[
+        if (widget.onOpenDetail != null)
+          ContextMenuAction(
+            label: '레퍼런스 상세 열기',
+            icon: Icons.open_in_new,
+            onSelected: widget.onOpenDetail!,
+          ),
+        if (widget.onUngroupSelected != null)
+          ContextMenuAction(
+            label: '그룹 해제',
+            icon: Icons.link_off,
+            onSelected: widget.onUngroupSelected!,
+          ),
+        ContextMenuAction(
+          label: '판에서 내리기',
+          icon: Icons.remove_circle_outline,
+          isDestructive: true,
+          onSelected: widget.onRemove,
+        ),
+      ],
+      child: cardBody,
     );
   }
 

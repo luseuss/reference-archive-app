@@ -42,6 +42,7 @@ import '../widgets/home_drop_area.dart';
 import '../widgets/home_selection_app_bar.dart';
 import '../widgets/main_header.dart';
 import '../widgets/mesh_background.dart';
+import '../widgets/pick_taxonomy_dialog.dart';
 import '../widgets/reference_empty_state.dart';
 import '../widgets/reference_filter_bar.dart';
 import '../widgets/reference_grid.dart';
@@ -810,11 +811,28 @@ class _HomeScreenState extends State<HomeScreen> {
       onRenameFolder: _renameFolder,
       onDeleteFolder: _deleteFolderFromSidebar,
       onMoveFolder: _moveFolder,
+      onCreateFolder: _createFolder,
       onOpenBoards: _openBoards,
       onOpenTrash: _openTrash,
       onOpenSettings: _openSettings,
       onLogInOut: _showLoginNotReady,
     );
+  }
+
+  /// 사이드바 "전체 레퍼런스" 줄의 우클릭 메뉴 "새 폴더 만들기"를 실행합니다.
+  ///
+  /// _createSubfolder와 거의 같지만, 상위 폴더가 없는(최상위) 폴더를
+  /// 만듭니다 — initialParentId를 안 넘기면 됩니다.
+  Future<void> _createFolder() async {
+    final TaxonomyItem? created = await showCreateTaxonomyDialog(
+      context: context,
+      kind: TaxonomyKind.folder,
+      repository: widget.taxonomyRepository,
+      allFolders: _taxonomyOptions[TaxonomyKind.folder] ?? <TaxonomyItem>[],
+    );
+    if (created != null) {
+      await _loadTaxonomyOptions();
+    }
   }
 
   /// 사이드바에서 폴더를 골랐을 때 실행됩니다. null이면 "전체"입니다.
@@ -1164,6 +1182,59 @@ class _HomeScreenState extends State<HomeScreen> {
             isHovering,
             isSelecting: _selection.isSelecting,
           ),
+      onToggleFavorite: _toggleFavorite,
+      onTogglePin: _togglePin,
+      onMoveToFolder: _moveSingleToFolder,
     );
+  }
+
+  /// 우클릭 메뉴의 "즐겨찾기 켜기/끄기"를 실행합니다.
+  ///
+  /// 지금까지는 상세 화면 안 체크박스로만 바꿀 수 있었습니다. 목록에서
+  /// 바로 켜고 끌 수 있게, 값만 뒤집어 그대로 저장합니다.
+  Future<void> _toggleFavorite(ReferenceItem item) async {
+    await widget.repository.save(item.copyWith(isFavorite: !item.isFavorite));
+    await _loadItems();
+  }
+
+  /// 우클릭 메뉴의 "고정하기/고정 끄기"를 실행합니다. 위 함수와 같은 이유입니다.
+  Future<void> _togglePin(ReferenceItem item) async {
+    await widget.repository.save(item.copyWith(isPinned: !item.isPinned));
+    await _loadItems();
+  }
+
+  /// 우클릭 메뉴의 "폴더로 이동"을 실행합니다.
+  ///
+  /// 여러 장을 한꺼번에 옮기는 home_selection_controller.dart의
+  /// moveToFolder()와 같은 대화상자(showPickTaxonomyDialog)를 씁니다 —
+  /// "폴더 하나를 고른다"는 동작 자체는 몇 장을 옮기든 똑같습니다.
+  Future<void> _moveSingleToFolder(ReferenceItem item) async {
+    final List<TaxonomyItem> folders =
+        _taxonomyOptions[TaxonomyKind.folder] ?? <TaxonomyItem>[];
+
+    if (folders.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('먼저 오른쪽 위 "분류 관리"에서 폴더를 만들어주세요.')),
+      );
+      return;
+    }
+
+    final PickedTaxonomy? picked = await showPickTaxonomyDialog(
+      context: context,
+      kind: TaxonomyKind.folder,
+      items: folders,
+      title: '"${item.title.isEmpty ? '(제목 없음)' : item.title}" 폴더 이동',
+      allowNone: true,
+    );
+
+    if (picked == null || !mounted) {
+      return;
+    }
+
+    final ReferenceItem updated = picked.item == null
+        ? item.clearFolder()
+        : item.copyWith(folderId: picked.item!.id);
+    await widget.repository.save(updated);
+    await _loadItems();
   }
 }

@@ -49,6 +49,7 @@ import '../theme/app_metrics.dart';
 import '../theme/app_palette.dart';
 import '../theme/app_text.dart';
 import '../utils/folder_tree.dart';
+import 'context_menu.dart';
 
 /// 사이드바의 너비입니다. (기존 웹앱의 `flex: 0 0 176px`보다 조금 넓게)
 const double sidebarWidth = 232;
@@ -71,6 +72,7 @@ class AppSidebar extends StatefulWidget {
     required this.onRenameFolder,
     required this.onDeleteFolder,
     required this.onMoveFolder,
+    required this.onCreateFolder,
     required this.onOpenBoards,
     required this.onOpenTrash,
     required this.onOpenSettings,
@@ -102,6 +104,10 @@ class AppSidebar extends StatefulWidget {
   /// 놓았을 때 실행합니다. newParentId가 null이면 최상위로 옮기라는
   /// 뜻입니다.
   final void Function(String draggedFolderId, String? newParentId) onMoveFolder;
+
+  /// "전체 레퍼런스" 줄의 우클릭 메뉴 "새 폴더 만들기"를 눌렀을 때 실행합니다.
+  /// 상위 폴더 없이 최상위 폴더를 만듭니다.
+  final VoidCallback onCreateFolder;
 
   /// 무드보드 목록을 눌렀을 때 실행할 동작입니다.
   final VoidCallback onOpenBoards;
@@ -315,6 +321,9 @@ class _AppSidebarState extends State<AppSidebar> {
   }
 
   /// "전체 레퍼런스" 줄입니다. 폴더를 여기로 끌어다 놓으면 최상위로 옮겨집니다.
+  /// 우클릭(또는 길게 누르기)하면 "새 폴더 만들기"가 나옵니다 — 지금까지는
+  /// 새 최상위 폴더를 만들 방법이 "분류 관리" 화면뿐이었는데, 여기서도
+  /// 바로 만들 수 있게 했습니다.
   Widget _buildAllReferencesRow(AppPalette dark) {
     return DragTarget<String>(
       onWillAcceptWithDetails: (DragTargetDetails<String> details) => true,
@@ -325,12 +334,21 @@ class _AppSidebarState extends State<AppSidebar> {
         List<String?> candidateData,
         List<Object?> rejectedData,
       ) {
-        return _buildNavItem(
-          dark,
-          icon: Icons.photo_library_outlined,
-          label: '전체 레퍼런스',
-          isSelected: widget.selectedFolderId == null,
-          onTap: () => widget.onSelectFolder(null),
+        return ContextMenuRegion(
+          buildActions: () => <ContextMenuAction>[
+            ContextMenuAction(
+              label: '새 폴더 만들기',
+              icon: Icons.create_new_folder_outlined,
+              onSelected: widget.onCreateFolder,
+            ),
+          ],
+          child: _buildNavItem(
+            dark,
+            icon: Icons.photo_library_outlined,
+            label: '전체 레퍼런스',
+            isSelected: widget.selectedFolderId == null,
+            onTap: () => widget.onSelectFolder(null),
+          ),
         );
       },
     );
@@ -358,14 +376,36 @@ class _AppSidebarState extends State<AppSidebar> {
       onTap: () => widget.onSelectFolder(folder.id),
     );
 
-    final Widget draggableLabel = Draggable<String>(
-      data: folder.id,
-      feedback: Material(
-        color: Colors.transparent,
-        child: Chip(label: Text(folder.name)),
+    final Widget draggableLabel = ContextMenuRegion(
+      // "⋮" 버튼과 똑같은 세 가지를 우클릭(또는 길게 누르기)으로도
+      // 열어줍니다 — 아래 목록은 그 버튼의 itemBuilder와 내용을 맞춰뒀습니다.
+      buildActions: () => <ContextMenuAction>[
+        ContextMenuAction(
+          label: '하위 폴더 만들기',
+          icon: Icons.create_new_folder_outlined,
+          onSelected: () => widget.onCreateSubfolder(folder),
+        ),
+        ContextMenuAction(
+          label: '이름 바꾸기',
+          icon: Icons.edit_outlined,
+          onSelected: () => widget.onRenameFolder(folder),
+        ),
+        ContextMenuAction(
+          label: '삭제',
+          icon: Icons.delete_outline,
+          isDestructive: true,
+          onSelected: () => widget.onDeleteFolder(folder),
+        ),
+      ],
+      child: Draggable<String>(
+        data: folder.id,
+        feedback: Material(
+          color: Colors.transparent,
+          child: Chip(label: Text(folder.name)),
+        ),
+        childWhenDragging: Opacity(opacity: 0.4, child: navItem),
+        child: navItem,
       ),
-      childWhenDragging: Opacity(opacity: 0.4, child: navItem),
-      child: navItem,
     );
 
     final Widget row = Padding(
