@@ -158,7 +158,7 @@ class _BoardPopupAppState extends State<BoardPopupApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: '레퍼런스 아카이브 — 무드보드',
+      title: 'RefeBoard — 무드보드',
       debugShowCheckedModeBanner: false,
       localizationsDelegates: const <LocalizationsDelegate<dynamic>>[
         FlutterQuillLocalizations.delegate,

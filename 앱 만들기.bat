@@ -22,7 +22,7 @@ REM 실제로 그렇게 실수해서, 안 만들어졌는데 성공한 줄 알�
 if errorlevel 1 goto shortcut_failed
 
 echo.
-echo 다 됐습니다. 바탕화면의 "레퍼런스 아카이브"를 더블클릭하세요.
+echo 다 됐습니다. 바탕화면의 "RefeBoard"를 더블클릭하세요.
 pause
 exit /b 0
 

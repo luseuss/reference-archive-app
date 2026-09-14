@@ -108,7 +108,7 @@ void main() {
     testWidgets('제목과 개수가 위쪽에 보인다', (WidgetTester tester) async {
       await openApp(tester, size: wide);
 
-      expect(find.text('레퍼런스 아카이브'), findsOneWidget);
+      expect(find.text('RefeBoard'), findsOneWidget);
       expect(find.text('0개'), findsOneWidget);
     });
   });

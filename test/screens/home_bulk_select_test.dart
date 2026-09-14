@@ -228,7 +228,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(Checkbox), findsNothing);
-    expect(find.text('레퍼런스 아카이브'), findsOneWidget);
+    expect(find.text('RefeBoard'), findsOneWidget);
   });
 
   testWidgets('고른 것들을 폴더로 옮긴다', (WidgetTester tester) async {
