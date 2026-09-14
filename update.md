@@ -6048,3 +6048,62 @@ Flutter에서 "지금 키보드 입력이 어디로 가는지"를 관리하는 �
 실제 빌드해 무드보드에서 텍스트 카드 생성·편집·서식·글꼴·크기
 조절·붙여넣기(순수 텍스트/이미지)·편집 진입·이탈을 반복하며 의뢰인이
 직접 확인했습니다.
+
+## PR #69 — 앱 이름·아이콘을 RefeBoard로 바꿈
+
+### 무엇을 바꿨나
+
+의뢰인이 새로 만든 아이콘·로고에 맞춰 앱 표시 이름을 **"레퍼런스
+아카이브" → "RefeBoard"**로 바꿨습니다. 기능 변경은 없고, 이름과
+아이콘만 바뀝니다.
+
+| 자리 | 파일 |
+|---|---|
+| 앱 아이콘 | `windows/runner/resources/app_icon.ico` |
+| MaterialApp 제목 | `lib/main.dart` |
+| 화면 안 로고 글자 | `lib/widgets/main_header.dart` |
+| 무드보드 팝업 창 제목 | `lib/screens/board_popup_app.dart` |
+| 실제 Windows 창 제목 | `windows/runner/main.cpp` |
+| 파일 속성(제품명·설명) | `windows/runner/Runner.rc` |
+| 설치 마법사 이름 | `tools/installer.iss` |
+| 바탕화면 바로가기 | `tools/make_shortcut.ps1`, `앱 만들기.bat` |
+| 소개 페이지 | `docs/index.html`, `docs/img/`(파비콘·로고 추가) |
+| README | `README.md` |
+
+### 일부러 안 바꾼 것
+
+- **Dart 패키지 이름(`reference_archive_app`), 폴더 이름, GitHub
+  저장소 이름** — 코드 전체 import 경로·빌드 스크립트에 퍼져 있어서
+  바꾸면 위험이 크고, 실제 사용자가 보는 이름과는 무관합니다.
+- **실행 파일 이름(`reference_archive_app.exe`)** — 위와 같은 이유.
+  `Runner.rc`의 `InternalName`/`OriginalFilename`도 실제 파일명과
+  맞춰 그대로 둡니다 — 겉으로 보이는 제품명만 "RefeBoard"입니다.
+- **Inno Setup의 `AppId`** — 바꾸면 업데이트가 아니라 별개의 새
+  프로그램으로 설치됩니다. 절대 바꾸면 안 되는 값이라 손대지
+  않았습니다.
+
+### 실제로 겪은 것: 리소스 파일만 바꾸면 `flutter build`가 반영을 안 함
+
+`app_icon.ico`와 `Runner.rc`만 바꾸고 평소처럼 `flutter build windows
+--release`를 돌렸더니, 빌드는 성공했지만 새 아이콘·제품명이 반영되지
+않았습니다. CMake가 리소스 파일(.rc/.ico) 변경을 캐시 때문에 못
+알아챈 것으로 보입니다. **`flutter clean`으로 캐시를 지우고 처음부터
+다시 빌드해야** 새 아이콘이 실제로 붙었습니다.
+`FileVersionInfo`/`Icon.ExtractAssociatedIcon`으로 직접 확인해서
+알아챈 문제입니다. **다음에 아이콘이나 `Runner.rc`를 또 고칠 때는
+`flutter clean`부터 하세요** — 안 그러면 "분명히 고쳤는데 그대로다"
+싶은 상황이 됩니다.
+
+### v1.1.0 배포
+
+새 아이콘·이름으로 완전히 새로 빌드해 설치 파일을 만들고 GitHub
+Releases에 올렸습니다. 소개 페이지의 다운로드 링크·버전 표시도
+v1.1.0으로 함께 갱신했습니다.
+https://github.com/luseuss/reference-archive-app/releases/tag/v1.1.0
+
+### 어떻게 테스트했나
+
+`flutter analyze` 클린. `flutter test` 758개 전부 통과(화면에 이름이
+그대로 보이는 위젯 테스트 2개의 기대 문자열을 "RefeBoard"로 갱신).
+완전히 새로 빌드한 뒤 아이콘·제품명이 실제로 바뀌었는지 파일
+속성으로 직접 확인했습니다.
