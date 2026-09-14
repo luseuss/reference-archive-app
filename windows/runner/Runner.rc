@@ -90,12 +90,12 @@ BEGIN
         BLOCK "040904e4"
         BEGIN
             VALUE "CompanyName", "com.luseuss" "\0"
-            VALUE "FileDescription", "reference_archive_app" "\0"
+            VALUE "FileDescription", "RefeBoard" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
             VALUE "InternalName", "reference_archive_app" "\0"
             VALUE "LegalCopyright", "Copyright (C) 2026 com.luseuss. All rights reserved." "\0"
             VALUE "OriginalFilename", "reference_archive_app.exe" "\0"
-            VALUE "ProductName", "reference_archive_app" "\0"
+            VALUE "ProductName", "RefeBoard" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

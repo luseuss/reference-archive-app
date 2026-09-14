@@ -182,7 +182,7 @@ class ReferenceArchiveApp extends StatelessWidget {
       listenable: settings,
       builder: (BuildContext context, Widget? child) {
         return MaterialApp(
-          title: '레퍼런스 아카이브',
+          title: 'RefeBoard',
 
           // 오른쪽 위에 뜨는 "DEBUG" 리본을 숨깁니다.
           // 개발 중에도 실제 모습을 보기 위함입니다.

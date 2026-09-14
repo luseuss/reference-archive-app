@@ -1,4 +1,4 @@
-; 레퍼런스 아카이브를 다른 컴퓨터에 설치할 수 있는 설치 파일(.exe)을
+; RefeBoard(레퍼런스 아카이브)를 다른 컴퓨터에 설치할 수 있는 설치 파일(.exe)을
 ; 만드는 Inno Setup 스크립트입니다.
 ;
 ; 이 파일 하나로 "다음, 다음, 설치" 하는 익숙한 설치 마법사가 만들어집니다.
@@ -16,7 +16,7 @@
 ; ── Inno Setup이 없다면 ──
 ; https://jrsoftware.org/isdl.php 에서 받아 설치하세요. (무료입니다)
 
-#define MyAppName "레퍼런스 아카이브"
+#define MyAppName "RefeBoard"
 #define MyAppVersion "1.0.0"
 #define MyAppPublisher "luseuss"
 #define MyAppExeName "reference_archive_app.exe"
@@ -40,7 +40,7 @@ DefaultGroupName={#MyAppName}
 ; 있어야 하기 때문입니다.
 PrivilegesRequired=lowest
 OutputDir=output
-OutputBaseFilename=레퍼런스아카이브_설치
+OutputBaseFilename=RefeBoard_설치
 SetupIconFile={#ProjectRoot}windows\runner\resources\app_icon.ico
 Compression=lzma2
 SolidCompression=yes

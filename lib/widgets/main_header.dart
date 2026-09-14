@@ -15,7 +15,7 @@
 // 반투명으로 바꿨다가, 안개가 없는 다른 화면까지 다 투명해지는
 // 버그가 나서 이 자리 전용의 `glassSurface`로 분리했습니다 —
 // app_palette.dart 위쪽 설명 참고) 제목 왼쪽의
-// 굵은 세로선과 "레퍼런스 아카이브" 글자는 에메랄드→시안→라임 그라디언트로
+// 굵은 세로선과 "RefeBoard" 글자는 에메랄드→시안→라임 그라디언트로
 // 칠합니다 — 이 앱에서 색을 세 가지 다 쓰는 유일한 자리입니다. 다른
 // 곳은 여전히 accent(에메랄드) 하나만 씁니다.
 
@@ -152,7 +152,7 @@ class MainHeader extends StatelessWidget {
                 ],
               ).createShader(bounds),
               child: Text(
-                '레퍼런스 아카이브',
+                'RefeBoard',
                 style: AppText.screenTitle.copyWith(color: Colors.white),
               ),
             ),

@@ -4,8 +4,8 @@
 #
 # ── 이 파일은 반드시 "BOM 있는 UTF-8"로 저장해야 합니다 ──
 # Windows PowerShell 5.1은 .ps1 파일 맨 앞에 BOM(파일이 UTF-8이라는 표시)이
-# 없으면 **한글을 949 코드페이지로 잘못 읽습니다.** 그러면 아래 '레퍼런스
-# 아카이브.lnk' 가 깨진 글자가 되어 바로가기를 못 만듭니다.
+# 없으면 **한글을 949 코드페이지로 잘못 읽습니다.** 그러면 아래 설명 글자
+# (Description)가 깨진 글자가 되어 바로가기를 못 만듭니다.
 # (실제로 그렇게 실패했습니다. 오류는 "저장할 수 없습니다"로만 나와서
 #  글자 문제인 줄 알아채기 어렵습니다)
 #
@@ -28,7 +28,7 @@ try {
     }
 
     $desktop = [Environment]::GetFolderPath('Desktop')
-    $shortcutPath = Join-Path $desktop '레퍼런스 아카이브.lnk'
+    $shortcutPath = Join-Path $desktop 'RefeBoard.lnk'
 
     # WScript.Shell = 윈도우가 원래 갖고 있는 도구입니다. 따로 설치할 것이 없습니다.
     $shell = New-Object -ComObject WScript.Shell
@@ -38,7 +38,7 @@ try {
     # 앱이 실행될 때의 기준 폴더입니다. 이걸 안 정해주면 앱이 옆에 있는
     # 부속 파일(DLL 등)을 못 찾는 경우가 있습니다.
     $shortcut.WorkingDirectory = Split-Path -Parent $exePath
-    $shortcut.Description = '레퍼런스 아카이브'
+    $shortcut.Description = 'RefeBoard'
     $shortcut.Save()
 
     # 정말 만들어졌는지 확인합니다. Save()가 조용히 실패하는 경우가 있습니다.

@@ -1,4 +1,11 @@
-<title>레퍼런스 아카이브</title>
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RefeBoard</title>
+<meta name="description" content="PureRef 대신 쓰려고 만든, 개인용 로컬 우선 레퍼런스·무드보드 아카이브 Windows 앱">
+<link rel="icon" href="img/icon-64.png" type="image/png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&display=swap" rel="stylesheet">
@@ -157,10 +164,10 @@
     text-decoration: none;
   }
   .brand-mark {
-    width: 22px; height: 22px;
+    width: 24px; height: 24px;
     border-radius: 6px;
-    background: linear-gradient(135deg, var(--accent), var(--accent-2));
     flex-shrink: 0;
+    display: block;
   }
   .topnav { display: flex; align-items: center; gap: 22px; }
   .topnav a.navlink {
@@ -615,6 +622,8 @@
 
   ::selection { background: var(--accent-soft); }
 </style>
+</head>
+<body>
 
 <div class="mesh">
   <div class="mesh-blur">
@@ -628,8 +637,8 @@
 <header class="topbar">
   <div class="wrap">
     <a class="brand" href="#top">
-      <span class="brand-mark"></span>
-      레퍼런스 아카이브
+      <img class="brand-mark" src="img/icon-64.png" alt="">
+      RefeBoard
     </a>
     <nav class="topnav">
       <a class="navlink" href="#flow">쓰는 흐름</a>
@@ -659,7 +668,7 @@
             <a class="btn btn-ghost" href="#flow">쓰는 방법 보기</a>
           </div>
           <div class="hero-meta">
-            <span>⬇ v1.0.0 · 16MB</span>
+            <span>⬇ v1.1.0 · 17MB</span>
             <span>🔒 관리자 권한 불필요</span>
             <span>🗂 전부 로컬 저장</span>
           </div>
@@ -832,12 +841,12 @@
       <div class="download-panel">
         <div>
           <a class="btn btn-primary" style="padding:15px 26px; font-size:16px;"
-             href="https://github.com/luseuss/reference-archive-app/releases/download/v1.0.0/ReferenceArchive-Setup-v1.0.0.exe">
-            ⬇ Windows용 설치 파일 받기 (v1.0.0)
+             href="https://github.com/luseuss/reference-archive-app/releases/download/v1.1.0/RefeBoard-Setup-v1.1.0.exe">
+            ⬇ Windows용 설치 파일 받기 (v1.1.0)
           </a>
           <div class="dl-specs">
             <div class="dl-spec"><div class="k">지원 환경</div><div class="v">Windows 10 / 11 (64bit)</div></div>
-            <div class="dl-spec"><div class="k">파일 크기</div><div class="v">약 16MB</div></div>
+            <div class="dl-spec"><div class="k">파일 크기</div><div class="v">약 17MB</div></div>
             <div class="dl-spec"><div class="k">권한</div><div class="v">관리자 권한 불필요</div></div>
             <div class="dl-spec"><div class="k">데이터</div><div class="v">전부 이 컴퓨터에만 저장</div></div>
           </div>
@@ -855,7 +864,10 @@
 
 <footer>
   <div class="wrap">
-    <span>레퍼런스 아카이브 · 개인 프로젝트</span>
+    <span>RefeBoard · 개인 프로젝트</span>
     <a href="https://github.com/luseuss/reference-archive-app" target="_blank" rel="noopener">GitHub에서 소스 보기 ↗</a>
   </div>
 </footer>
+
+</body>
+</html>
