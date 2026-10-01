@@ -23,6 +23,7 @@ import '../models/taxonomy_item.dart';
 import '../repositories/board_repository.dart';
 import '../repositories/reference_repository.dart';
 import '../repositories/taxonomy_repository.dart';
+import '../services/archive_backup_service.dart';
 import '../services/board_window_sync.dart';
 import '../services/image_source.dart';
 import '../services/image_storage.dart';
@@ -51,6 +52,7 @@ class BoardListScreen extends StatefulWidget {
     this.filterFolderId,
     this.folderName,
     this.autoCreateOnOpen = false,
+    this.backupService,
   });
 
   /// 무드보드를 읽고 쓰는 통로입니다.
@@ -86,6 +88,11 @@ class BoardListScreen extends StatefulWidget {
   /// [filterFolderId]로 좁혀 보여줄 때, 화면 제목에 쓸 그 폴더의
   /// 이름입니다. filterFolderId가 없으면 안 씁니다.
   final String? folderName;
+
+  /// 무드보드를 파일 하나로 내보내는 "공유하기" 메뉴에서 씁니다.
+  /// null이면(기존 테스트 등) 그 메뉴 항목 자체가 안 보입니다 —
+  /// settings_screen.dart의 backupService와 같은 패턴입니다.
+  final ArchiveBackupService? backupService;
 
   /// 참이면 이 화면이 뜨자마자 "새 무드보드 만들기"를 바로 엽니다.
   ///
@@ -295,6 +302,40 @@ class _BoardListScreenState extends State<BoardListScreen> {
     await _loadBoards();
   }
 
+  /// 무드보드를 파일 하나로 내보냅니다(공유).
+  ///
+  /// 사실은 이 판 하나만 담은 아주 작은 "백업" 파일을 만드는
+  /// 것입니다(archive_backup_service.dart의 writeBoardShareZip 참고).
+  /// 그래서 받는 사람은 설정 화면의 "백업에서 가져오기"로 그대로
+  /// 불러올 수 있습니다 — 가져오기 쪽에 새 버튼을 안 만든 이유입니다.
+  Future<void> _shareBoard(Board board) async {
+    final ArchiveBackupService? service = widget.backupService;
+    if (service == null) {
+      return;
+    }
+
+    final BackupOutcome outcome = await service.exportBoardShare(
+      board.id,
+      board.name,
+    );
+
+    if (!mounted) {
+      return;
+    }
+
+    final String? message = switch (outcome) {
+      BackupOutcome.saved =>
+        '"${board.name}" 공유 파일을 만들었습니다. 받는 사람은 설정 화면의 '
+            '"백업에서 가져오기"로 불러오면 됩니다.',
+      BackupOutcome.cancelled => null,
+      BackupOutcome.failed => '공유 파일을 만들지 못했습니다.',
+    };
+
+    if (message != null) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    }
+  }
+
   /// 무드보드를 지웁니다. 지우기 전에 확인을 받습니다.
   Future<void> _deleteBoard(Board board) async {
     final bool confirmed = await _confirmDelete(board);
@@ -467,6 +508,13 @@ class _BoardListScreenState extends State<BoardListScreen> {
           icon: Icons.folder_outlined,
           onSelected: () => _setBoardFolder(board),
         ),
+        // backupService가 없으면(일부 테스트 등) 이 항목 자체를 뺍니다.
+        if (widget.backupService != null)
+          ContextMenuAction(
+            label: '공유하기(파일로 내보내기)',
+            icon: Icons.ios_share_outlined,
+            onSelected: () => _shareBoard(board),
+          ),
         ContextMenuAction(
           label: '지우기',
           icon: Icons.delete_outline,
@@ -496,15 +544,32 @@ class _BoardListScreenState extends State<BoardListScreen> {
                 _renameBoard(board);
               } else if (value == 'folder') {
                 _setBoardFolder(board);
+              } else if (value == 'share') {
+                _shareBoard(board);
               } else if (value == 'delete') {
                 _deleteBoard(board);
               }
             },
             itemBuilder: (BuildContext context) {
-              return const <PopupMenuEntry<String>>[
-                PopupMenuItem<String>(value: 'rename', child: Text('이름 바꾸기')),
-                PopupMenuItem<String>(value: 'folder', child: Text('폴더 정하기')),
-                PopupMenuItem<String>(value: 'delete', child: Text('지우기')),
+              return <PopupMenuEntry<String>>[
+                const PopupMenuItem<String>(
+                  value: 'rename',
+                  child: Text('이름 바꾸기'),
+                ),
+                const PopupMenuItem<String>(
+                  value: 'folder',
+                  child: Text('폴더 정하기'),
+                ),
+                // backupService가 없으면(일부 테스트 등) 이 항목 자체를 뺍니다.
+                if (widget.backupService != null)
+                  const PopupMenuItem<String>(
+                    value: 'share',
+                    child: Text('공유하기(파일로 내보내기)'),
+                  ),
+                const PopupMenuItem<String>(
+                  value: 'delete',
+                  child: Text('지우기'),
+                ),
               ];
             },
           ),

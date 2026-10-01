@@ -121,6 +121,49 @@ class ArchiveBackupService {
     return '레퍼런스아카이브-백업-$year-$month-$day.zip';
   }
 
+  /// 저장 대화상자를 열어, 사용자가 고른 자리에 **무드보드 하나만** 담은
+  /// 공유 파일을 만듭니다.
+  ///
+  /// ── 이 공유 파일의 정체 ──
+  /// 사실 그 무드보드 하나만 담은 아주 작은 **백업 zip**입니다
+  /// ([writeBoardShareZip] 참고) — 그래서 받는 사람은 새로 배운
+  /// "가져오기" 버튼이 아니라, 이미 있는 설정 화면의 "백업에서
+  /// 가져오기"로 그대로 불러올 수 있습니다. 가져오기 쪽 코드를 새로
+  /// 안 만든 이유입니다.
+  Future<BackupOutcome> exportBoardShare(
+    String boardId,
+    String boardName,
+  ) async {
+    final String? savePath = await FilePicker.saveFile(
+      dialogTitle: '무드보드 공유 파일 만들기',
+      fileName: _defaultShareFileName(boardName),
+      type: FileType.custom,
+      allowedExtensions: <String>['zip'],
+    );
+
+    if (savePath == null) {
+      return BackupOutcome.cancelled;
+    }
+
+    try {
+      await writeBoardShareZip(boardId, savePath);
+      return BackupOutcome.saved;
+    } catch (error) {
+      return BackupOutcome.failed;
+    }
+  }
+
+  /// 오늘 날짜와 무드보드 이름이 들어간 공유 파일 이름을 만듭니다.
+  /// 예: "겨울 무드-공유-2026-10-02.zip"
+  String _defaultShareFileName(String boardName) {
+    final DateTime now = DateTime.now();
+    final String year = now.year.toString();
+    final String month = now.month.toString().padLeft(2, '0');
+    final String day = now.day.toString().padLeft(2, '0');
+    final String safeName = boardName.trim().isEmpty ? '무드보드' : boardName.trim();
+    return '$safeName-공유-$year-$month-$day.zip';
+  }
+
   /// 지금 데이터베이스 + 사진 폴더를 [zipPath]에 zip 파일로 만듭니다.
   ///
   /// 파일 대화상자를 안 거치는 핵심 로직입니다. 실제로 사용자에게 저장할
@@ -158,6 +201,178 @@ class ArchiveBackupService {
     } finally {
       await tempDir.delete(recursive: true);
     }
+  }
+
+  /// [boardId] 판 하나만 담은 공유 zip을 [zipPath]에 만듭니다.
+  ///
+  /// 파일 대화상자를 안 거치는 핵심 로직입니다. 실제로 사용자에게 저장할
+  /// 자리를 물어보는 일은 [exportBoardShare]가 합니다.
+  ///
+  /// ── 무엇을 담는가 ──
+  /// 백업 전체([writeBackupZip])와 달리 이 판에 **필요한 행만** 골라
+  /// 담습니다 — 다른 판이나 안 쓰는 레퍼런스까지 통째로 넘기면 받는
+  /// 사람 입장에서 "내 아카이브와 상관없는 것들이 잔뜩 딸려왔다"가
+  /// 됩니다.
+  ///   1. 그 판(Boards) 자신
+  ///   2. 그 판에 놓인, 지워지지 않은 카드들(BoardCards)
+  ///   3. 카드가 가리키는 레퍼런스들(References) — 텍스트 카드는
+  ///      가리키는 레퍼런스가 없으므로 자동으로 빠집니다.
+  ///   4. 그 레퍼런스들의 태그·프로젝트 연결(ReferenceTaxonomyLinks)
+  ///   5. 그 레퍼런스들의 폴더·카테고리·태그·프로젝트
+  ///      (TaxonomyItems) — **폴더는 조상까지 전부** 따라갑니다.
+  ///      안 그러면 하위 폴더만 오고 상위 폴더가 없어서 받는 쪽에서
+  ///      폴더 구조가 끊겨 보입니다.
+  ///   6. 그 레퍼런스들이 쓰는 사진 파일만(통째로 images 폴더가 아님)
+  ///
+  /// ── 받는 쪽은 똑같이 "백업에서 가져오기"를 씁니다 ──
+  /// 위 다섯 표 모두 [writeBackupZip]과 **같은 파일 형식**(같은 파일
+  /// 이름의 sqlite + 같은 이름의 images 폴더)으로 담기 때문에,
+  /// [mergeBackupZipBytes]가 고치지 않아도 그대로 읽어 들입니다 —
+  /// "안에 든 표가 전체냐 일부냐"는 합치는 쪽(모두 insertOrIgnore)
+  /// 입장에서는 다를 게 없습니다.
+  Future<void> writeBoardShareZip(String boardId, String zipPath) async {
+    final Directory tempDir = await Directory.systemTemp.createTemp(
+      'reference_archive_board_share_',
+    );
+    AppDatabase? shareDb;
+
+    try {
+      // ── 1. 이 판에 필요한 행만 데이터베이스에서 골라 읽습니다 ──
+      final BoardRow board = await (_database.select(
+        _database.boards,
+      )..where(($BoardsTable b) => b.id.equals(boardId))).getSingle();
+
+      final List<BoardCardRow> cardRows =
+          await (_database.select(_database.boardCards)..where(
+                ($BoardCardsTable c) => c.boardId.equals(boardId) & c.deletedAt.isNull(),
+              ))
+              .get();
+
+      final Set<String> referenceIds = cardRows
+          .map((BoardCardRow card) => card.referenceId)
+          .whereType<String>()
+          .toSet();
+
+      final List<ReferenceRow> referenceRows = referenceIds.isEmpty
+          ? const <ReferenceRow>[]
+          : await (_database.select(
+              _database.references,
+            )..where(($ReferencesTable r) => r.id.isIn(referenceIds))).get();
+
+      final List<ReferenceTaxonomyLinkRow> linkRows = referenceIds.isEmpty
+          ? const <ReferenceTaxonomyLinkRow>[]
+          : await (_database.select(_database.referenceTaxonomyLinks)..where(
+                  ($ReferenceTaxonomyLinksTable l) => l.referenceId.isIn(referenceIds),
+                ))
+                .get();
+
+      // ── 2. 그 레퍼런스들이 쓰는 분류 항목을, 폴더는 조상까지 모읍니다 ──
+      final Map<String, TaxonomyItemRow> taxonomyById =
+          await _resolveTaxonomyClosure(<String>{
+            for (final ReferenceRow r in referenceRows) ...<String>[
+              if (r.folderId != null) r.folderId!,
+              if (r.categoryId != null) r.categoryId!,
+            ],
+            for (final ReferenceTaxonomyLinkRow l in linkRows) l.taxonomyItemId,
+            if (board.folderId != null) board.folderId!,
+          });
+
+      // ── 3. 위에서 고른 행들만 담은 작은 임시 데이터베이스를 만듭니다 ──
+      // 진짜 운영 중인 데이터베이스가 아니라 이 공유 zip 하나만을 위한
+      // 새 파일이라, writeBackupZip처럼 VACUUM INTO로 복사할 필요
+      // 없이 처음부터 이 행들만 써 넣으면 됩니다.
+      final String tempSqlitePath = p.join(tempDir.path, _sqliteEntryName);
+      shareDb = AppDatabase.forTesting(NativeDatabase(File(tempSqlitePath)));
+
+      await shareDb.batch((Batch batch) {
+        batch.insertAll(
+          shareDb!.taxonomyItems,
+          taxonomyById.values.map(
+            (TaxonomyItemRow row) => row.toCompanion(true),
+          ),
+        );
+        batch.insertAll(
+          shareDb.references,
+          referenceRows.map((ReferenceRow row) => row.toCompanion(true)),
+        );
+        batch.insertAll(
+          shareDb.referenceTaxonomyLinks,
+          linkRows.map(
+            (ReferenceTaxonomyLinkRow row) => row.toCompanion(true),
+          ),
+        );
+        batch.insert(shareDb.boards, board.toCompanion(true));
+        batch.insertAll(
+          shareDb.boardCards,
+          cardRows.map((BoardCardRow row) => row.toCompanion(true)),
+        );
+      });
+      await shareDb.close();
+      shareDb = null;
+
+      // ── 4. zip으로 묶습니다 ──
+      final ZipFileEncoder encoder = ZipFileEncoder();
+      encoder.create(zipPath);
+      await encoder.addFile(File(tempSqlitePath), _sqliteEntryName);
+
+      // writeBackupZip과 달리 images 폴더를 통째로 담지 않고, 이
+      // 판이 실제로 쓰는 사진 파일만 하나씩 골라 담습니다.
+      final Directory imagesDir = await _imagesDirectory();
+      for (final ReferenceRow reference in referenceRows) {
+        final String? fileName = reference.fileName;
+        if (fileName == null) {
+          continue;
+        }
+        final File imageFile = File(p.join(imagesDir.path, fileName));
+        if (await imageFile.exists()) {
+          await encoder.addFile(imageFile, '$_imagesFolderName/$fileName');
+        }
+      }
+
+      await encoder.close();
+    } finally {
+      await shareDb?.close();
+      await tempDir.delete(recursive: true);
+    }
+  }
+
+  /// [seedIds]에서 시작해, 그 안에 든 폴더의 **조상 폴더까지** 전부
+  /// 찾아 돌려줍니다.
+  ///
+  /// 카테고리·태그·프로젝트는 `parentId`가 늘 비어 있어서 한 번만
+  /// 읽히고 끝나지만, 폴더는 상위 폴더를 가리킬 수 있어서(폴더 중첩)
+  /// 그 사슬을 끝까지 따라가야 합니다 — 안 그러면 공유받은 쪽에
+  /// 하위 폴더만 오고 그 위 폴더가 없어서 구조가 끊겨 보입니다.
+  Future<Map<String, TaxonomyItemRow>> _resolveTaxonomyClosure(
+    Set<String> seedIds,
+  ) async {
+    final Map<String, TaxonomyItemRow> resolved = <String, TaxonomyItemRow>{};
+    Set<String> toResolve = seedIds;
+
+    while (toResolve.isNotEmpty) {
+      final List<String> batch = toResolve
+          .where((String id) => !resolved.containsKey(id))
+          .toList();
+      if (batch.isEmpty) {
+        break;
+      }
+
+      final List<TaxonomyItemRow> rows = await (_database.select(
+        _database.taxonomyItems,
+      )..where(($TaxonomyItemsTable t) => t.id.isIn(batch))).get();
+
+      final Set<String> nextRound = <String>{};
+      for (final TaxonomyItemRow row in rows) {
+        resolved[row.id] = row;
+        final String? parentId = row.parentId;
+        if (parentId != null && !resolved.containsKey(parentId)) {
+          nextRound.add(parentId);
+        }
+      }
+      toResolve = nextRound;
+    }
+
+    return resolved;
   }
 
   /// 파일 고르기 대화상자를 열어, 사용자가 고른 백업 zip을 지금

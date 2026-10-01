@@ -1035,6 +1035,7 @@ class _HomeScreenState extends State<HomeScreen> {
           youtubeInfoSource: widget.youtubeInfoSource,
           taxonomyRepository: widget.taxonomyRepository,
           autoCreateOnOpen: autoCreate,
+          backupService: widget.backupService,
         ),
       ),
     );
@@ -1086,6 +1087,7 @@ class _HomeScreenState extends State<HomeScreen> {
           taxonomyRepository: widget.taxonomyRepository,
           filterFolderId: folderId,
           folderName: folderName,
+          backupService: widget.backupService,
         ),
       ),
     );
