@@ -17,6 +17,7 @@ import 'package:reference_archive_app/repositories/local_board_repository.dart';
 import 'package:reference_archive_app/repositories/local_reference_repository.dart';
 import 'package:reference_archive_app/repositories/local_taxonomy_repository.dart';
 import 'package:reference_archive_app/screens/board_list_screen.dart';
+import 'package:reference_archive_app/services/archive_backup_service.dart';
 import 'package:reference_archive_app/screens/board_screen.dart';
 import 'package:reference_archive_app/utils/id_generator.dart';
 
@@ -57,6 +58,7 @@ void main() {
     WidgetTester tester, {
     String? filterFolderId,
     String? folderName,
+    ArchiveBackupService? backupService,
   }) async {
     tester.view.physicalSize = const Size(1000, 1000);
     tester.view.devicePixelRatio = 1.0;
@@ -74,6 +76,7 @@ void main() {
           taxonomyRepository: taxonomyRepository,
           filterFolderId: filterFolderId,
           folderName: folderName,
+          backupService: backupService,
         ),
       ),
     );
@@ -205,6 +208,38 @@ void main() {
 
     expect(find.text('여름 무드'), findsOneWidget);
     expect(find.text('겨울 무드'), findsNothing);
+  });
+
+  testWidgets('backupService가 없으면 "공유하기" 메뉴가 안 보인다', (
+    WidgetTester tester,
+  ) async {
+    await saveBoard('겨울 무드');
+
+    // openList()에 backupService를 안 넘겼습니다(기본값 null).
+    await openList(tester);
+
+    await tester.tap(find.byIcon(Icons.more_vert));
+    await tester.pumpAndSettle();
+
+    expect(find.text('공유하기(파일로 내보내기)'), findsNothing);
+  });
+
+  testWidgets('backupService가 있으면 "공유하기" 메뉴가 보인다', (
+    WidgetTester tester,
+  ) async {
+    await saveBoard('겨울 무드');
+
+    await openList(tester, backupService: ArchiveBackupService(db));
+
+    await tester.tap(find.byIcon(Icons.more_vert));
+    await tester.pumpAndSettle();
+
+    // 실제로 눌러서 파일 저장 대화상자를 여는 것까지는 확인하지
+    // 않습니다 — 그 너머(archive_backup_service_test.dart의
+    // writeBoardShareZip)는 다른 파일에서 이미 확인했고, 진짜 운영체제
+    // 대화상자를 열려고 해서 테스트 환경에서는 멈춥니다(이 프로젝트의
+    // 다른 파일 저장 기능들과 같은 사정).
+    expect(find.text('공유하기(파일로 내보내기)'), findsOneWidget);
   });
 
   testWidgets('지우기 전에 레퍼런스는 남는다고 알려준다', (WidgetTester tester) async {

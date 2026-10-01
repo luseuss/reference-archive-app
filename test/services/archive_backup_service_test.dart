@@ -284,4 +284,205 @@ void main() {
       expect(await backupOnlyImage.exists(), isTrue);
     });
   });
+
+  group('무드보드 공유(writeBoardShareZip)', () {
+    /// 판 하나를 만들고 레퍼런스 카드 한 장을 올려 돌려줍니다.
+    Future<(Board, ReferenceItem)> makeBoardWithOneCard(
+      String boardName,
+      String referenceTitle,
+    ) async {
+      final DateTime now = DateTime.now().toUtc();
+      final LocalBoardRepository boards = LocalBoardRepository(db);
+      final ReferenceItem reference = await saveImage(referenceTitle);
+      final Board board = Board(
+        id: newId(),
+        name: boardName,
+        createdAt: now,
+        updatedAt: now,
+      );
+      await boards.saveBoard(board);
+      await boards.addCards(<BoardCard>[
+        BoardCard(
+          id: newId(),
+          boardId: board.id,
+          referenceId: reference.id,
+          x: 0,
+          y: 0,
+          createdAt: now,
+          updatedAt: now,
+        ),
+      ]);
+      return (board, reference);
+    }
+
+    /// 공유 zip을 만들어 바로 "다른 컴퓨터"(빈 데이터베이스)에
+    /// 합쳐보고, 그 데이터베이스를 돌려줍니다. 실제로 공유받는 쪽이
+    /// 할 일(writeBoardShareZip → mergeBackupZipBytes)을 그대로 거칩니다.
+    Future<AppDatabase> shareAndMergeIntoFreshDb(String boardId) async {
+      final String zipPath = '${tempDir.path}/share-$boardId.zip';
+      await service.writeBoardShareZip(boardId, zipPath);
+
+      final AppDatabase receiverDb = AppDatabase.forTesting(
+        NativeDatabase(File('${tempDir.path}/receiver-$boardId.sqlite')),
+      );
+      await ArchiveBackupService(
+        receiverDb,
+      ).mergeBackupZipBytes(await File(zipPath).readAsBytes());
+      return receiverDb;
+    }
+
+    test('공유한 판과 그 카드가 가리키는 레퍼런스만 들어간다 (다른 판은 안 따라온다)', () async {
+      final (Board boardA, ReferenceItem refA) = await makeBoardWithOneCard(
+        '공유할 판',
+        '공유할 레퍼런스',
+      );
+      await makeBoardWithOneCard('안 공유할 판', '안 공유할 레퍼런스');
+
+      final AppDatabase receiverDb = await shareAndMergeIntoFreshDb(
+        boardA.id,
+      );
+      try {
+        final List<BoardRow> boardRows = await receiverDb
+            .select(receiverDb.boards)
+            .get();
+        final List<ReferenceRow> referenceRows = await receiverDb
+            .select(receiverDb.references)
+            .get();
+
+        expect(boardRows.map((BoardRow b) => b.name), <String>['공유할 판']);
+        expect(referenceRows.map((ReferenceRow r) => r.title), <String>[
+          refA.title,
+        ]);
+      } finally {
+        await receiverDb.close();
+      }
+    });
+
+    test('텍스트 카드만 있는 판도 공유된다 (레퍼런스가 하나도 없어도 됨)', () async {
+      final DateTime now = DateTime.now().toUtc();
+      final LocalBoardRepository boards = LocalBoardRepository(db);
+      final Board board = Board(
+        id: newId(),
+        name: '노트만 있는 판',
+        createdAt: now,
+        updatedAt: now,
+      );
+      await boards.saveBoard(board);
+      await boards.addCards(<BoardCard>[
+        BoardCard(
+          id: newId(),
+          boardId: board.id,
+          x: 0,
+          y: 0,
+          height: 140,
+          textContent: '메모',
+          createdAt: now,
+          updatedAt: now,
+        ),
+      ]);
+
+      final AppDatabase receiverDb = await shareAndMergeIntoFreshDb(board.id);
+      try {
+        final List<BoardCardRow> cardRows = await receiverDb
+            .select(receiverDb.boardCards)
+            .get();
+        expect(cardRows.single.textContent, '메모');
+      } finally {
+        await receiverDb.close();
+      }
+    });
+
+    test('레퍼런스가 속한 폴더는 조상 폴더까지 함께 들어간다', () async {
+      final DateTime now = DateTime.now().toUtc();
+      final LocalTaxonomyRepository taxonomy = LocalTaxonomyRepository(db);
+      final TaxonomyItem parentFolder = TaxonomyItem(
+        id: newId(),
+        kind: TaxonomyKind.folder,
+        name: '상위 폴더',
+        createdAt: now,
+        updatedAt: now,
+      );
+      await taxonomy.save(parentFolder);
+      final TaxonomyItem childFolder = TaxonomyItem(
+        id: newId(),
+        kind: TaxonomyKind.folder,
+        name: '하위 폴더',
+        parentId: parentFolder.id,
+        createdAt: now,
+        updatedAt: now,
+      );
+      await taxonomy.save(childFolder);
+
+      final ReferenceItem reference = await saveImage('폴더 있는 레퍼런스');
+      await repository.save(
+        reference.copyWith(folderId: childFolder.id),
+      );
+
+      final LocalBoardRepository boards = LocalBoardRepository(db);
+      final Board board = Board(
+        id: newId(),
+        name: '폴더 테스트 판',
+        createdAt: now,
+        updatedAt: now,
+      );
+      await boards.saveBoard(board);
+      await boards.addCards(<BoardCard>[
+        BoardCard(
+          id: newId(),
+          boardId: board.id,
+          referenceId: reference.id,
+          x: 0,
+          y: 0,
+          createdAt: now,
+          updatedAt: now,
+        ),
+      ]);
+
+      final AppDatabase receiverDb = await shareAndMergeIntoFreshDb(board.id);
+      try {
+        final List<TaxonomyItem> folders = await LocalTaxonomyRepository(
+          receiverDb,
+        ).getAll(TaxonomyKind.folder);
+        final List<String> names = folders
+            .map((TaxonomyItem f) => f.name)
+            .toList()
+          ..sort();
+        expect(names, <String>['상위 폴더', '하위 폴더']);
+      } finally {
+        await receiverDb.close();
+      }
+    });
+
+    test('이 판이 안 쓰는 사진 파일은 공유 zip에 안 들어간다', () async {
+      final (Board boardA, _) = await makeBoardWithOneCard(
+        '공유할 판',
+        '공유할 레퍼런스',
+      );
+      await saveImage('이 판과 상관없는 레퍼런스');
+
+      // writeBoardShareZip은 실제로 파일이 있어야만 담으므로, 두
+      // 레퍼런스의 사진 파일을 실제로 만들어둡니다.
+      final Directory imagesDir = Directory('${tempDir.path}/images');
+      await imagesDir.create(recursive: true);
+      await File(
+        '${imagesDir.path}/공유할 레퍼런스.jpg',
+      ).writeAsBytes(<int>[1, 2, 3]);
+      await File(
+        '${imagesDir.path}/이 판과 상관없는 레퍼런스.jpg',
+      ).writeAsBytes(<int>[4, 5, 6]);
+
+      final String zipPath = '${tempDir.path}/prune-test.zip';
+      await service.writeBoardShareZip(boardA.id, zipPath);
+
+      final Archive archive = ZipDecoder().decodeBytes(
+        await File(zipPath).readAsBytes(),
+      );
+      final List<String> imageEntryNames = archive.files
+          .where((ArchiveFile f) => f.name.startsWith('images/'))
+          .map((ArchiveFile f) => f.name)
+          .toList();
+
+      expect(imageEntryNames, <String>['images/공유할 레퍼런스.jpg']);
+    });
+  });
 }
